@@ -1,0 +1,3093 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>台账 PDF · SMEDC 交互设计</title>
+    <style>
+      :root {
+        --bg: #f5f7f5;
+        --surface: #fff;
+        --ink: #233b32;
+        --muted: #66766e;
+        --line: #e3e9e4;
+        --green: #236348;
+        --dark: #194d37;
+        --soft: #edf5ef;
+        --amber: #916526;
+        --red: #b44741;
+        --radius: 12px;
+        --shadow: 0 12px 40px #203c2b12;
+        --font:
+          Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.5 var(--font);
+        padding-bottom: 108px;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button,
+      a,
+      input,
+      select {
+        outline-offset: 4px;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #b18a3f;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
+      }
+      button {
+        transition:
+          background 0.15s,
+          color 0.15s,
+          border-color 0.15s;
+      }
+      svg.icon {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+        vertical-align: middle;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      .topbar {
+        height: 72px;
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 36px;
+        gap: 20px;
+      }
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .brandmark {
+        width: 34px;
+        height: 34px;
+        background: var(--green);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+      }
+      .brandmark svg {
+        width: 23px;
+        height: 23px;
+      }
+      .brandname {
+        font-size: 20px;
+        letter-spacing: 0.065em;
+        font-weight: 750;
+      }
+      .branddesc {
+        font-size: 12px;
+        color: var(--muted);
+        margin-left: 2px;
+      }
+      .divider {
+        height: 22px;
+        width: 1px;
+        background: var(--line);
+        margin: 0 10px;
+      }
+      .crumb {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .demo-button {
+        border: 1px solid #e3e5d8;
+        background: #f6f7ed;
+        color: #6d7046;
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .demo-dot {
+        width: 5px;
+        height: 5px;
+        background: #979e56;
+        border-radius: 50%;
+      }
+      .account {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        position: relative;
+      }
+      .avatar {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        background: #e8eee7;
+        color: var(--green);
+        border-radius: 50%;
+        font-size: 13px;
+      }
+      .account-info {
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .account-info small {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .iconbtn {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 7px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+        min-height: 32px;
+      }
+      .iconbtn:hover:not(:disabled) {
+        background: var(--soft);
+        color: var(--green);
+      }
+      .history-button {
+        position: relative;
+      }
+      .badge {
+        position: absolute;
+        top: 0;
+        right: 0;
+        min-width: 14px;
+        height: 14px;
+        border-radius: 10px;
+        background: var(--green);
+        color: #fff;
+        font-size: 9px;
+        display: grid;
+        place-items: center;
+        border: 2px solid white;
+      }
+      .popover {
+        position: absolute;
+        right: 0;
+        top: 43px;
+        width: 230px;
+        background: #fff;
+        border: 1px solid var(--line);
+        padding: 16px;
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        z-index: 20;
+      }
+      .popover p {
+        margin: 4px 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .popover b {
+        font-size: 13px;
+      }
+      .popover hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 12px 0;
+      }
+      .main {
+        max-width: 1536px;
+        margin: 0 auto;
+        padding: 28px 36px 0;
+      }
+      .page-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+      .eyebrow {
+        color: var(--green);
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.18em;
+        margin: 0 0 7px;
+      }
+      .page-heading h1 {
+        font-size: 29px;
+        letter-spacing: -0.035em;
+        line-height: 1.3;
+        font-weight: 650;
+        margin: 0 0 7px;
+      }
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .heading-side {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .textbtn {
+        padding: 5px 7px;
+        border: 0;
+        background: transparent;
+        color: var(--green);
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+      .textbtn:hover:not(:disabled) {
+        background: var(--soft);
+      }
+      .filters {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 18px 20px 13px;
+        margin-bottom: 24px;
+      }
+      .filter-grid {
+        display: grid;
+        grid-template-columns: minmax(185px, 1.12fr) minmax(270px, 1.8fr) auto;
+        gap: 18px;
+        align-items: end;
+      }
+      .field-label {
+        display: block;
+        font-size: 11px;
+        color: #64766a;
+        margin: 0 0 6px;
+        font-weight: 550;
+      }
+      .control {
+        width: 100%;
+        height: 39px;
+        border: 1px solid #dce4dd;
+        border-radius: 7px;
+        background: #fff;
+        color: var(--ink);
+        padding: 0 11px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        text-align: left;
+        font-size: 12px;
+      }
+      .control:focus-within {
+        border-color: var(--green);
+      }
+      .control .tail {
+        margin-left: auto;
+        color: #7a8c80;
+      }
+      .control svg {
+        width: 15px;
+        height: 15px;
+        color: #728579;
+      }
+      .range {
+        padding: 0 10px;
+        gap: 8px;
+      }
+      .range input {
+        border: 0;
+        width: 100%;
+        min-width: 0;
+        font-size: 12px;
+        background: transparent;
+        color: var(--ink);
+        outline: none;
+        height: 35px;
+      }
+      .range input::-webkit-calendar-picker-indicator {
+        width: 13px;
+        opacity: 0.5;
+      }
+      .range span {
+        color: #a1ada4;
+      }
+      .store-field {
+        position: relative;
+      }
+      .store-popover {
+        position: absolute;
+        top: 66px;
+        left: 0;
+        width: 292px;
+        background: #fff;
+        z-index: 30;
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        border-radius: 9px;
+        padding: 8px;
+      }
+      .store-popover .store-heading {
+        font-size: 11px;
+        color: var(--muted);
+        padding: 8px;
+      }
+      .store-option {
+        display: flex;
+        align-items: center;
+        padding: 9px 8px;
+        gap: 9px;
+        cursor: pointer;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+      .store-option:hover {
+        background: var(--soft);
+      }
+      input[type="checkbox"] {
+        accent-color: var(--green);
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+        margin: 0;
+        flex: none;
+      }
+      input[type="checkbox"]:disabled {
+        cursor: not-allowed;
+        opacity: 0.38;
+      }
+      .primary {
+        border: 1px solid var(--green);
+        background: var(--green);
+        color: #fff;
+        height: 39px;
+        border-radius: 7px;
+        padding: 0 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 12px;
+        white-space: nowrap;
+        font-weight: 550;
+      }
+      .primary:hover:not(:disabled) {
+        background: var(--dark);
+      }
+      .secondary {
+        border: 1px solid #dce4dd;
+        background: #fff;
+        color: var(--ink);
+        height: 36px;
+        padding: 0 13px;
+        border-radius: 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        font-size: 12px;
+      }
+      .secondary:hover:not(:disabled) {
+        border-color: #adc4b4;
+        background: #fafcf9;
+      }
+      .filter-foot {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .shortcuts {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .shortcut {
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+        border-radius: 4px;
+        padding: 3px 9px;
+        font-size: 11px;
+      }
+      .shortcut.active {
+        color: var(--green);
+        background: var(--soft);
+        font-weight: 550;
+      }
+      .access-note {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 10px;
+        color: #75847a;
+      }
+      .access-note svg {
+        width: 12px;
+        height: 12px;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 384px;
+        gap: 20px;
+        align-items: start;
+      }
+      .workspace.no-preview {
+        grid-template-columns: 1fr;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .list-heading {
+        height: 61px;
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .list-heading h2 {
+        font-size: 14px;
+        margin: 0;
+        font-weight: 650;
+      }
+      .count {
+        margin-left: 8px;
+        font-size: 11px;
+        padding: 2px 6px;
+        color: #63796a;
+        background: #f0f4ef;
+        border-radius: 5px;
+        font-weight: 450;
+      }
+      .list-heading .right {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+      }
+      .mini-toggle {
+        font-size: 11px;
+        border: 1px solid var(--line);
+        background: #fff;
+        padding: 5px 9px;
+        border-radius: 6px;
+        color: var(--muted);
+      }
+      .mini-toggle.active {
+        background: var(--soft);
+        border-color: #c5d8c8;
+        color: var(--green);
+      }
+      .list-caption {
+        font-size: 10px;
+        color: #859189;
+      }
+      .table-wrap {
+        position: relative;
+        min-height: 380px;
+        max-height: 540px;
+        overflow: auto;
+      }
+      thead {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        white-space: nowrap;
+      }
+      thead {
+        background: #f8faf7;
+        border-top: 1px solid #edf0eb;
+        border-bottom: 1px solid #edf0eb;
+      }
+      th {
+        font-size: 10px;
+        color: #738177;
+        font-weight: 500;
+        height: 36px;
+      }
+      td {
+        height: 60px;
+        border-bottom: 1px solid #eef1ed;
+        font-size: 12px;
+        color: #44574a;
+      }
+      th:first-child,
+      td:first-child {
+        width: 44px;
+        text-align: center;
+        padding-left: 10px;
+      }
+      th:last-child,
+      td:last-child {
+        padding-right: 13px;
+        text-align: right;
+      }
+      th:nth-child(2) {
+        width: 29%;
+      }
+      th:nth-child(3) {
+        width: 22%;
+      }
+      th:nth-child(4) {
+        width: 16%;
+      }
+      tbody tr {
+        transition: background 0.12s;
+      }
+      tbody tr:hover {
+        background: #fafcf9;
+      }
+      tbody tr.is-preview {
+        background: #f4f8f2;
+        box-shadow: inset 3px 0 var(--green);
+      }
+      tbody tr.is-selected {
+        background: #eff6ef;
+      }
+      .date-cell {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .pdf-icon {
+        width: 28px;
+        height: 33px;
+        flex: none;
+        border: 1px solid #eddbd4;
+        background: #fff7f3;
+        color: #b2715c;
+        border-radius: 4px;
+        display: grid;
+        place-items: center;
+        position: relative;
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .pdf-icon:before {
+        content: "";
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-left: 1px solid #eddbd4;
+        border-bottom: 1px solid #eddbd4;
+        background: #fff;
+        right: -1px;
+        top: -1px;
+      }
+      .date-main {
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.01em;
+        color: #334e3e;
+        font-size: 12px;
+        font-weight: 550;
+      }
+      .date-sub {
+        font-size: 9px;
+        color: #8a968c;
+        margin-top: 2px;
+      }
+      .store-name {
+        font-size: 12px;
+        color: #405747;
+      }
+      .store-sub {
+        font-size: 9px;
+        color: #8a968c;
+        margin-top: 2px;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: #4e7a59;
+        font-size: 10px;
+        padding: 3px 7px;
+        border-radius: 5px;
+        background: #eff5ec;
+      }
+      .status-dot {
+        width: 4px;
+        height: 4px;
+        background: currentColor;
+        border-radius: 50%;
+      }
+      .status.pending {
+        color: var(--amber);
+        background: #faf4e7;
+      }
+      .status.failed {
+        color: var(--red);
+        background: #fcf0ed;
+      }
+      .size {
+        font-size: 10px;
+        color: #829086;
+        font-variant-numeric: tabular-nums;
+      }
+      .row-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0;
+      }
+      .row-actions .iconbtn {
+        padding: 6px;
+        min-width: 29px;
+      }
+      .row-actions svg {
+        width: 16px;
+        height: 16px;
+      }
+      .pagination {
+        padding: 17px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 10px;
+        color: #758479;
+      }
+      .page-controls {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .page-button {
+        border: 1px solid transparent;
+        border-radius: 5px;
+        min-width: 27px;
+        height: 27px;
+        background: transparent;
+        color: #77887c;
+        font-size: 11px;
+      }
+      .page-button.active {
+        background: var(--soft);
+        border-color: #d4e2d3;
+        color: var(--green);
+        font-weight: 650;
+      }
+      .page-button:hover:not(:disabled) {
+        background: #f3f6f1;
+      }
+      .page-select {
+        border: 0;
+        background: transparent;
+        color: #697e6e;
+        font-size: 10px;
+        max-width: 92px;
+      }
+      .empty {
+        padding: 70px 20px;
+        text-align: center;
+        white-space: normal;
+        color: var(--muted);
+      }
+      .empty > svg {
+        width: 32px;
+        height: 32px;
+        margin-bottom: 12px;
+        color: #91aa93;
+      }
+      .empty h3 {
+        font-size: 15px;
+        color: var(--ink);
+        margin: 0 0 7px;
+      }
+      .empty p {
+        font-size: 12px;
+        margin: 0 0 15px;
+      }
+      .loading-overlay {
+        position: absolute;
+        inset: 0;
+        background: #ffffffdc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+        flex-direction: column;
+        gap: 10px;
+        font-size: 12px;
+        color: var(--green);
+        backdrop-filter: blur(1px);
+      }
+      .loading-overlay .spinner {
+        width: 24px;
+        height: 24px;
+        border-width: 2px;
+      }
+      .query-caption {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .notice {
+        padding: 10px 15px;
+        font-size: 11px;
+        background: #faf6eb;
+        color: #8d6a32;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        border-bottom: 1px solid #f1ead9;
+      }
+      .notice svg {
+        width: 15px;
+        height: 15px;
+      }
+      .preview {
+        position: sticky;
+        top: 20px;
+      }
+      .preview-heading {
+        height: 61px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 17px;
+        border-bottom: 1px solid var(--line);
+      }
+      .preview-heading h2 {
+        font-size: 13px;
+        font-weight: 650;
+        margin: 0;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .preview-heading h2 svg {
+        width: 16px;
+        height: 16px;
+        color: #718377;
+      }
+      .preview-info {
+        padding: 15px 17px 13px;
+      }
+      .preview-name {
+        font-size: 12px;
+        color: var(--ink);
+        font-weight: 550;
+        display: block;
+      }
+      .preview-meta {
+        display: flex;
+        gap: 8px;
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 5px;
+      }
+      .preview-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: #f8faf7;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .preview-toolbar > div {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+      }
+      .page-indicator {
+        font-size: 10px;
+        min-width: 42px;
+        text-align: center;
+        color: #667b6a;
+      }
+      .zoom-label {
+        font-size: 10px;
+        min-width: 32px;
+        text-align: center;
+        color: #667b6a;
+      }
+      .preview-toolbar .iconbtn {
+        min-width: 25px;
+        min-height: 25px;
+        padding: 4px;
+      }
+      .preview-toolbar svg {
+        width: 14px;
+        height: 14px;
+      }
+      .paper-stage {
+        background: #e9ede8;
+        padding: 22px 17px;
+        max-height: 490px;
+        min-height: 426px;
+        overflow: auto;
+        position: relative;
+        background-image: radial-gradient(#c4cfc333 0.6px, transparent 0.6px);
+        background-size: 6px 6px;
+      }
+      .paper-size {
+        width: calc(560px * var(--zoom, 0.59));
+        height: calc(790px * var(--zoom, 0.59));
+        margin: 0 auto;
+      }
+      .paper {
+        width: 560px;
+        min-height: 790px;
+        background: #fff;
+        padding: 35px 28px;
+        color: #292c29;
+        font:
+          12px/1.5 "Songti SC",
+          SimSun,
+          serif;
+        box-shadow: 0 3px 14px #28482d1c;
+        transform: scale(var(--zoom, 0.59));
+        transform-origin: top left;
+        border: 1px solid #e0e4dd;
+        position: relative;
+      }
+      .paper h3 {
+        font-size: 21px;
+        letter-spacing: 3px;
+        margin: 1px 0 22px;
+        text-align: center;
+        font-weight: 650;
+      }
+      .paper .paper-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        margin-bottom: 11px;
+      }
+      .paper table {
+        font-size: 10px;
+        white-space: normal;
+        border: 1px solid #888;
+        color: #333;
+      }
+      .paper th,
+      .paper td {
+        height: 35px;
+        padding: 4px !important;
+        border: 1px solid #888 !important;
+        text-align: center !important;
+        font-size: 10px;
+        color: #333;
+        background: #fff;
+      }
+      .paper th {
+        height: 42px;
+        font-weight: 600;
+      }
+      .paper th:first-child {
+        width: 30px;
+      }
+      .paper th:nth-child(2) {
+        width: 100px;
+      }
+      .paper th:nth-child(3) {
+        width: 40px;
+      }
+      .paper th:nth-child(4) {
+        width: 45px;
+      }
+      .paper .paper-notes {
+        margin-top: 16px;
+        font-size: 10px;
+        line-height: 1.9;
+      }
+      .paper .signatures {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 25px;
+        font-size: 11px;
+      }
+      .paper .paper-footer {
+        position: absolute;
+        bottom: 24px;
+        left: 28px;
+        right: 28px;
+        font-size: 9px;
+        color: #888;
+        border-top: 1px solid #ddd;
+        padding-top: 10px;
+        display: flex;
+        justify-content: space-between;
+      }
+      .paper-watermark {
+        position: absolute;
+        top: 54%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-25deg);
+        font-size: 64px;
+        color: #2960470b;
+        font-family: var(--font);
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .certificate {
+        border: 1px solid #bbb;
+        height: 235px;
+        margin: 20px 0;
+        padding: 22px;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+        background: #fafbf9;
+      }
+      .certificate b {
+        font-size: 19px;
+        letter-spacing: 2px;
+      }
+      .preview-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 15px;
+        gap: 10px;
+      }
+      .preview-footer span {
+        font-size: 9px;
+        color: #859186;
+      }
+      .preview-footer .textbtn {
+        font-size: 11px;
+      }
+      .preview-fallback {
+        min-height: 426px;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        padding: 25px;
+        color: var(--muted);
+      }
+      .preview-fallback svg {
+        margin: 0 auto 14px;
+        width: 28px;
+        height: 28px;
+      }
+      .preview-fallback h3 {
+        font-size: 14px;
+        margin: 0 0 7px;
+        color: var(--ink);
+      }
+      .preview-fallback p {
+        font-size: 11px;
+        margin: 0 0 16px;
+      }
+      .preview-fallback .secondary {
+        margin: auto;
+      }
+      .bottom-wrap {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid #dce5dc;
+        padding: 16px 36px;
+        z-index: 35;
+        box-shadow: 0 -6px 24px #32452d04;
+      }
+      .bottom {
+        max-width: 1464px;
+        margin: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      .selection-summary {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+      }
+      .selection-icon {
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--line);
+        background: #f7faf5;
+        color: #78906f;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+      }
+      .selection-title {
+        font-size: 13px;
+      }
+      .selection-title b {
+        color: var(--green);
+        font-size: 17px;
+        margin: 0 3px;
+        font-variant-numeric: tabular-nums;
+      }
+      .selection-title .cap {
+        color: #8b978e;
+        font-size: 12px;
+      }
+      .selection-hint {
+        color: #89958b;
+        font-size: 10px;
+        margin-top: 2px;
+      }
+      .bottom-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .bottom .primary {
+        height: 40px;
+        padding: 0 22px;
+      }
+      .bottom .primary:disabled {
+        opacity: 1;
+        background: #dce8dc;
+        border-color: #dce8dc;
+        color: #8ca38e;
+      }
+      .bottom .textbtn {
+        font-size: 11px;
+      }
+      .spinner {
+        display: inline-block;
+        width: 15px;
+        height: 15px;
+        flex: none;
+        border: 1.8px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.75s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .toasts {
+        position: fixed;
+        top: 88px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        gap: 8px;
+        max-width: calc(100vw - 32px);
+        pointer-events: none;
+      }
+      .toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        background: #fff;
+        border: 1px solid #d9e6d6;
+        box-shadow: 0 6px 28px #30432b20;
+        padding: 12px 17px;
+        border-radius: 9px;
+        font-size: 12px;
+        max-width: 540px;
+        animation: appear 0.2s ease-out;
+      }
+      .toast svg {
+        color: var(--green);
+        width: 17px;
+        height: 17px;
+      }
+      .toast.error {
+        border-color: #ecd4ce;
+      }
+      .toast.error svg {
+        color: var(--red);
+      }
+      @keyframes appear {
+        from {
+          opacity: 0;
+          transform: translateY(-6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      dialog {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        box-shadow: 0 24px 100px #122d2440;
+        padding: 0;
+        width: min(488px, calc(100vw - 28px));
+        color: var(--ink);
+      }
+      dialog::backdrop {
+        background: #193b2e55;
+        backdrop-filter: blur(2px);
+      }
+      .dialog-head {
+        padding: 21px 24px 17px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+      }
+      .dialog-head h2 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 650;
+      }
+      .dialog-body {
+        padding: 24px;
+      }
+      .dialog-foot {
+        border-top: 1px solid var(--line);
+        padding: 15px 24px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        background: #fafbf8;
+      }
+      .bundle-art {
+        height: 62px;
+        width: 62px;
+        background: var(--soft);
+        color: var(--green);
+        border: 1px solid #d4e2ce;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        margin-bottom: 20px;
+      }
+      .bundle-art svg {
+        width: 28px;
+        height: 28px;
+      }
+      .bundle-title {
+        font-size: 19px;
+        font-weight: 600;
+        margin: 0 0 6px;
+        letter-spacing: -0.02em;
+      }
+      .bundle-sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 24px;
+      }
+      .progress-track {
+        height: 6px;
+        border-radius: 5px;
+        background: #e9efe5;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: var(--green);
+        width: 0;
+        transition: width 0.65s ease;
+      }
+      .progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--muted);
+        margin: 9px 0 20px;
+      }
+      .bundle-details {
+        background: #f6f8f3;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        font-size: 11px;
+      }
+      .bundle-details > span {
+        color: var(--muted);
+      }
+      .bundle-steps {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 10px;
+        color: #7e8b81;
+        margin: 18px 0 0;
+      }
+      .bundle-steps span {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .bundle-steps .done {
+        color: var(--green);
+      }
+      .bundle-note {
+        display: flex;
+        gap: 7px;
+        margin-top: 19px;
+        font-size: 10px;
+        color: var(--muted);
+        align-items: flex-start;
+      }
+      .bundle-note svg {
+        width: 14px;
+        height: 14px;
+        margin-top: 1px;
+      }
+      .bundle-files {
+        max-height: 120px;
+        overflow: auto;
+        margin-top: 13px;
+        font-size: 10px;
+        color: #7b887e;
+      }
+      .bundle-file {
+        padding: 5px 0;
+        border-bottom: 1px solid #edf1e9;
+      }
+      .guide-body {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+      .guide-body h3 {
+        color: var(--ink);
+        font-size: 13px;
+        margin: 18px 0 6px;
+      }
+      .guide-body h3:first-child {
+        margin-top: 0;
+      }
+      .guide-body p {
+        margin: 5px 0;
+      }
+      .timing-grid {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 5px 16px;
+        margin: 12px 0;
+        padding: 12px;
+        background: #f5f8f2;
+        border-radius: 7px;
+      }
+      .faults {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .faults .secondary {
+        font-size: 10px;
+        height: 30px;
+      }
+      .faults .armed {
+        background: #faf0e7;
+        border-color: #d8bda4;
+        color: #8a602d;
+      }
+      .mobile-preview-back {
+        display: none;
+      }
+      .overlay-empty {
+        padding: 30px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .inline-error {
+        margin: 0 0 16px;
+        padding: 11px 15px;
+        background: #fff3ef;
+        border: 1px solid #f0d6ca;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 12px;
+        color: #a24e39;
+      }
+      .inline-error .textbtn {
+        margin-left: auto;
+        color: #a24e39;
+      }
+      .busy-region {
+        pointer-events: none;
+      }
+      .hint-under {
+        font-size: 10px;
+        color: #8b978e;
+        margin: 13px 2px 0;
+      }
+      .hint-under svg {
+        height: 12px;
+        width: 12px;
+        margin-right: 4px;
+      }
+      .pill-count {
+        font-size: 10px;
+        background: #edf3e8;
+        border: 1px solid #d8e5d0;
+        color: var(--green);
+        padding: 1px 6px;
+        border-radius: 8px;
+      }
+      .session-screen {
+        text-align: center;
+        padding: 18px 0;
+      }
+      .session-screen svg {
+        width: 35px;
+        height: 35px;
+        color: var(--green);
+        margin-bottom: 13px;
+      }
+      .session-screen p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      @media (min-width: 1600px) {
+        .workspace {
+          grid-template-columns: minmax(0, 1fr) 420px;
+        }
+        .paper-stage {
+          --zoom: 0.65;
+        }
+        .main {
+          padding-top: 34px;
+        }
+        .page-heading {
+          margin-bottom: 28px;
+        }
+      }
+      @media (max-width: 1160px) {
+        .workspace {
+          grid-template-columns: minmax(0, 1fr) 340px;
+          gap: 16px;
+        }
+        .main {
+          padding: 24px;
+        }
+        .topbar {
+          padding: 0 24px;
+        }
+        .bottom-wrap {
+          padding: 15px 24px;
+        }
+        .filter-grid {
+          gap: 12px;
+          grid-template-columns: minmax(150px, 1fr) minmax(245px, 1.6fr) auto;
+        }
+        .paper-stage {
+          --zoom: 0.53;
+        }
+        .date-cell {
+          gap: 7px;
+        }
+        .size-col {
+          display: none;
+        }
+        .list-caption {
+          display: none;
+        }
+        .list-heading {
+          padding: 0 15px;
+        }
+        .date-main {
+          font-size: 11px;
+        }
+        td:first-child,
+        th:first-child {
+          width: 36px;
+          padding-left: 3px;
+        }
+        td:last-child,
+        th:last-child {
+          padding-right: 7px;
+        }
+        .row-actions .iconbtn {
+          min-width: 25px;
+          padding: 5px;
+        }
+      }
+      @media (max-width: 950px) {
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+        .preview {
+          display: none;
+          position: fixed;
+          inset: 0;
+          z-index: 55;
+          border-radius: 0;
+          border: 0;
+          overflow: auto;
+          top: 0;
+        }
+        .preview.mobile-open {
+          display: block;
+        }
+        .preview-heading {
+          position: sticky;
+          top: 0;
+          background: #fff;
+          z-index: 2;
+        }
+        .paper-stage {
+          --zoom: 0.8;
+          max-height: none;
+          min-height: 70vh;
+          padding-top: 25px;
+        }
+        .preview-footer {
+          position: sticky;
+          bottom: 0;
+          background: #fff;
+        }
+        .mobile-preview-back {
+          display: inline-flex;
+        }
+        .preview-info {
+          padding: 17px 24px;
+        }
+        .size-col {
+          display: table-cell;
+        }
+        .date-main {
+          font-size: 12px;
+        }
+        .crumb,
+        .branddesc {
+          display: none;
+        }
+        .filter-grid {
+          grid-template-columns: 1fr 1.3fr;
+        }
+        .query-cell {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+        }
+        .query-cell .primary {
+          width: 100%;
+        }
+        .filter-foot {
+          align-items: flex-start;
+        }
+        .filter-grid .status-field {
+          grid-column: 1;
+        }
+        .filter-grid .query-cell {
+          grid-column: 2;
+        }
+        .heading-side > span {
+          display: none;
+        }
+        .table-wrap {
+          min-height: 300px;
+        }
+        .preview .paper-stage {
+          padding-bottom: 40px;
+        }
+      }
+      @media (max-width: 600px) {
+        body {
+          padding-bottom: 136px;
+        }
+        .main {
+          padding: 22px 14px 0;
+        }
+        .topbar {
+          height: 62px;
+          padding: 0 15px;
+          gap: 8px;
+        }
+        .brandname {
+          font-size: 17px;
+        }
+        .brandmark {
+          width: 29px;
+          height: 29px;
+        }
+        .brandmark svg {
+          width: 20px;
+          height: 20px;
+        }
+        .brand {
+          gap: 8px;
+        }
+        .header-actions {
+          gap: 9px;
+        }
+        .account-info,
+        .account > .iconbtn,
+        .divider {
+          display: none;
+        }
+        .avatar {
+          width: 29px;
+          height: 29px;
+          font-size: 11px;
+        }
+        .demo-button {
+          font-size: 9px;
+          padding: 4px 7px;
+        }
+        .page-heading {
+          margin-bottom: 20px;
+          align-items: flex-end;
+        }
+        .page-heading h1 {
+          font-size: 25px;
+        }
+        .eyebrow {
+          font-size: 9px;
+        }
+        .subtitle {
+          font-size: 11px;
+          max-width: 260px;
+        }
+        .heading-side .textbtn {
+          font-size: 0;
+          padding: 8px;
+        }
+        .heading-side .textbtn svg {
+          width: 17px;
+          height: 17px;
+        }
+        .filters {
+          padding: 14px 13px 11px;
+          margin-bottom: 18px;
+        }
+        .filter-grid {
+          grid-template-columns: 1fr;
+          gap: 11px;
+        }
+        .filter-grid .status-field,
+        .filter-grid .query-cell {
+          grid-column: auto;
+        }
+        .filter-grid .status-field {
+          display: none;
+        }
+        .filter-grid .query-cell {
+          margin-top: 1px;
+        }
+        .filter-foot {
+          display: block;
+        }
+        .shortcuts {
+          justify-content: center;
+        }
+        .access-note {
+          margin-top: 10px;
+          justify-content: center;
+          font-size: 9px;
+        }
+        .list-heading {
+          height: 55px;
+          padding: 0 12px;
+        }
+        .list-heading h2 {
+          font-size: 13px;
+        }
+        .count {
+          margin-left: 5px;
+        }
+        .mini-toggle {
+          font-size: 10px;
+          padding: 5px;
+        }
+        .pdf-icon {
+          display: none;
+        }
+        .date-main {
+          font-size: 11px;
+        }
+        .date-sub {
+          font-size: 8px;
+        }
+        .store-name {
+          font-size: 11px;
+        }
+        .store-sub {
+          display: none;
+        }
+        .status {
+          font-size: 9px;
+          padding: 3px 5px;
+        }
+        .size-col {
+          display: none;
+        }
+        td {
+          height: 58px;
+        }
+        th:nth-child(2) {
+          width: 26%;
+        }
+        th:nth-child(3) {
+          width: 25%;
+        }
+        th:nth-child(4) {
+          width: 18%;
+        }
+        .row-actions .iconbtn {
+          min-width: 25px;
+          padding: 4px;
+        }
+        .row-actions svg {
+          width: 15px;
+          height: 15px;
+        }
+        .pagination {
+          padding: 13px 10px;
+          flex-wrap: wrap;
+          font-size: 9px;
+          justify-content: center;
+        }
+        .pagination > span {
+          width: 100%;
+          text-align: center;
+        }
+        .page-controls {
+          gap: 2px;
+        }
+        .page-select {
+          font-size: 9px;
+        }
+        .bottom-wrap {
+          padding: 12px 15px;
+        }
+        .bottom {
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .selection-icon {
+          width: 29px;
+          height: 29px;
+        }
+        .selection-summary {
+          gap: 9px;
+        }
+        .selection-title {
+          font-size: 12px;
+        }
+        .selection-title b {
+          font-size: 15px;
+        }
+        .selection-hint {
+          font-size: 9px;
+        }
+        .bottom-actions {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .bottom .primary {
+          height: 37px;
+          min-width: 160px;
+        }
+        .bottom-actions .textbtn {
+          font-size: 10px;
+        }
+        .bottom .selection-summary {
+          width: 100%;
+        }
+        .paper-stage {
+          --zoom: 0.59 !important;
+          padding: 18px 10px;
+        }
+        .preview-info {
+          padding: 14px 18px;
+        }
+        .preview-toolbar {
+          padding: 8px 17px;
+        }
+        .hint-under {
+          font-size: 9px;
+          line-height: 1.7;
+        }
+        .dialog-body {
+          padding: 20px;
+        }
+        .dialog-head {
+          padding: 16px 20px;
+        }
+        .dialog-foot {
+          padding: 14px 20px;
+        }
+        .bundle-steps {
+          gap: 8px;
+          font-size: 9px;
+        }
+        .list-heading .right {
+          gap: 5px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *:before,
+        *:after {
+          transition: none !important;
+          animation-duration: 1.5s !important;
+        }
+      }
+
+      .progress-fill.indeterminate {
+        width: 30%;
+        animation: indeterminate 1.5s ease-in-out infinite;
+      }
+      @keyframes indeterminate {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(440%);
+        }
+      }
+      .filter-grid {
+        position: relative;
+      }
+      .page-select {
+        pointer-events: none;
+      }
+      .limits-note {
+        font-size: 10px;
+        color: #79877c;
+        margin: 10px 0 0;
+        line-height: 1.8;
+      }
+      @media (max-width: 950px) {
+        .filter-grid .query-cell {
+          grid-column: 1 / -1;
+        }
+      }
+      @media (max-width: 600px) {
+        .filter-grid .query-cell {
+          grid-column: auto;
+        }
+      }
+
+      .size-meter {
+        height: 4px;
+        width: 260px;
+        max-width: 100%;
+        background: #e6eee4;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .size-meter > div {
+        height: 100%;
+        background: var(--green);
+        transition: width 0.18s;
+      }
+      .size-meter.near > div {
+        background: #ad7a30;
+      }
+      .size-meter.over > div {
+        background: var(--red);
+      }
+      .selected-size.over,
+      .selection-hint.over {
+        color: var(--red) !important;
+      }
+      .file-inline-size {
+        display: none;
+      }
+      .bottom .primary:disabled {
+        cursor: not-allowed;
+      }
+      .selection-title {
+        white-space: nowrap;
+      }
+      .bundle-details b {
+        text-align: right;
+      }
+      @media (max-width: 1160px) {
+        .file-inline-size {
+          display: inline;
+        }
+      }
+      @media (max-width: 600px) {
+        .size-meter {
+          width: 270px;
+        }
+        .selection-title {
+          font-size: 11px;
+        }
+        .selection-title #selectedSize {
+          font-size: 10px !important;
+          margin-left: 6px !important;
+        }
+        .selection-title .cap {
+          font-size: 10px;
+        }
+        .date-sub {
+          font-size: 8px;
+        }
+        .selection-hint {
+          max-width: calc(100vw - 75px);
+        }
+      }
+      @media (max-width: 950px) {
+        .file-inline-size {
+          display: none;
+        }
+      }
+      @media (max-width: 600px) {
+        .file-inline-size {
+          display: inline;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brandmark" data-icon="brand"></div>
+        <span class="brandname">SMEDC</span><span class="branddesc">企业资料中枢</span
+        ><span class="divider"></span
+        ><span class="crumb"
+          >资料交付 <span style="padding: 0 9px; color: #bdc6bd">/</span> 台账 PDF</span
+        >
+      </div>
+      <div class="header-actions">
+        <button class="demo-button" id="guideButton">
+          <span class="demo-dot"></span>设计预览 · 示例数据</button
+        ><button
+          class="iconbtn history-button"
+          id="historyButton"
+          aria-label="查看本页操作记录"
+          title="下载记录"
+        >
+          <span data-icon="history"></span><span id="historyBadge" class="badge" hidden>0</span>
+        </button>
+        <div class="account">
+          <span class="avatar">林</span>
+          <div class="account-info">林经理<small>示例餐饮集团</small></div>
+          <button
+            class="iconbtn"
+            id="accountButton"
+            aria-label="账号与登录状态"
+            aria-expanded="false"
+          >
+            <span data-icon="chevronDown"></span>
+          </button>
+          <div class="popover" id="accountPopover" hidden>
+            <b>林经理 · 示例账号</b>
+            <p>示例餐饮集团</p>
+            <hr />
+            <p>网页登录保持一周</p>
+            <p>权限以每次访问时的有效授权为准。</p>
+            <button class="textbtn" id="expireButton">模拟登录过期</button>
+          </div>
+        </div>
+      </div>
+    </header>
+    <main class="main">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">DOCUMENT CENTER / 资料交付</p>
+          <h1>台账 PDF 下载中心</h1>
+          <p class="subtitle">找到需要的门店台账，在线核对，安心归档。</p>
+        </div>
+        <div class="heading-side">
+          <span id="refreshedAt">列表读取于 10:24</span
+          ><button id="refreshButton" class="textbtn">
+            <span data-icon="refresh"></span>刷新列表
+          </button>
+        </div>
+      </section>
+      <div id="queryError" class="inline-error" hidden>
+        <span data-icon="alert"></span><span>暂时无法读取台账，已保留筛选条件与勾选。</span
+        ><button class="textbtn" id="retryQuery">重试</button>
+      </div>
+      <form class="filters" id="filterForm">
+        <div class="filter-grid">
+          <div class="store-field">
+            <label class="field-label" id="storeLabel">门店</label
+            ><button
+              type="button"
+              class="control"
+              id="storeButton"
+              aria-labelledby="storeLabel storeSummary"
+              aria-expanded="false"
+            >
+              <span data-icon="store"></span><span id="storeSummary">全部有权门店 · 12 家</span
+              ><span class="tail" data-icon="chevronDown"></span>
+            </button>
+            <div class="store-popover" id="storePopover" hidden>
+              <div class="store-heading">选择门店 · 仅限你有权访问的门店</div>
+              <div id="storeOptions"></div>
+            </div>
+          </div>
+          <div>
+            <label class="field-label" for="startDate">台账日期</label>
+            <div class="control range">
+              <input
+                type="date"
+                id="startDate"
+                value="2026-10-01"
+                min="1000-01-01"
+                max="9999-12-31"
+                required
+                aria-label="开始日期"
+              /><span>—</span
+              ><input
+                type="date"
+                id="endDate"
+                value="2026-10-22"
+                min="1000-01-01"
+                max="9999-12-31"
+                required
+                aria-label="结束日期"
+              />
+            </div>
+          </div>
+          <input type="hidden" id="statusFilter" value="all" />
+          <div class="query-cell">
+            <button class="primary" id="queryButton" type="submit">
+              <span data-icon="search"></span>查询台账
+            </button>
+          </div>
+        </div>
+        <div class="filter-foot">
+          <div class="shortcuts">
+            <span>快捷选择</span
+            ><button class="shortcut" type="button" data-range="7">近 7 天</button
+            ><button class="shortcut active" type="button" data-range="month">本月</button
+            ><button class="shortcut" type="button" data-range="previous">上月</button
+            ><button class="shortcut" type="button" data-range="30">近 30 天</button>
+          </div>
+          <span class="access-note"
+            ><span data-icon="lock"></span>仅展示当前账号有权访问的门店与台账</span
+          >
+        </div>
+        <p class="limits-note">
+          下载上限：5000 份 PDF · 50 家门店 · 366 个日期 · 1 GiB（按 PDF
+          原文件合计）；查询日期范围最多 366 天，列表每批最多 200 项。
+        </p>
+      </form>
+      <div class="workspace" id="workspace">
+        <section class="card list-card" aria-label="台账列表">
+          <div class="list-heading">
+            <h2>台账文件<span class="count" id="resultCount">126 份</span></h2>
+            <div class="right">
+              <span class="list-caption">一店 · 一日 · 一份 PDF</span
+              ><button class="mini-toggle" id="selectedToggle" aria-pressed="false">
+                已选清单 <span id="selectedSmall">0</span>
+              </button>
+            </div>
+          </div>
+          <div class="notice" id="selectedViewNotice" hidden>
+            正在查看全部已选文件，按大小优先排列；此处不应用门店与日期筛选。
+          </div>
+          <div class="notice" id="selectionLimit" hidden>
+            <span data-icon="info"></span>已达 5000 项上限。取消部分勾选后，可继续选择其他文件。
+          </div>
+          <div class="table-wrap" id="tableWrap">
+            <table id="ledgerTable">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="selectPage" aria-label="选择本页可下载文件" /></th>
+                  <th>台账日期</th>
+                  <th>门店</th>
+                  <th>状态</th>
+                  <th class="size-col">大小</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+            <div class="empty" id="empty" hidden></div>
+            <div class="loading-overlay" id="queryLoading" hidden role="status">
+              <span class="spinner"></span><span>正在读取台账…</span
+              ><span class="query-caption">已保留跨页勾选</span>
+            </div>
+          </div>
+          <footer class="pagination">
+            <span id="pageInfo">每批最多 200 项</span>
+            <div class="page-controls" id="pageControls"></div>
+            <select id="pageSize" class="page-select" aria-label="接口每批返回数量">
+              <option value="200">200 项 / 批</option>
+            </select>
+          </footer>
+        </section>
+        <aside class="card preview" id="preview" aria-label="PDF 预览">
+          <div class="preview-heading">
+            <h2><span data-icon="eye"></span>文件预览</h2>
+            <button class="iconbtn" id="closePreview" aria-label="关闭预览">
+              <span data-icon="x"></span>
+            </button>
+          </div>
+          <div id="previewContent"></div>
+        </aside>
+      </div>
+      <p class="hint-under">
+        <span data-icon="clock"></span
+        >各日期的台账分别就绪。今日尚未就绪不影响历史可用文件；无进货记录的日期不生成空白台账。
+      </p>
+    </main>
+    <footer class="bottom-wrap">
+      <div class="bottom">
+        <div class="selection-summary">
+          <div class="selection-icon" data-icon="stack"></div>
+          <div>
+            <div class="selection-title">
+              已选择 <b id="selectedCount">0</b><span class="cap">/ 5000 项</span
+              ><span
+                id="selectedSize"
+                class="selected-size"
+                style="margin-left: 10px; font-size: 11px; color: #7c8c80"
+              ></span>
+            </div>
+            <div
+              class="size-meter"
+              role="meter"
+              aria-label="已选 PDF 总大小"
+              aria-valuemin="0"
+              aria-valuemax="1073741824"
+              aria-valuenow="0"
+              id="sizeMeter"
+            >
+              <div id="sizeFill"></div>
+            </div>
+            <div class="selection-hint" id="selectionHint">支持跨页勾选，仅打包你选中的文件。</div>
+          </div>
+        </div>
+        <div class="bottom-actions">
+          <button class="textbtn" id="clearSelection" disabled>清空选择</button
+          ><button class="primary" id="batchButton" disabled>
+            <span data-icon="download"></span>打包下载
+          </button>
+        </div>
+      </div>
+    </footer>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <dialog id="bundleDialog" aria-labelledby="bundleDialogTitle">
+      <div class="dialog-head">
+        <h2 id="bundleDialogTitle">批量下载</h2>
+        <button class="iconbtn" data-close="bundleDialog" aria-label="关闭下载进度窗口">
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <div class="dialog-body" id="bundleBody"></div>
+      <div class="dialog-foot" id="bundleFoot"></div>
+    </dialog>
+    <dialog id="guideDialog" aria-labelledby="guideTitle">
+      <div class="dialog-head">
+        <h2 id="guideTitle">交互演示说明</h2>
+        <button class="iconbtn" data-close="guideDialog" aria-label="关闭说明">
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <div class="dialog-body guide-body">
+        <h3>这份设计可以怎样体验</h3>
+        <p>
+          筛选门店与日期、跨页选择、查看已选、预览、单份下载、打包和重试。所有数据均为虚构；按钮只模拟等待和反馈，不请求服务、不下载真实文件。
+        </p>
+        <h3>等待与禁用范围</h3>
+        <div class="timing-grid">
+          <span>查询 / 刷新</span><b>1.2 秒</b><span>翻页 / 切换每页数量</span><b>0.7 秒</b
+          ><span>加载 PDF 预览</span><b>1 秒</b><span>准备单份文件 / 模拟交接</span
+          ><b>1.5 ＋ 1.8 秒</b><span>批量校验 / 收集 / 打包</span
+          ><b>约 6 秒（仅为演示，不承诺实际耗时）</b><span>准备 ZIP 下载链接</span><b>2 秒</b>
+        </div>
+        <p>
+          查询时锁定筛选与列表，预览保持可读；单份下载仅锁定该文件下载按钮。打包时锁定本次勾选，仍可筛选、翻页和预览；关闭弹窗后任务继续，底栏保留进度。
+        </p>
+        <h3>边界与登录</h3>
+        <p>
+          与现有系统同限：每批最多 5000 份 PDF、50 家门店、366 个日期，总大小最多 1
+          GiB。查询日期范围最多 366 天，接口每批最多返回 200
+          项；全选仅作用于当前批次。筛选后保留勾选并显示隐藏项数量。网页登录一周为已确认的待实施要求，当前服务仍为
+          30
+          分钟；过期后保留本次内存勾选，重新登录后须按最新权限核验。正式页面只确认已发起下载，文件保存进度由浏览器管理。
+        </p>
+        <h3>与当前 SMEDC 的对应关系</h3>
+        <p>
+          直接复用：受权台账覆盖查询、游标分页、ZIP
+          任务、任务状态、下载链接与服务端限额。列表状态严格对应 ready / pending / stale / missing。
+        </p>
+        <p>
+          为避免扩大后端：移除全局总数、任意页跳转、全局状态筛选、生成失败原因和百分比进度。本页操作记录、勾选和查看已选都只保存在当前页面内存中。
+        </p>
+        <p>
+          仍须补齐的必要能力：网页列表适配返回 ready 文件已有的 byteSize
+          字段（非就绪项为空），不新增大小统计表；普通员工的网页 Cookie
+          登录与台账适配；复用现有存储/鉴权的单 PDF 预览及下载；让现有 ZIP
+          任务接受精确勾选清单。门店下拉首版从受权覆盖查询的已加载结果提取，不承诺无台账门店也完整列出，不新增门店检索系统，也不展示管理员完整目录。不另建
+          PDF 生成器、下载队列或历史记录系统。
+        </p>
+        <h3>大小、完整性与单日状态</h3>
+        <p>
+          文件大小采用现有存储元数据。勾选后按精确字节数合计；超过 1 GiB
+          时显示红色提示并禁用打包，保留全部选择，方便取消较大文件。未知大小不按零计算，需刷新核验。
+        </p>
+        <p>
+          前端检查不取代服务端最终校验。文件发生变化、权限变化或大小超限时，整批拒绝并保留选择，不自动返回少文件的成功包。1
+          GiB 按 PDF 原文件合计，不是 ZIP 压缩后的大小。
+        </p>
+        <p>
+          某天尚未生成或未更新，只影响该天对应项。历史且仍有效的 PDF
+          可继续预览与下载。每日任务未开启可能导致新文件迟迟未就绪，不代表整个网页关闭；“整套 PDF
+          接口的交付总开关”是另一项运维配置，不等于今天有没有台账。页面不新增运维开关界面或状态查询接口。
+        </p>
+        <div class="faults">
+          <button class="secondary" id="demoOversize">演示总大小超限</button
+          ><button class="secondary" id="demoTodayPending">演示今日未就绪，历史可用</button>
+        </div>
+        <h3>试试异常反馈</h3>
+        <p>点击下面的开关，下一次对应操作将失败一次，随后可重试。</p>
+        <div class="faults">
+          <button class="secondary" data-fault="query">下次查询失败</button
+          ><button class="secondary" data-fault="preview">下次预览失败</button
+          ><button class="secondary" data-fault="single">下次单份下载失败</button
+          ><button class="secondary" data-fault="batch">下次打包失败</button>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button class="primary" data-close="guideDialog">开始体验</button>
+      </div>
+    </dialog>
+    <dialog id="historyDialog" aria-labelledby="historyTitle">
+      <div class="dialog-head">
+        <h2 id="historyTitle">本页操作记录</h2>
+        <button class="iconbtn" data-close="historyDialog" aria-label="关闭下载记录">
+          <span data-icon="x"></span>
+        </button>
+      </div>
+      <div class="dialog-body" id="historyBody"></div>
+    </dialog>
+    <dialog id="sessionDialog" aria-labelledby="sessionTitle">
+      <div class="dialog-head"><h2 id="sessionTitle">请重新登录</h2></div>
+      <div class="dialog-body session-screen">
+        <span data-icon="lock"></span>
+        <h3>网页登录已过期</h3>
+        <p>你选择的文件已保留在当前页面中。<br />重新登录后，将重新检查这些文件的访问权限。</p>
+        <p style="font-size: 10px">演示模式，不收集账号或密码。</p>
+      </div>
+      <div class="dialog-foot"><button class="primary" id="demoLogin">模拟重新登录</button></div>
+    </dialog>
+    <script>
+      const $ = (s) => document.querySelector(s),
+        $$ = (s) => [...document.querySelectorAll(s)];
+      const paths = {
+        brand: "M3 5h7v6H3z M14 5h7v6h-7z M3 15h7v6H3z M14 15h7v6h-7z",
+        store: "M3 10h18 M5 10v10h14V10 M3 10l2-7h14l2 7 M9 20v-6h6v6",
+        chevronDown: "m7 10 5 5 5-5",
+        search: "M20 20l-5-5 M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0",
+        refresh: "M20 7v5h-5 M4 17v-5h5 M5 8a8 8 0 0 1 13-3l2 3 M19 16a8 8 0 0 1-13 3l-2-3",
+        lock: "M7 10V7a5 5 0 0 1 10 0v3 M5 10h14v11H5z M12 14v3",
+        eye: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12 M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
+        download: "M12 3v12 m-5-5 5 5 5-5 M4 16v5h16v-5",
+        x: "m6 6 12 12 M18 6 6 18",
+        left: "m14 6-6 6 6 6",
+        right: "m10 6 6 6-6 6",
+        stack: "M12 3 3 8l9 5 9-5-9-5 M3 12l9 5 9-5 M3 16l9 5 9-5",
+        check: "m5 12 4 4L19 6",
+        clock: "M12 7v5l3 2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0",
+        info: "M12 11v6 M12 7h.01 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0",
+        alert: "M12 3 2 21h20L12 3 M12 9v5 M12 17h.01",
+        history: "M3 5v5h5 M4 10a8 8 0 1 1 1 8 M12 7v5l3 2",
+        file: "M5 2h9l5 5v15H5V2 M14 2v6h5 M8 13h8 M8 17h6",
+        minus: "M5 12h14",
+        plus: "M5 12h14 M12 5v14",
+        expand: "M8 3H3v5 M16 3h5v5 M3 16v5h5 M21 16v5h-5"
+      };
+      function icon(name) {
+        return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.file}"/></svg>`;
+      }
+      function hydrate(root = document) {
+        root.querySelectorAll("[data-icon]").forEach((e) => (e.innerHTML = icon(e.dataset.icon)));
+      }
+      hydrate();
+      const LIMITS = Object.freeze({
+        pdfs: 5000,
+        stores: 50,
+        dates: 366,
+        bytes: 1024 ** 3,
+        page: 200
+      });
+      const storeNames = [
+        "望京店",
+        "三里屯店",
+        "国贸店",
+        "中关村店",
+        "西直门店",
+        "朝阳大悦城店",
+        "五道口店",
+        "双井店",
+        "太阳宫店",
+        "亦庄店",
+        "大兴店",
+        "东直门店"
+      ];
+      const stores = storeNames.map((name, i) => ({ id: i, name, enterprise: "示例餐饮" }));
+      const records = [];
+      for (let day = 0; day < 53; day++) {
+        let d = new Date(Date.UTC(2026, 9, 22 - day)),
+          date = d.toISOString().slice(0, 10);
+        stores.forEach((s, i) => {
+          const status =
+            day === 0 && i === 3
+              ? "pending"
+              : day === 1 && i === 4
+                ? "missing"
+                : day === 0 && i === 5
+                  ? "stale"
+                  : "ready";
+          records.push({
+            id: `demo-${s.id}-${date}`,
+            store: s.name,
+            date,
+            storeId: i,
+            status,
+            mb: +(0.7 + ((day * 7 + i * 3) % 31) / 10).toFixed(1)
+          });
+        });
+      }
+      records.forEach((r) => {
+        r.byteSize = r.status === "ready" ? Math.round(r.mb * 1024 ** 2) : null;
+      });
+      records.sort(
+        (a, b) =>
+          (a.store < b.store ? -1 : a.store > b.store ? 1 : 0) || a.date.localeCompare(b.date)
+      );
+      const byId = new Map(records.map((r) => [r.id, r]));
+      const state = {
+        selected: new Set(),
+        draftStores: new Set(stores.map((s) => s.id)),
+        filter: {
+          start: "2026-10-01",
+          end: "2026-10-22",
+          stores: new Set(stores.map((s) => s.id)),
+          status: "all"
+        },
+        page: 1,
+        pageSize: LIMITS.page,
+        onlySelected: false,
+        queryBusy: false,
+        queryFailed: false,
+        previewId: records.find((r) => r.date >= "2026-10-01" && r.status === "ready").id,
+        previewBusy: false,
+        previewFailed: false,
+        previewPage: 1,
+        zoom: 0.59,
+        previewVersion: 0,
+        single: new Map(),
+        todayPendingDemo: false,
+        batch: null,
+        history: [],
+        faults: { query: false, preview: false, single: false, batch: false },
+        loggedIn: true
+      };
+      const filename = (r) => `食品经营单位进货台帐_${r.store}_${r.date}.pdf`;
+      const bundleBusy = () =>
+        state.batch && ["packing", "ready", "transferring"].includes(state.batch.stage);
+      const consumeFault = (k) => {
+        const yes = state.faults[k];
+        state.faults[k] = false;
+        $$(`[data-fault="${k}"]`).forEach((b) => {
+          b.classList.remove("armed");
+          b.setAttribute("aria-pressed", "false");
+        });
+        return yes;
+      };
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      function toast(message, error = false) {
+        const n = document.createElement("div");
+        n.className = "toast" + (error ? " error" : "");
+        n.innerHTML = icon(error ? "alert" : "check") + `<span>${message}</span>`;
+        $("#toasts").append(n);
+        setTimeout(() => n.remove(), 4800);
+      }
+      function filtered() {
+        if (state.onlySelected)
+          return records
+            .filter((r) => state.selected.has(r.id))
+            .sort((a, b) => (b.byteSize ?? 0) - (a.byteSize ?? 0));
+        return records.filter(
+          (r) =>
+            state.filter.stores.has(r.storeId) &&
+            r.date >= state.filter.start &&
+            r.date <= state.filter.end &&
+            (state.filter.status === "all" || r.status === state.filter.status) &&
+            (!state.onlySelected || state.selected.has(r.id))
+        );
+      }
+      function currentRows() {
+        const all = filtered();
+        return all.slice((state.page - 1) * state.pageSize, state.page * state.pageSize);
+      }
+      function requireLogin() {
+        if (state.loggedIn) return true;
+        $("#sessionDialog").showModal();
+        return false;
+      }
+      function statusHTML(r) {
+        const label = { ready: "可下载", pending: "待生成", stale: "待更新", missing: "暂不可用" }[
+          r.status
+        ];
+        return `<span class="status ${r.status === "ready" ? "" : r.status === "missing" ? "failed" : "pending"}" title="${r.status === "ready" ? "PDF 已就绪" : r.status === "stale" ? "已有内容变化，等待更新" : r.status === "pending" ? "等待生成" : "暂无可用 PDF"}"><span class="status-dot"></span>${label}</span>`;
+      }
+      function renderStores() {
+        const all = state.draftStores.size === stores.length;
+        $("#storeSummary").textContent = all
+          ? `全部可见门店 · ${stores.length} 家`
+          : state.draftStores.size
+            ? `已选择 ${state.draftStores.size} 家门店`
+            : "请选择门店";
+        $("#storeOptions").innerHTML =
+          `<label class="store-option"><input type="checkbox" id="allStores" ${all ? "checked" : ""}>全部有权门店</label><div style="height:1px;background:var(--line);margin:4px 8px"></div>` +
+          stores
+            .map(
+              (s) =>
+                `<label class="store-option"><input type="checkbox" data-store="${s.id}" ${state.draftStores.has(s.id) ? "checked" : ""}>${s.name}</label>`
+            )
+            .join("");
+        $("#allStores").indeterminate = state.draftStores.size > 0 && !all;
+      }
+      function renderRows() {
+        const all = filtered(),
+          pageCount = Math.max(1, Math.ceil(all.length / state.pageSize));
+        state.page = Math.min(state.page, pageCount);
+        const rows = currentRows();
+        $("#resultCount").textContent = `本批 ${rows.length} 份`;
+        $("#rows").innerHTML = rows
+          .map((r) => {
+            const downloading = state.single.has(r.id),
+              ready = r.status === "ready";
+            return `<tr class="${state.selected.has(r.id) ? "is-selected " : ""}${r.id === state.previewId ? "is-preview" : ""}"><td><input type="checkbox" data-select="${r.id}" aria-label="选择 ${r.store} ${r.date} 台账" ${state.selected.has(r.id) ? "checked" : ""} ${(!ready && !state.selected.has(r.id)) || bundleBusy() || (!state.selected.has(r.id) && state.selected.size >= LIMITS.pdfs) ? "disabled" : ""}></td><td><div class="date-cell"><div class="pdf-icon">PDF</div><div><div class="date-main">${r.date}</div><div class="date-sub">食品进货台账<span class="file-inline-size"> · ${ready ? formatBytes(r.byteSize) : "未就绪"}</span></div></div></div></td><td><div class="store-name">${r.store}</div></td><td>${statusHTML(r)}</td><td class="size-col"><span class="size">${ready ? formatBytes(r.byteSize) : "—"}</span></td><td><div class="row-actions"><button class="iconbtn" data-preview="${r.id}" aria-label="预览 ${r.store} ${r.date}" title="${ready ? "在线预览" : "查看文件状态"}">${icon(ready ? "eye" : "info")}</button><button class="iconbtn" data-download="${r.id}" aria-label="下载 ${r.store} ${r.date}" title="${ready ? "单份下载" : "文件尚未就绪"}" ${!ready || downloading ? "disabled" : ""}>${downloading ? '<span class="spinner"></span>' : icon("download")}</button></div></td></tr>`;
+          })
+          .join("");
+        $("#ledgerTable").hidden = !rows.length;
+        $("#empty").hidden = !!rows.length;
+        $("#empty").innerHTML =
+          icon("file") +
+          `<h3>${state.onlySelected ? "当前筛选下没有已选文件" : "没有找到符合条件的台账"}</h3><p>${state.onlySelected ? "可清除筛选查看跨页勾选，或返回全部台账。" : "试试调整日期或门店。无进货记录的日期不会生成空白 PDF。"}</p><button class="secondary" id="emptyReset">${state.onlySelected ? "返回全部台账" : "重置筛选"}</button>`;
+        const available = rows.filter((r) => r.status === "ready");
+        const picked = available.filter((r) => state.selected.has(r.id));
+        $("#selectPage").checked = !!available.length && picked.length === available.length;
+        $("#selectPage").indeterminate = picked.length > 0 && picked.length < available.length;
+        $("#selectPage").disabled =
+          !available.length ||
+          bundleBusy() ||
+          (state.selected.size >= LIMITS.pdfs && !picked.length);
+        $("#pageInfo").textContent = rows.length
+          ? `第 ${state.page} 批 · 本批 ${rows.length} 项 · 最多 200 项 / 批`
+          : "当前没有台账";
+        let p = `<button class="page-button" data-page="${state.page - 1}" aria-label="上一批" ${state.page === 1 ? "disabled" : ""}>${icon("left")}</button><span style="padding:0 9px">第 ${state.page} 批</span><button class="page-button" data-page="${state.page + 1}" aria-label="下一批" ${state.page === pageCount ? "disabled" : ""}>${icon("right")}</button>`;
+        $("#pageControls").innerHTML = p;
+        $("#selectedToggle").classList.toggle("active", state.onlySelected);
+        $("#selectedToggle").setAttribute("aria-pressed", String(state.onlySelected));
+        $("#selectedViewNotice").hidden = !state.onlySelected;
+        $("#selectedSmall").textContent = state.selected.size;
+        $("#selectionLimit").hidden = state.selected.size < LIMITS.pdfs;
+        if (state.queryBusy)
+          $$("#ledgerTable input,#ledgerTable button").forEach((e) => (e.disabled = true));
+        renderBottom();
+      }
+      function formatBytes(n) {
+        if (!Number.isSafeInteger(n) || n < 0) return "待确认";
+        if (n < 1024) return n + " B";
+        if (n < 1024 ** 2) return (n / 1024).toFixed(1) + " KiB";
+        if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(1) + " MiB";
+        return (n / 1024 ** 3).toFixed(2) + " GiB";
+      }
+      function selectedByteInfo(ids = [...state.selected]) {
+        let total = 0,
+          unknown = 0;
+        ids.forEach((id) => {
+          const n = byId.get(id)?.byteSize;
+          if (Number.isSafeInteger(n) && n > 0) total += n;
+          else unknown++;
+        });
+        return { total, unknown, over: total > LIMITS.bytes };
+      }
+      function totalSizeLabel(n) {
+        return (n / 1024 ** 2).toFixed(1) + " MiB";
+      }
+      function renderBottom() {
+        const selected = [...state.selected].map((id) => byId.get(id)),
+          visible = new Set(filtered().map((r) => r.id)),
+          hidden = selected.filter((r) => !visible.has(r.id)).length;
+        const bytes = selectedByteInfo();
+        $("#selectedCount").textContent = selected.length;
+        $("#selectedSize").textContent = `${totalSizeLabel(bytes.total)} / 1 GiB`;
+        $("#selectedSize").title = "按原 PDF 文件字节数累加；1 GiB = 1024 MiB";
+        $("#selectedSize").classList.toggle("over", bytes.over);
+        $("#sizeMeter").hidden = !selected.length;
+        $("#sizeMeter").setAttribute("aria-valuenow", Math.min(bytes.total, LIMITS.bytes));
+        $("#sizeMeter").setAttribute(
+          "aria-valuetext",
+          `${totalSizeLabel(bytes.total)}，上限 1 GiB${bytes.over ? "，已超限" : ""}`
+        );
+        $("#sizeFill").style.width = Math.min((bytes.total / LIMITS.bytes) * 100, 100) + "%";
+        $("#sizeMeter").classList.toggle("over", bytes.over);
+        $("#sizeMeter").classList.toggle("near", !bytes.over && bytes.total > LIMITS.bytes * 0.9);
+        $("#selectionHint").classList.toggle("over", bytes.over || bytes.unknown > 0);
+        $("#selectionHint").textContent = bundleBusy()
+          ? "本次选择已锁定；仍可查询、翻页和预览。"
+          : bytes.unknown
+            ? `${bytes.unknown} 项大小待确认，请刷新核验后再打包。`
+            : bytes.over
+              ? `已超出 ${formatBytes(bytes.total - LIMITS.bytes)}，请取消部分勾选；可在“已选清单”中调整。`
+              : hidden
+                ? `已保留跨页勾选，其中 ${hidden} 项不在当前查询结果中。`
+                : bytes.total > LIMITS.bytes * 0.9
+                  ? `接近 1 GiB 上限，还可选择约 ${formatBytes(LIMITS.bytes - bytes.total)}。`
+                  : "支持跨页勾选。按所选 PDF 原文件总大小校验，超限时不会自动删减文件。";
+        $("#clearSelection").disabled = !selected.length || bundleBusy() || state.queryBusy;
+        $("#selectedToggle").disabled = state.queryBusy;
+        let b = $("#batchButton");
+        b.disabled =
+          state.queryBusy ||
+          (!selected.length && !bundleBusy()) ||
+          (!bundleBusy() && (bytes.over || bytes.unknown > 0));
+        if (state.batch?.stage === "packing")
+          b.innerHTML = '<span class="spinner"></span>正在打包 · 查看进度';
+        else if (state.batch?.stage === "ready")
+          b.innerHTML = icon("download") + "ZIP 已就绪 · 下载";
+        else if (state.batch?.stage === "transferring")
+          b.innerHTML = '<span class="spinner"></span>模拟下载中…';
+        else
+          b.innerHTML =
+            icon("download") +
+            (bytes.over
+              ? "超过大小上限"
+              : bytes.unknown
+                ? "请先确认文件大小"
+                : selected.length
+                  ? `打包下载 ${selected.length} 份`
+                  : "打包下载");
+      }
+
+      function selectionIssue(ids) {
+        const rs = ids.map((id) => byId.get(id));
+        if (ids.length > LIMITS.pdfs) return "单次最多选择 5000 份 PDF。";
+        if (new Set(rs.map((r) => r.storeId)).size > LIMITS.stores)
+          return "单次最多指定 50 家门店。";
+        if (new Set(rs.map((r) => r.date)).size > LIMITS.dates)
+          return "单次最多选择 366 个不同日期。";
+        return null;
+      }
+      function select(id, checked) {
+        if (bundleBusy() || state.queryBusy) return;
+        if (checked) {
+          const issue = selectionIssue([...state.selected, id]);
+          if (issue) {
+            toast(issue, true);
+            renderRows();
+            return;
+          }
+        }
+        if (checked) state.selected.add(id);
+        else state.selected.delete(id);
+        renderRows();
+      }
+      function setQueryBusy(busy) {
+        state.queryBusy = busy;
+        $$("#filterForm button,#filterForm input,#filterForm select").forEach(
+          (e) => (e.disabled = busy)
+        );
+        $("#refreshButton").disabled = busy;
+        $("#queryButton").innerHTML = busy
+          ? '<span class="spinner"></span>正在查询…'
+          : icon("search") + "查询台账";
+        $("#queryLoading").hidden = !busy;
+        $$("#ledgerTable input,#ledgerTable button,#pageControls button").forEach((e) => {
+          if (busy) e.disabled = true;
+        });
+        $("#tableWrap").setAttribute("aria-busy", String(busy));
+        $("#ledgerTable").classList.toggle("busy-region", busy);
+        $("#pageControls").classList.toggle("busy-region", busy);
+        $("#pageSize").disabled = busy;
+        if (!busy) renderRows();
+        else renderBottom();
+      }
+      async function changePage(next, size = state.pageSize) {
+        if (state.queryBusy || !requireLogin()) return;
+        setQueryBusy(true);
+        await sleep(700);
+        if (!state.loggedIn) {
+          setQueryBusy(false);
+          requireLogin();
+          return;
+        }
+        state.page = next;
+        state.pageSize = size;
+        setQueryBusy(false);
+        renderRows();
+      }
+      async function query(refresh = false) {
+        if (!requireLogin() || state.queryBusy) return;
+        const start = $("#startDate").value,
+          end = $("#endDate").value;
+        if (!start || !end || start > end) {
+          toast("请选择有效日期，结束日期不能早于开始日期。", true);
+          return;
+        }
+        if ((Date.parse(end) - Date.parse(start)) / 864e5 > 365) {
+          toast("一次查询的日期范围最多为 366 天。", true);
+          return;
+        }
+        if (!state.draftStores.size) {
+          toast("请至少选择一家门店。", true);
+          return;
+        }
+        if (state.draftStores.size > LIMITS.stores) {
+          toast("单次最多指定 50 家门店。", true);
+          return;
+        }
+        $("#storePopover").hidden = true;
+        $("#storeButton").setAttribute("aria-expanded", "false");
+        $("#queryError").hidden = true;
+        setQueryBusy(true);
+        await sleep(1200);
+        if (!state.loggedIn) {
+          setQueryBusy(false);
+          requireLogin();
+          return;
+        }
+        if (consumeFault("query")) {
+          state.queryFailed = true;
+          $("#queryError").hidden = false;
+          setQueryBusy(false);
+          toast("读取失败，筛选条件和已选文件已保留。", true);
+          return;
+        }
+        const queryMatches = records.filter(
+          (r) => state.draftStores.has(r.storeId) && r.date >= start && r.date <= end
+        );
+        if (queryMatches.length > LIMITS.pdfs) {
+          setQueryBusy(false);
+          toast("本次查询超过 5000 个台账分区，请缩小门店或日期范围。", true);
+          return;
+        }
+        state.queryFailed = false;
+        state.onlySelected = false;
+        state.filter = {
+          start,
+          end,
+          stores: new Set(state.draftStores),
+          status: $("#statusFilter").value
+        };
+        state.page = 1;
+        setQueryBusy(false);
+        renderRows();
+        $("#refreshedAt").textContent = "刚刚读取列表";
+        toast(
+          refresh ? "列表已刷新，已选文件保持不变。" : `已读取本批 ${currentRows().length} 项台账。`
+        );
+      }
+      function paperHTML(r, page) {
+        const material = ["鲜猪肉", "鸡胸肉", "鸡蛋", "生菜", "西红柿", "食用油", "大米", "豆腐"],
+          unit = ["kg", "kg", "箱", "kg", "kg", "桶", "袋", "盒"];
+        return `<div class="paper-size"><article class="paper"><div class="paper-watermark">示例台账</div><h3>${page === 1 ? "食品经营单位进货台帐" : "相关检疫证明"}</h3><div class="paper-meta"><span>经营单位：示例餐饮 · ${r.store}</span><span>进货日期：${r.date}</span></div>${page === 1 ? `<table><thead><tr><th>序号</th><th>食品名称</th><th>数量</th><th>单位</th><th>供货单位</th><th>票据 / 证明</th></tr></thead><tbody>${material.map((m, i) => `<tr><td>${i + 1}</td><td>${m}</td><td>${[25, 18, 3, 12, 15, 2, 4, 8][i]}</td><td>${unit[i]}</td><td>示例供应商${(i % 3) + 1}</td><td>${i < 2 ? "检疫证明 0" + (i + 1) : "随货票据"}</td></tr>`).join("")}</tbody></table><div class="paper-notes">备注：以上内容均为虚构，仅用于展示台账预览与交互效果。<br>正式页面将直接预览已生成的 PDF 文件，具体内容以原文件为准。</div><div class="signatures"><span>验收人：示例验收员</span><span>记录日期：${r.date}</span></div>` : `<div class="certificate"><b>动物检疫合格证明</b><span>示例证明 01 · 版式占位</span><span>正式预览将展示 PDF 中的原始证明照片。</span></div><div class="certificate"><b>动物检疫合格证明</b><span>示例证明 02 · 版式占位</span></div>`}<div class="paper-footer"><span>SMEDC · 示例文件，不作为业务凭证</span><span>第 ${page} 页 / 共 2 页</span></div></article></div>`;
+      }
+      function renderPreview() {
+        const r = byId.get(state.previewId);
+        if (!r) return;
+        $("#previewContent").innerHTML =
+          `<div class="preview-info"><span class="preview-name">${r.date} · ${r.store}</span><div class="preview-meta"><span>食品经营单位进货台帐</span><span>·</span><span>${r.status === "ready" ? formatBytes(r.byteSize) : "尚未就绪"}</span></div></div>`;
+        let content;
+        if (state.previewBusy)
+          content = `<div class="preview-fallback" role="status"><span class="spinner" style="width:25px;height:25px;margin:0 auto 15px"></span><h3>正在加载 PDF…</h3><p>列表勾选与翻页仍可使用</p></div>`;
+        else if (r.status !== "ready")
+          content = `<div class="preview-fallback">${icon(r.status === "missing" ? "alert" : "clock")}<h3>${r.status === "missing" ? "暂无可用 PDF" : r.status === "stale" ? "台账内容待更新" : "台账等待生成"}</h3><p>${r.status === "missing" ? "暂未找到可用文件，请稍后刷新或联系管理员。" : "当前还没有可用的新版本，请稍后刷新或联系管理员。历史日期的可用文件仍可下载。"}<br>你可以先查看或下载其他已就绪文件。</p></div>`;
+        else if (state.previewFailed)
+          content = `<div class="preview-fallback">${icon("alert")}<h3>预览加载失败</h3><p>勾选未受影响，你可以重试预览或单独下载。</p><button class="secondary" id="retryPreview">重新加载</button></div>`;
+        else
+          content = `<div class="preview-toolbar"><div><button class="iconbtn" id="prevPdf" aria-label="PDF 上一页" ${state.previewPage === 1 ? "disabled" : ""}>${icon("left")}</button><span class="page-indicator">${state.previewPage} / 2</span><button class="iconbtn" id="nextPdf" aria-label="PDF 下一页" ${state.previewPage === 2 ? "disabled" : ""}>${icon("right")}</button></div><div><button class="iconbtn" id="zoomOut" aria-label="缩小预览" ${state.zoom <= 0.45 ? "disabled" : ""}>${icon("minus")}</button><span class="zoom-label">${Math.round(state.zoom * 100)}%</span><button class="iconbtn" id="zoomIn" aria-label="放大预览" ${state.zoom >= 1 ? "disabled" : ""}>${icon("plus")}</button></div></div><div class="paper-stage" style="--zoom:${state.zoom}">${paperHTML(r, state.previewPage)}</div>`;
+        $("#previewContent").innerHTML +=
+          content +
+          `<div class="preview-footer"><span>示例 PDF · 仅演示预览效果</span><button class="textbtn" data-download="${r.id}" ${r.status !== "ready" || state.previewBusy || state.single.has(r.id) ? "disabled" : ""}>${state.single.has(r.id) ? '<span class="spinner"></span>' : icon("download")}${state.single.has(r.id) ? "模拟下载中" : "下载此文件"}</button></div>`;
+      }
+      async function openPreview(id) {
+        if (!requireLogin()) return;
+        state.previewId = id;
+        state.previewPage = 1;
+        state.previewFailed = false;
+        const r = byId.get(id),
+          version = ++state.previewVersion;
+        $("#workspace").classList.remove("no-preview");
+        $("#preview").hidden = false;
+        if (window.innerWidth <= 950) {
+          $("#preview").classList.add("mobile-open");
+          document.body.style.overflow = "hidden";
+          $("#closePreview").focus();
+        }
+        state.previewBusy = r.status === "ready";
+        renderRows();
+        renderPreview();
+        if (state.previewBusy) {
+          await sleep(1000);
+          if (version !== state.previewVersion) return;
+          state.previewBusy = false;
+          state.previewFailed = consumeFault("preview");
+          renderPreview();
+        }
+      }
+      function closePreview() {
+        state.previewVersion++;
+        state.previewBusy = false;
+        $("#preview").hidden = true;
+        $("#preview").classList.remove("mobile-open");
+        document.body.style.overflow = "";
+        $("#workspace").classList.add("no-preview");
+        const target = $(`[data-preview="${state.previewId}"]`);
+        target?.focus();
+      }
+      function pushHistory(entry) {
+        state.history.unshift({
+          ...entry,
+          time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+        });
+        $("#historyBadge").textContent = state.history.length;
+        $("#historyBadge").hidden = false;
+        renderHistory();
+      }
+      async function singleDownload(id) {
+        if (!requireLogin() || state.single.has(id)) return;
+        const r = byId.get(id);
+        if (r.status !== "ready") return;
+        state.single.set(id, "preparing");
+        renderRows();
+        if (id === state.previewId) renderPreview();
+        toast(`正在准备 ${r.store} ${r.date} 的单份文件…`);
+        await sleep(1500);
+        if (!state.loggedIn) {
+          state.single.delete(id);
+          renderRows();
+          renderPreview();
+          return;
+        }
+        if (consumeFault("single")) {
+          state.single.delete(id);
+          renderRows();
+          renderPreview();
+          toast("单份下载未能开始，请点击原下载按钮重试。", true);
+          return;
+        }
+        state.single.set(id, "transferring");
+        toast("文件已就绪，正在模拟交给浏览器…");
+        await sleep(1800);
+        state.single.delete(id);
+        renderRows();
+        if (id === state.previewId) renderPreview();
+        pushHistory({
+          type: "single",
+          title: `${r.store} · ${r.date}`,
+          subtitle: filename(r),
+          status: "已模拟发起"
+        });
+        toast(`已模拟发起单份下载 · ${r.store} ${r.date}（未下载真实文件）。`);
+      }
+      function renderBundle() {
+        const b = state.batch;
+        if (!b) return;
+        const stage = b.stage;
+        const title =
+          stage === "ready"
+            ? "打包完成，可以下载了"
+            : stage === "failed"
+              ? "本次下载未能准备完成"
+              : stage === "done"
+                ? "已模拟发起下载"
+                : stage === "transferring"
+                  ? "正在准备下载链接…"
+                  : b.requestStatus === "queued"
+                    ? "下载任务正在排队"
+                    : "正在打包台账 PDF";
+        const busy = stage === "packing" || stage === "transferring";
+        $("#bundleBody").innerHTML =
+          `<div class="bundle-art">${busy ? '<span class="spinner" style="width:28px;height:28px"></span>' : icon(stage === "failed" ? "alert" : "check")}</div><h3 class="bundle-title">${title}</h3><p class="bundle-sub">${stage === "failed" ? "本次勾选已保留，请根据提示调整或重试。" : stage === "ready" ? "仅包含本次精确选择的门店与日期。" : stage === "done" ? "演示完成，没有传输或下载真实文件。" : "关闭窗口后，仍可从底栏查看任务状态。"}</p>${busy ? '<div class="progress-track" role="status" aria-label="正在处理"><div class="progress-fill indeterminate"></div></div>' : ""}<div class="progress-label"><span>${b.message}</span><span>${stage === "packing" ? (b.requestStatus === "queued" ? "排队中" : "处理中") : stage === "ready" ? "已就绪" : stage === "failed" ? "未成功" : ""}</span></div><div class="bundle-details"><span>已选文件</span><b>${b.ids.length} 份 PDF</b><span>覆盖门店</span><b>${new Set(b.ids.map((id) => byId.get(id).store)).size} 家</b><span>不同日期</span><b>${new Set(b.ids.map((id) => byId.get(id).date)).size} 天</b><span>所选 PDF 总大小</span><b>${totalSizeLabel(selectedByteInfo(b.ids).total)}</b><span>总大小上限</span><b>1 GiB（1024 MiB）</b></div><div class="bundle-note">${icon("info")}<span>${stage === "ready" ? "下载包保留 24 小时，临时下载链接最长有效 15 分钟。" : "文件较多时可能需要一些时间，你可以继续浏览，稍后查看结果。"}</span></div><details style="margin-top:15px;font-size:11px;color:var(--muted)"><summary style="cursor:pointer">查看本次文件清单</summary><div class="bundle-files">${b.ids.map((id) => '<div class="bundle-file">' + filename(byId.get(id)) + "</div>").join("")}</div></details>`;
+        $("#bundleFoot").innerHTML =
+          stage === "packing"
+            ? '<button class="secondary" data-close="bundleDialog">继续浏览</button>'
+            : stage === "ready"
+              ? '<button class="secondary" data-close="bundleDialog">稍后下载</button><button class="primary" id="downloadZip">' +
+                icon("download") +
+                "下载 ZIP</button>"
+              : stage === "failed"
+                ? '<button class="secondary" data-close="bundleDialog">返回调整选择</button><button class="primary" id="retryBatch">重试</button>'
+                : stage === "transferring"
+                  ? '<button class="primary" disabled><span class="spinner"></span>正在准备链接…</button>'
+                  : '<button class="primary" data-close="bundleDialog">完成</button>';
+        renderBottom();
+      }
+
+      async function startBatch(retry = false) {
+        if (!requireLogin()) return;
+        if (bundleBusy()) {
+          renderBundle();
+          if (!$("#bundleDialog").open) $("#bundleDialog").showModal();
+          return;
+        }
+        const ids = retry && state.batch ? state.batch.ids : [...state.selected];
+        if (!ids.length) return;
+        const issue = selectionIssue(ids);
+        if (issue) {
+          toast(issue, true);
+          return;
+        }
+        const bytes = selectedByteInfo(ids);
+        if (bytes.over || bytes.unknown) {
+          toast(
+            bytes.over
+              ? "所选文件超过 1 GiB，请取消部分勾选后再打包。"
+              : "部分文件大小待确认，请刷新核验。",
+            true
+          );
+          renderBottom();
+          return;
+        }
+        state.batch = {
+          ids: [...ids],
+          stage: "packing",
+          requestStatus: "queued",
+          message: "下载任务已提交，等待处理…"
+        };
+        renderRows();
+        renderBundle();
+        if (!$("#bundleDialog").open) $("#bundleDialog").showModal();
+        await sleep(1200);
+        if (!state.loggedIn) return;
+        if (ids.reduce((sum, id) => sum + byId.get(id).byteSize, 0) > LIMITS.bytes) {
+          state.batch.stage = "failed";
+          state.batch.message = "所选文件总大小超过 1 GiB，请减少文件后重新提交。";
+          renderRows();
+          renderBundle();
+          return;
+        }
+        state.batch.requestStatus = "running";
+        state.batch.message = "正在准备 ZIP，完成后可领取下载链接。";
+        renderBundle();
+        await sleep(4700);
+        if (!state.loggedIn) return;
+        if (consumeFault("batch")) {
+          state.batch.stage = "failed";
+          state.batch.requestStatus = "failed";
+          state.batch.message = "打包失败，请重试；持续失败请联系管理员。";
+          renderRows();
+          renderBundle();
+          toast("打包失败，已保留全部选择。", true);
+          return;
+        }
+        state.batch.stage = "ready";
+        state.batch.requestStatus = "succeeded";
+        state.batch.message = "所选文件已打包";
+        renderRows();
+        renderBundle();
+        pushHistory({
+          type: "batch",
+          title: `${ids.length} 份台账 PDF`,
+          subtitle: "ZIP 已就绪 · 本次精确勾选",
+          status: "待下载"
+        });
+        toast(`${ids.length} 份台账已打包，可从底栏下载 ZIP。`);
+      }
+
+      async function downloadZip() {
+        if (!requireLogin() || state.batch?.stage !== "ready") return;
+        state.batch.stage = "transferring";
+        state.batch.message = "正在准备临时下载链接…";
+        renderBundle();
+        await sleep(2000);
+        if (!state.loggedIn) return;
+        state.batch.stage = "done";
+        state.batch.message = "已模拟交给浏览器，未下载真实文件";
+        const entry = state.history.find((e) => e.type === "batch" && e.status === "待下载");
+        if (entry) entry.status = "已模拟发起";
+        renderRows();
+        renderBundle();
+        renderHistory();
+        toast("已模拟发起 ZIP 下载，原勾选保持不变。");
+      }
+      function renderHistory() {
+        $("#historyBody").innerHTML = state.history.length
+          ? state.history
+              .map(
+                (e) =>
+                  `<div style="display:flex;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)"><div style="color:var(--green)">${icon(e.type === "batch" ? "stack" : "file")}</div><div style="min-width:0;flex:1"><b style="font-size:12px">${e.title}</b><p style="font-size:10px;color:var(--muted);margin:4px 0;overflow-wrap:anywhere">${e.subtitle}</p><span style="font-size:10px;color:var(--green)">${e.status}</span></div><span style="font-size:10px;color:var(--muted)">${e.time}</span></div>`
+              )
+              .join("")
+          : '<div class="empty" style="padding:32px 0">' +
+            icon("history") +
+            "<h3>还没有下载记录</h3><p>单份下载或打包完成后，会在这里展示本页操作记录，刷新后清空。</p></div>";
+        if (state.batch && ["packing", "ready"].includes(state.batch.stage))
+          $("#historyBody").innerHTML =
+            '<button class="secondary" id="historyOpenBatch" style="width:100%;margin-bottom:12px">' +
+            (state.batch.stage === "packing" ? "查看正在打包的任务" : "查看已就绪的 ZIP") +
+            "</button>" +
+            $("#historyBody").innerHTML;
+      }
+      function resetFilters() {
+        state.draftStores = new Set(stores.map((s) => s.id));
+        $("#startDate").value = "2026-10-01";
+        $("#endDate").value = "2026-10-22";
+        $("#statusFilter").value = "all";
+        state.onlySelected = false;
+        renderStores();
+        query();
+      }
+      function demoOversize() {
+        if (bundleBusy()) {
+          toast("请先完成当前模拟打包。", true);
+          return;
+        }
+        state.selected.clear();
+        let total = 0;
+        for (const r of records) {
+          if (r.status !== "ready" || !r.byteSize) continue;
+          state.selected.add(r.id);
+          total += r.byteSize;
+          if (total > LIMITS.bytes) break;
+        }
+        state.onlySelected = true;
+        state.page = 1;
+        $("#guideDialog").close();
+        renderRows();
+        toast("已载入超限示例；取消一份较大的文件，即可恢复打包。");
+      }
+      async function demoTodayPending() {
+        if (state.queryBusy) return;
+        if (bundleBusy()) {
+          toast("请先完成当前模拟打包。", true);
+          return;
+        }
+        records
+          .filter((r) => r.date === "2026-10-22")
+          .forEach((r) => {
+            r.status = "pending";
+            r.byteSize = null;
+          });
+        state.todayPendingDemo = true;
+        $("#startDate").value = "2026-10-16";
+        $("#endDate").value = "2026-10-22";
+        state.draftStores = new Set(stores.map((s) => s.id));
+        renderStores();
+        $("#guideDialog").close();
+        await query();
+        toast("今日有进货记录的示例台账尚未就绪；历史日期仍可选择、预览和下载。");
+      }
+      $("#filterForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        query();
+      });
+      $("#refreshButton").onclick = () => query(true);
+      $("#retryQuery").onclick = () => query();
+      $("#storeButton").onclick = () => {
+        let p = $("#storePopover");
+        p.hidden = !p.hidden;
+        $("#storeButton").setAttribute("aria-expanded", String(!p.hidden));
+      };
+      $("#storeOptions").addEventListener("change", (e) => {
+        if (e.target.id === "allStores")
+          state.draftStores = e.target.checked ? new Set(stores.map((s) => s.id)) : new Set();
+        else if (e.target.dataset.store !== undefined) {
+          const id = +e.target.dataset.store;
+          e.target.checked ? state.draftStores.add(id) : state.draftStores.delete(id);
+        }
+        renderStores();
+      });
+      $("#rows").addEventListener("change", (e) => {
+        if (e.target.dataset.select) select(e.target.dataset.select, e.target.checked);
+      });
+      $("#selectPage").addEventListener("change", (e) => {
+        if (bundleBusy() || state.queryBusy) return;
+        const ready = currentRows().filter((r) => r.status === "ready");
+        if (!e.target.checked) ready.forEach((r) => state.selected.delete(r.id));
+        else {
+          const next = [...new Set([...state.selected, ...ready.map((r) => r.id)])],
+            issue = selectionIssue(next);
+          if (issue) toast(issue + " 本批未新增勾选。", true);
+          else state.selected = new Set(next);
+        }
+        renderRows();
+      });
+      $("#pageControls").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-page]");
+        if (!b || state.queryBusy) return;
+        changePage(+b.dataset.page);
+      });
+      $("#pageSize").onchange = (e) => {
+        changePage(1, +e.target.value);
+      };
+      $("#selectedToggle").onclick = () => {
+        state.onlySelected = !state.onlySelected;
+        state.page = 1;
+        renderRows();
+      };
+      $("#clearSelection").onclick = () => {
+        state.selected.clear();
+        state.page = 1;
+        renderRows();
+        toast("已清空全部跨页勾选。");
+      };
+      $("#batchButton").onclick = () => startBatch();
+      $("#closePreview").onclick = closePreview;
+      document.addEventListener("click", (e) => {
+        const p = e.target.closest("[data-preview]"),
+          d = e.target.closest("[data-download]"),
+          close = e.target.closest("[data-close]"),
+          fault = e.target.closest("[data-fault]"),
+          range = e.target.closest("[data-range]");
+        if (p) openPreview(p.dataset.preview);
+        if (d && !d.disabled) singleDownload(d.dataset.download);
+        if (close) $("#" + close.dataset.close).close();
+        if (fault) {
+          const k = fault.dataset.fault;
+          state.faults[k] = !state.faults[k];
+          fault.classList.toggle("armed", state.faults[k]);
+          fault.setAttribute("aria-pressed", String(state.faults[k]));
+        }
+        if (range) {
+          const kind = range.dataset.range;
+          if (kind === "month") {
+            $("#startDate").value = "2026-10-01";
+            $("#endDate").value = "2026-10-22";
+          } else if (kind === "previous") {
+            $("#startDate").value = "2026-09-01";
+            $("#endDate").value = "2026-09-30";
+          } else {
+            $("#startDate").value = new Date(Date.UTC(2026, 9, 23 - Number(kind)))
+              .toISOString()
+              .slice(0, 10);
+            $("#endDate").value = "2026-10-22";
+          }
+          $$("[data-range]").forEach((b) => b.classList.toggle("active", b === range));
+        }
+        if (e.target.closest("#retryPreview")) openPreview(state.previewId);
+        if (e.target.closest("#prevPdf")) {
+          state.previewPage = 1;
+          renderPreview();
+        }
+        if (e.target.closest("#nextPdf")) {
+          state.previewPage = 2;
+          renderPreview();
+        }
+        if (e.target.closest("#zoomOut")) {
+          state.zoom = Math.max(0.45, +(state.zoom - 0.1).toFixed(2));
+          renderPreview();
+        }
+        if (e.target.closest("#zoomIn")) {
+          state.zoom = Math.min(1, +(state.zoom + 0.1).toFixed(2));
+          renderPreview();
+        }
+        if (e.target.closest("#emptyReset")) {
+          if (state.onlySelected) {
+            state.onlySelected = false;
+            state.page = 1;
+            renderRows();
+          } else resetFilters();
+        }
+        if (e.target.closest("#downloadZip")) downloadZip();
+        if (e.target.closest("#retryBatch")) startBatch(true);
+        if (e.target.closest("#historyOpenBatch")) {
+          $("#historyDialog").close();
+          renderBundle();
+          $("#bundleDialog").showModal();
+        }
+        if (!e.target.closest(".store-field")) {
+          $("#storePopover").hidden = true;
+          $("#storeButton").setAttribute("aria-expanded", "false");
+        }
+        if (!e.target.closest(".account")) {
+          $("#accountPopover").hidden = true;
+          $("#accountButton").setAttribute("aria-expanded", "false");
+        }
+      });
+      $("#demoOversize").onclick = demoOversize;
+      $("#demoTodayPending").onclick = demoTodayPending;
+      $("#guideButton").onclick = () => $("#guideDialog").showModal();
+      $("#historyButton").onclick = () => {
+        renderHistory();
+        $("#historyDialog").showModal();
+      };
+      $("#accountButton").onclick = () => {
+        const p = $("#accountPopover");
+        p.hidden = !p.hidden;
+        $("#accountButton").setAttribute("aria-expanded", String(!p.hidden));
+      };
+      $("#expireButton").onclick = () => {
+        state.loggedIn = false;
+        if (state.batch?.stage === "packing") {
+          state.batch.stage = "failed";
+          state.batch.message = "登录已过期，请重新登录后重试。";
+        }
+        $$("dialog[open]").forEach((d) => d.close());
+        $("#accountPopover").hidden = true;
+        $("#sessionDialog").showModal();
+        renderRows();
+      };
+      $("#demoLogin").onclick = async () => {
+        const b = $("#demoLogin");
+        b.disabled = true;
+        b.innerHTML = '<span class="spinner"></span>正在核验账号…';
+        await sleep(1200);
+        state.loggedIn = true;
+        b.disabled = false;
+        b.textContent = "模拟重新登录";
+        $("#sessionDialog").close();
+        renderRows();
+        toast("已模拟重新登录，并按最新权限保留可访问的勾选项。");
+      };
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          if ($("#preview").classList.contains("mobile-open")) closePreview();
+          $("#storePopover").hidden = true;
+          $("#accountPopover").hidden = true;
+        }
+      });
+      $("#sessionDialog").addEventListener("cancel", (e) => e.preventDefault());
+      renderStores();
+      renderRows();
+      renderPreview();
+      renderHistory();
+    </script>
+  </body>
+</html>

@@ -40,3 +40,17 @@
 | Employee installation/login or login/password/admin UI changes          | `apps/api/src/auth/AGENTS.md`; UI changes also read `apps/admin-web/AGENTS.md` |
 | Full official manual acceptance, only when explicitly requested         | `skills/smedc-manual-test/AGENTS.md`                                           |
 | Documentation, plans or progress updates                                | `docs/AGENTS.md`                                                               |
+
+## Agent skills
+
+### Issue tracker
+
+规格与任务使用本仓 GitHub Issues；发布和查重约定见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+分诊角色使用已确认的默认标签；映射见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单一领域上下文，沿用 `CONTEXT.md` 和现行文档入口；读取规则见 `docs/agents/domain.md`。
