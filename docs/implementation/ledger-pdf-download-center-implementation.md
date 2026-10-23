@@ -4,7 +4,7 @@
 
 **设计参考：** [已确认的交互原型](ledger-pdf-download-center-design.html)。原型中的合成数据、计时器和演示按钮不进入生产代码。
 
-**状态：** 一周共享会话、同源下载中心、精确清单 ZIP 与现有 worker 集成已在源码实现，使用 `codex/ledger-pdf-download-center` 功能分支，PR 基线为 `main`。关键持久化集成和浏览器补充验收已通过；最终门禁、整体 review 和 PR 交付仍按下方待办完成；尚未合并、部署或激活真实租户。遵守根 [AGENTS.md](../../AGENTS.md) 与 [Agent skills 配置](../agents/issue-tracker.md)，默认单 agent 顺序实施、批次自检、一次整体 review 和最终门禁，不逐私有函数或小任务扩张测试/PR 边界。
+**状态：** 一周共享会话、同源下载中心、精确清单 ZIP 与现有 worker 集成已完成实现，最终门禁、持久化集成、整体 review 及浏览器补充验收均已通过。使用 `codex/ledger-pdf-download-center` 功能分支，PR 基线为 `main`；[服务 PR #269](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/269) 与 [配套 Skill PR #84](https://github.com/YinXiaoyu-1998/smedc-mcp-skill/pull/84) 已建立，进入 PR 交付阶段。尚未合并、部署或激活真实租户。遵守根 [AGENTS.md](../../AGENTS.md) 与 [Agent skills 配置](../agents/issue-tracker.md)，默认单 agent 顺序实施、批次自检、一次整体 review 和最终门禁，不逐私有函数或小任务扩张测试/PR 边界。
 
 ## 复用与必要改动
 
@@ -78,8 +78,8 @@
 - [x] 历史文件与今日状态分别处理；每日任务是否开启不控制网页入口。既有服务错误按可重试错误显示，不伪装空列表；不新增运维开关 UI/状态接口。
 - [x] 复用现有本地集成运行器登记本功能关键路径及浏览器会话持久化用例，使用原有临时数据库/存储和清理流程；认证用例显式启用既有 `RUN_AUTH_INTEGRATION`，不新建运行器。
 - [x] 更新相关现行登录、管理员界面、台账和网页 API 文档。核心 Skill 入驻说明中的“30 分钟”须在服务仓库与 `YinXiaoyu-1998/smedc-mcp-skill` 相同分发目录同步；依现有约定单独分支/PR，纯指导修订不发布 launcher 或改安装 pin。
-- [ ] 最终树执行一次项目门禁与相关集成/打包验证，完成一次整批 review；检查无计划外 schema、依赖、存储服务或其他功能扩张。
-- [ ] 按现有授权推送功能分支、创建服务 PR 并协调必要的 Skill 文档 PR；说明 scope、验证、环境、人类输入、限制及分类增删行数。仅包含本功能及明确要求的设计/计划，保留其他工作独立。
+- [x] 最终树执行项目门禁与相关集成/打包验证，完成整批 review 并修复发现的问题；确认无计划外 schema、依赖、存储服务或其他功能扩张。
+- [x] 按现有授权推送功能分支、创建服务 PR 并协调必要的 Skill 文档 PR；说明 scope、验证、环境、人类输入、限制及分类增删行数。仅包含本功能及明确要求的设计/计划，保留其他工作独立。
 
 ## 验证入口与完成标准
 
