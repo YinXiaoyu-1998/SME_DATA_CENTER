@@ -62,6 +62,15 @@ dsh registers every MCP tool under a server-qualified name, so the tools in this
 Map names one-to-one; a tool that does not appear in the session's tool list is not connected,
 not renamed differently.
 
+## Tool-schema rejection before a turn starts
+
+If dsh reports `Invalid schema for function` with `is not a "regex"` for an SMEDC upload
+tool, the provider rejected its tool definition before model execution. Repeating the request or
+logging in again will not repair it. Report the installed launcher version and affected tool;
+the employee may switch to PTC mode as a temporary workaround. A source fix alone does not
+update the installed launcher. Use the approved exact pin in `SKILL.md` when a verified release
+becomes available, then reconnect the owning host and verify its loaded tools.
+
 ## Verify the connection
 
 After the profile loads, confirm in this order:

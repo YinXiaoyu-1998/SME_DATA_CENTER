@@ -151,7 +151,8 @@ const uploadMediaType = z
     message: "Upload MIME media type must not contain control characters."
   })
   .regex(
-    /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*[A-Za-z0-9!#$&^_.+-]+=(?:[A-Za-z0-9!#$&^_.+-]+|"[\t !#-[\]-~]*"))*$/,
+    // eslint-disable-next-line no-useless-escape -- provider schema validators require the escaped "[".
+    /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+(?:\s*;\s*[A-Za-z0-9!#$&^_.+-]+=(?:[A-Za-z0-9!#$&^_.+-]+|"[\t !#-\[\]-~]*"))*$/,
     "Upload MIME media type must use strict MIME token syntax."
   )
   .describe("Upload MIME media type.");

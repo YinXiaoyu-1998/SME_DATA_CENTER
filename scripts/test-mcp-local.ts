@@ -10,7 +10,7 @@ interface CommandResult {
 
 const rootDir = process.cwd();
 // This smoke executes the workspace candidate. Published installation pins are separate.
-export const EXPECTED_MCP_LAUNCHER_VERSION = "0.13.0";
+export const EXPECTED_MCP_LAUNCHER_VERSION = "0.13.1";
 
 async function main(): Promise<void> {
   try {
