@@ -44,6 +44,39 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("advertises portable quoted MIME parameter patterns for every upload transport", async () => {
+  const server = new McpServer({ name: "mime-schema", version: "1.0.0" });
+  registerLauncherTools(server, createLauncherToolDependencies({ config, auth: fakeAuth() }));
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "mime-schema-client", version: "1.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const { tools } = await client.listTools();
+    for (const name of uploadToolNames) {
+      const schema = tools.find((tool) => tool.name === name)!.inputSchema;
+      const file = schema.properties!["file"] as {
+        anyOf: Array<{ properties: { mediaType: { pattern: string } } }>;
+      };
+      expect(file.anyOf).toHaveLength(2);
+      for (const variant of file.anyOf) {
+        const pattern = variant.properties.mediaType.pattern;
+        // Unicode-set mode rejects bare opening brackets in character classes,
+        // reproducing the provider's stricter parsing of the quoted MIME value.
+        const quotedValue = pattern.split('"')[1];
+        expect(quotedValue).toBeDefined();
+        expect(() => new RegExp(quotedValue!, "v"), name).not.toThrow();
+        const mediaType = new RegExp(pattern);
+        expect(mediaType.test('text/csv; header="[present]"')).toBe(true);
+        expect(mediaType.test('text/csv; header="bad\\value"')).toBe(false);
+      }
+    }
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
 describe("launcher upload role preflight", () => {
   it.each(uploadToolNames)(
     "denies malformed employee %s at the MCP request boundary",
@@ -278,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.13.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.13.1");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({

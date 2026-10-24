@@ -1,6 +1,6 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher. Version `0.13.0` is published and independently verified. The current approved installation pin is maintained in the official `smedc-mcp` Skill; package README files are immutable release-time snapshots. Current release and target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
+Official stdio MCP launcher. Source version `0.13.1` prepares a MIME tool-schema regex compatibility fix and is not yet published. Version `0.13.0` remains the published, independently verified installation pin. The current approved installation pin is maintained in the official `smedc-mcp` Skill; package README files are immutable release-time snapshots. Current release and target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
 
 ## Installation and identity
 
