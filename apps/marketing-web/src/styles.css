@@ -532,6 +532,10 @@ details > p {
   flex-shrink: 0;
 }
 .contact-line a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 0;
   overflow-wrap: anywhere;
   user-select: text;
 }
