@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -138,6 +138,15 @@ describe("deploy-staging remote scripts", () => {
       const validation = spawnSync("bash", ["-n"], { input: script, encoding: "utf8" });
       expect(validation.status, validation.stderr).toBe(0);
     }
+  });
+
+  it("packages the public site with the release and restores its previous version on rollback", () => {
+    const [rollout, rollback] = remoteScriptsForValidation();
+    expect(rollout).toContain('marketing_publish "$release_ops_image"');
+    expect(rollout).toContain("marketing_restore");
+    expect(rollback).toContain("marketing_restore");
+    expect(rollout).toContain("/app/dist/marketing/.");
+    expect(rollout).toContain("/opt/smedc/marketing-enabled");
   });
 
   it("parses rollback metadata as data instead of sourcing it as shell", () => {
@@ -306,6 +315,68 @@ cp "\${files[0]}" "\${files[1]}"
       await rm(root, { recursive: true, force: true });
     }
   }, 10_000);
+
+  it("switches the served site and restores it with the existing release rollback", async () => {
+    const root = await mkdtemp(join(tmpdir(), "smedc-site-rollout-"));
+    const bin = join(root, "bin");
+    try {
+      await mkdir(bin);
+      await mkdir(join(root, "marketing/releases/old"), { recursive: true });
+      await writeFile(join(root, "marketing/releases/old/index.html"), "previous public page");
+      await symlink("releases/old", join(root, "marketing/current"));
+      await writeFile(
+        join(root, "runtime.env"),
+        "SMEDC_API_IMAGE=registry/api:aaaaaaaaaaaa\nSMEDC_WORKER_IMAGE=registry/worker:aaaaaaaaaaaa\nSMEDC_RELEASE_OPS_IMAGE=registry/api:ops-aaaaaaaaaaaa\n"
+      );
+      await writeFile(join(root, "docker-compose.yml"), "old compose");
+      await writeFile(join(root, "docker-compose.yml.next"), "new compose");
+      const commands: Record<string, string> = {
+        docker: `case "$1" in
+  create) echo site-container ;;
+  cp) mkdir -p "$3/assets"; printf 'new public page' > "$3/index.html"; printf '{}' > "$3/version.json"; printf 'image' > "$3/assets/hero.webp" ;;
+esac`,
+        install: `if [ "$1" = "-d" ]; then mkdir -p "\${@: -1}"; exit 0; fi
+files=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in -o|-g|-m) shift 2 ;; *) files+=("$1"); shift ;; esac
+done
+cp "\${files[0]}" "\${files[1]}"`,
+        // Host uses GNU mv -T; emulate that OS boundary on macOS test machines.
+        mv: `"${process.execPath}" -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$2" "$3"`,
+        chown: "exit 0",
+        flock: "exit 0",
+        curl: "exit 0"
+      };
+      for (const [command, body] of Object.entries(commands)) {
+        await writeFile(join(bin, command), `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`);
+        await chmod(join(bin, command), 0o755);
+      }
+      const [rollout, rollback] = remoteScriptsForValidation();
+      const run = (script: string, args: string[]) =>
+        spawnSync("bash", ["-s", "--", ...args], {
+          input: script.replaceAll("/opt/smedc", root),
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${bin}:${process.env["PATH"] ?? ""}` }
+        });
+      const deployed = run(rollout!, [
+        "registry/api:bbbbbbbbbbbb",
+        "registry/worker:bbbbbbbbbbbb",
+        "registry/api:ops-bbbbbbbbbbbb",
+        "0"
+      ]);
+      expect(deployed.status, deployed.stderr).toBe(0);
+      expect(await readFile(join(root, "marketing/current/index.html"), "utf8")).toBe(
+        "new public page"
+      );
+      const restored = run(rollback!, []);
+      expect(restored.status, restored.stderr).toBe(0);
+      expect(await readFile(join(root, "marketing/current/index.html"), "utf8")).toBe(
+        "previous public page"
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
   it("removes stopped stale references while preserving images used by running containers", async () => {
     const root = await mkdtemp(join(tmpdir(), "smedc-image-cleanup-"));

@@ -120,3 +120,22 @@ it("runs all native launcher release checks only for an explicit version tag or 
   for (const os of ["macos-latest", "windows-latest", "ubuntu-latest"])
     expect(release).toContain(os);
 });
+
+it("keeps the public static host separate from authenticated API and business pages", async () => {
+  const api = await readFile(join(repoRoot, "deploy/staging/nginx-smedc.conf"), "utf8");
+  const site = await readFile(join(repoRoot, "deploy/staging/nginx-marketing.conf"), "utf8");
+  const bootstrap = await readFile(
+    join(repoRoot, "deploy/staging/nginx-marketing-bootstrap.conf"),
+    "utf8"
+  );
+  expect(api).toContain("server_name api.smedatacenter.xyz;");
+  expect(api).toContain("proxy_pass http://127.0.0.1:3000;");
+  expect(api).toMatch(/location = \/readyz\s*\{\s*return 404;/);
+  expect(site).not.toContain("proxy_pass");
+  expect(site).toContain("root /opt/smedc/marketing/current;");
+  expect(site).toContain("return 301 https://smedatacenter.xyz$request_uri;");
+  expect(site).toContain("location / { return 404; }");
+  expect(site).not.toContain("try_files $uri /index.html");
+  expect(bootstrap).toContain("/.well-known/acme-challenge/");
+  expect(bootstrap).not.toContain("ssl_certificate");
+});

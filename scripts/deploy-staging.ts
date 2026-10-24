@@ -11,6 +11,8 @@ import {
   type DockerCommand
 } from "./runtime-image-artifact.js";
 
+import { marketingReleaseFunctions } from "./marketing-release.js";
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const DEFAULT_REGISTRY = "crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com";
@@ -73,6 +75,8 @@ worker_image="$2"
 release_ops_image="$3"
 run_migrate="$4"
 
+${marketingReleaseFunctions}
+
 exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
   echo "Another staging deployment is already running." >&2
@@ -131,6 +135,7 @@ rollback_on_error() {
     previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
     if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ]; then
       echo "Rollout failed; restoring the previous API and worker images." >&2
+      marketing_restore
       if [ -f "$previous_compose" ]; then
         install -o root -g root -m 0644 "$previous_compose" "$compose_file"
       fi
@@ -165,6 +170,7 @@ chown root:root "$previous_file"
 chmod 0600 "$previous_file"
 
 install -o root -g root -m 0644 "$compose_file" "$previous_compose"
+marketing_save
 rollback_armed=1
 install -o root -g root -m 0644 "$compose_next" "$compose_file"
 rm -f "$compose_next"
@@ -180,6 +186,8 @@ fi
 compose up -d --remove-orphans
 wait_for_url http://127.0.0.1:3000/healthz "API health"
 wait_for_url http://127.0.0.1:3000/readyz "API readiness"
+marketing_publish "$release_ops_image"
+marketing_verify
 compose ps
 rollback_armed=0
 trap - EXIT
@@ -193,6 +201,8 @@ compose_file=/opt/smedc/docker-compose.yml
 previous_file=/opt/smedc/previous-release.env
 previous_compose=/opt/smedc/previous-docker-compose.yml
 current_file=/opt/smedc/current-release.env
+
+${marketingReleaseFunctions}
 
 exec 9>/opt/smedc/deploy.lock
 if ! flock -n 9; then
@@ -231,6 +241,7 @@ compose() {
   docker compose --env-file "$runtime_file" -f "$compose_file" "$@"
 }
 
+marketing_restore
 compose config --quiet
 compose pull api worker
 compose up -d api worker
