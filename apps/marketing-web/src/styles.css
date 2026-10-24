@@ -610,6 +610,7 @@ details > p {
   }
   .hero-description {
     font-size: 17px;
+    max-width: 330px;
   }
   .hero-report {
     width: 240px;
