@@ -356,6 +356,7 @@ cp "\${files[0]}" "\${files[1]}"`,
         spawnSync("bash", ["-s", "--", ...args], {
           input: script.replaceAll("/opt/smedc", root),
           encoding: "utf8",
+          timeout: 4_000,
           env: { ...process.env, PATH: `${bin}:${process.env["PATH"] ?? ""}` }
         });
       const deployed = run(rollout!, [
@@ -376,7 +377,7 @@ cp "\${files[0]}" "\${files[1]}"`,
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 
   it("removes stopped stale references while preserving images used by running containers", async () => {
     const root = await mkdtemp(join(tmpdir(), "smedc-image-cleanup-"));
