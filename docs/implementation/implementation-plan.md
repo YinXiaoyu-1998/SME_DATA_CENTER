@@ -39,7 +39,7 @@
 
 ## 验收前提
 
-官方人工验收运行器使用 0.13.0，支持选定只读检查，并核对原台账汇总的精确拒绝码。完整验收前须通过 `--evidence-config` 提供显式类别及完整 scopes，并确认目标租户配置；抽查通过不等于完整验收。当前说明见 [验收配置](official-manual-acceptance.md#current-runner-limitation)。
+官方人工验收运行器使用 0.13.1，支持选定只读检查，并核对原台账汇总的精确拒绝码。完整验收前须通过 `--evidence-config` 提供显式类别及完整 scopes，并确认目标租户配置；抽查通过不等于完整验收。当前说明见 [验收配置](official-manual-acceptance.md#current-runner-limitation)。
 
 ## 验证与发布
 
