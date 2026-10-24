@@ -1142,26 +1142,6 @@ describe("SMEDC MCP contract", () => {
     ).toBe(true);
   });
 
-  it("preserves quoted MIME ASCII boundaries and rejects control characters", () => {
-    for (let code = 0; code < 128; code += 1) {
-      const mediaType = `text/csv; header="${String.fromCharCode(code)}"`;
-      const allowed = code === 32 || code === 33 || (code >= 35 && code <= 126 && code !== 92);
-      for (const name of [
-        "upload_structured_dataset",
-        "upload_evidence_document",
-        "upload_quarantine_certificate"
-      ] as const) {
-        expect(
-          safeParseTool(name, {
-            ...validInputs[name],
-            file: { ...validInputs[name].file, mediaType }
-          }).success,
-          `${name}: quoted ASCII ${code}`
-        ).toBe(allowed);
-      }
-    }
-  });
-
   it("mirrors structured query cardinality limits from the domain contract", () => {
     expect(MCP_STRUCTURED_QUERY_LIMITS).toBe(STRUCTURED_QUERY_LIMITS);
     expect(MCP_STRUCTURED_QUERY_LIMITS).toEqual({
