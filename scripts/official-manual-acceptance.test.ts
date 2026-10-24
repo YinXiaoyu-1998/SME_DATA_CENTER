@@ -256,8 +256,8 @@ describe("current-contract manual acceptance", () => {
     scopes: [{ enterpriseKey: "synthetic-enterprise", ownership: "group", dimensions: {} }]
   };
 
-  it("targets the approved 0.13.0 launcher and requires complete explicit Evidence metadata", async () => {
-    expect(acceptance.MANUAL_ACCEPTANCE_LAUNCHER_VERSION).toBe("0.13.0");
+  it("targets the approved 0.13.1 launcher and requires complete explicit Evidence metadata", async () => {
+    expect(acceptance.MANUAL_ACCEPTANCE_LAUNCHER_VERSION).toBe("0.13.1");
     const run = runConfig("current-contract");
     await expect(acceptance.buildEvidenceFixtureInputs(run, undefined)).rejects.toThrow(
       "Evidence fixture configuration"

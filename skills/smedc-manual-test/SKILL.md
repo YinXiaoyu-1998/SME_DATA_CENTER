@@ -10,7 +10,7 @@ SME_DATA_CENTER / SMEDC manual acceptance flow.
 
 ## Current runner limitation
 
-The runner uses launcher 0.13.0. Full runs require `--evidence-config=<local-json-path>` containing
+The runner uses launcher 0.13.1. Full runs require `--evidence-config=<local-json-path>` containing
 an explicitly confirmed existing `categoryId` and complete `scopes`; the shared schema validates
 these before cleanup or uploads. Both fixtures declare file level 0 or 2. Do not infer tenant
 attributes or change grants to make a fixture pass. Read the [runner guide](../../docs/implementation/official-manual-acceptance.md#current-runner-limitation)
@@ -42,7 +42,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-The runner uses published launcher `smedc-mcp-launcher@0.13.0`. The scenario manifest and account assignments
+The runner uses published launcher `smedc-mcp-launcher@0.13.1`. The scenario manifest and account assignments
 apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement

@@ -71,10 +71,10 @@ listing is not an update failure when Git/HTTPS and the installation path are av
 
 ## Continue Within The Requested Scope
 
-This revision approves exactly `smedc-mcp-launcher@0.13.0`. Its upload tools stay visible but
+This revision approves exactly `smedc-mcp-launcher@0.13.1`. Its upload tools stay visible but
 require an active admin. Preserve the `UPLOAD_ADMIN_REQUIRED` nonretryable handling and the
 before-file-access role check when refreshing guidance; an update never grants upload permission
-or changes an account's clearance. Launcher 0.13.0 includes the permission tools; they still require matching service rollout and explicit tenant activation. Future revisions must supply their own verified exact pin.
+or changes an account's clearance. Launcher 0.13.1 includes the permission tools; they still require matching service rollout and explicit tenant activation. Future revisions must supply their own verified exact pin.
 
 For a skill-only request, finish after the skill refresh and report the launcher separately as
 unchanged. If the employee also requested a launcher update, use the exact version approved in

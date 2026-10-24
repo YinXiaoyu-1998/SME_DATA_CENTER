@@ -102,13 +102,13 @@ npm run worker:once
 ## 正式员工 MCP
 
 正式员工路径是通过固定版本的本机 stdio launcher
-`smedc-mcp-launcher@0.13.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+`smedc-mcp-launcher@0.13.1` 访问远程 `https://api.smedatacenter.xyz`。双归属的
 `skills/smedc-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
 权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `smedc_login`、
 `smedc_logout`、`smedc_auth_status` 和仅查询当前身份的
 `smedc_get_current_user`，且绝不操作服务基础设施。
 
-`smedc-mcp-launcher@0.13.0` 已公开发布并通过独立验证，原生 macOS/Windows launcher
+`smedc-mcp-launcher@0.13.1` 已公开发布并通过独立验证，原生 macOS/Windows launcher
 包验证已有记录。当前服务部署与公开推荐证据见 [staging 状态](docs/implementation/staging-readiness.md)；特定客户端完整验收及真实租户激活分别核对。
 
 ## MCP 服务与本地开发边界
