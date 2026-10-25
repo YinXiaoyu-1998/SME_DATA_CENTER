@@ -527,6 +527,7 @@ details > p {
 .site-footer {
   padding-bottom: 32px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
@@ -536,6 +537,20 @@ details > p {
 }
 .site-footer > p {
   font-size: 13px;
+}
+.site-footer .legal {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+.legal a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 [hidden] {
   display: none !important;

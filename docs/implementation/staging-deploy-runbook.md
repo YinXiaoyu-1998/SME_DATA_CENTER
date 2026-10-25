@@ -84,7 +84,7 @@ PDF 回填和开启交付按 [PDF 运维](ledger-pdf-operations.md)；业务权�
 
 以下步骤是准备说明，不是本 PR 的执行记录。只在获得官网启用、证书与 nginx 变更授权后执行；不要把含缺失证书路径的 HTTPS 配置提前装入已启用目录。
 
-1. 核对 `smedatacenter.xyz` 与 `www.smedatacenter.xyz` 的 DNS 指向本机，80/443 可达；确认正式运营所需主体/备案页尾信息，本仓当前未提供可沿用的备案编号，不能编造。验证首次受控发布已生成 `/opt/smedc/marketing/current/index.html` 与图片。
+1. 核对 `smedatacenter.xyz` 与 `www.smedatacenter.xyz` 的 DNS 指向本机，80/443 可达；核对官网页尾主体“北京殷实麦家管理咨询有限责任公司”和网站备案号“京ICP备2026043481号-1”（2026-10-25 已在阿里云备案记录核实对应域名，不能用主体号省略网站序号）。验证首次受控发布已生成 `/opt/smedc/marketing/current/index.html` 与图片。
 2. 备份现有 nginx 配置。保留现有 API TLS/代理块，仅将旧 default server 的 `server_name smedatacenter.xyz www.smedatacenter.xyz;` 改为 `server_name _;`（见 `deploy/staging/nginx-smedc.conf`）。不要用仓库样例覆盖 Certbot 或运维新增的有效 API 设置。
 3. 创建 `/var/www/smedc-acme`，安装 `deploy/staging/nginx-marketing-bootstrap.conf` 为独立临时 enabled 配置。它只开放 ACME challenge，其余路径返回 404。先 `nginx -t`，成功才 reload；确认 API 的 health/readiness 和既有业务页面仍可用。
 4. 在主机用已有 Certbot 申请同时覆盖主域与 www 的独立证书：`sudo certbot certonly --webroot -w /var/www/smedc-acme --cert-name smedatacenter.xyz -d smedatacenter.xyz -d www.smedatacenter.xyz`。按获准运维流程提供证书联系信息，不改 API 证书。核对证书 SAN 与续期任务；为成功续期配置 `nginx -t && systemctl reload nginx` 的 deploy hook。
