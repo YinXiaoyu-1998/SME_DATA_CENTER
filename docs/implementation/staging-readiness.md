@@ -1,26 +1,26 @@
 # Staging 当前状态与交付前提
 
-更新：2026-10-25。本文保留最新已核实状态、已批准目标和未完成门槛；它不是实时监控，也不授权部署、回填或企业激活。历次验证记录见 [历史记录](../history/staging-verification.md)。
+更新：2026-10-26。本文保留最新已核实状态、已批准目标和未完成门槛；它不是实时监控，也不授权部署、回填或企业激活。历次验证记录见 [历史记录](../history/staging-verification.md)。
 
 ## 最新核实状态
 
-| 项目                  | 最新证据                                                                                                                                                                                                                                                         | 可得结论                                                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Canonical 部署        | [部署 run 40206737527](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40206737527) 成功，提交 `de2e3bfb1e9d8fd44f5c9c200cda65bb81229c6c`；对应 [main 质量门禁](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40205820080) 成功  | 三个运行镜像风险门禁、迁移检查及合成 smoke 通过；未增加漏洞豁免                                                       |
-| 公开客户端策略        | 2026-10-25 部署后只读核对官方 OAuth discovery：包名 `smedc-mcp-launcher`、推荐 `0.13.1`、最低 `0.12.0`；`/healthz` 200、公开 `/readyz` 404、未认证 MCP 401                                                                                                       | 线上客户端策略不变；不替代真实租户或客户端验收                                                                        |
-| npm 发行物            | 2026-10-24 官方 registry 的 `0.13.1` 与 `latest` 已公开，shasum `631cd4c10e89f546b636e066e8206a5582db7458`，源码 `775034f`；[发布 run 40064001340](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40064001340) 三平台检查成功，含 npm provenance | 独立空目录安装、CLI、48 个工具发现及六处上传 MIME schema 验证通过；生产依赖审计零漏洞；不替代客户端登录或真实租户验收 |
-| 最近主机 runtime 核验 | 2026-10-25 API/worker/release-ops 为 `de2e3bfb1e9d`；loopback readiness 的 MySQL、Qdrant、storage、workerLease 和 provider 配置检查通过；runtime 文件为 root:root 0600；worker 的 libbrotli1 为 `1.0.9-2+deb12u1`                                                | 当前运行镜像与受控发布一致；不代表真实租户验收                                                                        |
-| 企业智脑官网          | 2026-10-25 已启用 [官网](https://smedatacenter.xyz/)；页面 revision `7ff619b021ec8a1c` 对应已合并 PR #274/#275，页尾为北京殷实麦家管理咨询有限责任公司、京ICP备2026043481号-1                                                                                    | HTTPS、HTTP/www 301、8 项静态资源、未知路由 404、桌面/375px/320px、预约锚点/复制/FAQ 及既有业务入口检查通过           |
-| 业务与客户端验收      | 2026-10-17 门店评价合成验收 172 项、企业接入修复 174 项及清理记录见 [progress](progress.md)                                                                                                                                                                      | 不替代当前真实租户授权、回填、Device Authorization 浏览器验收或完整官方人工验收                                       |
+| 项目                  | 最新证据                                                                                                                                                                                                                                                         | 可得结论                                                                                                                  |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Canonical 部署        | [部署 run 40216360209](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40216360209) 成功，提交 `b20e0183b88f8527673ee053a05620f8e2e6edae`；对应 [main 质量门禁](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40211415870) 成功  | 三个运行镜像风险门禁、迁移检查及合成 smoke 通过；未增加漏洞豁免                                                           |
+| 公开客户端策略        | 2026-10-26 部署后只读核对官方 OAuth discovery：包名 `smedc-mcp-launcher`、推荐 `0.13.1`、最低 `0.12.0`；`/healthz` 200、公开 `/readyz` 404、未认证 MCP 401                                                                                                       | 线上客户端策略不变；不替代真实租户或客户端验收                                                                            |
+| npm 发行物            | 2026-10-24 官方 registry 的 `0.13.1` 与 `latest` 已公开，shasum `631cd4c10e89f546b636e066e8206a5582db7458`，源码 `775034f`；[发布 run 40064001340](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40064001340) 三平台检查成功，含 npm provenance | 独立空目录安装、CLI、48 个工具发现及六处上传 MIME schema 验证通过；生产依赖审计零漏洞；不替代客户端登录或真实租户验收     |
+| 最近主机 runtime 核验 | 2026-10-26 API/worker/release-ops 为 `b20e0183b88f`；loopback readiness 的 MySQL、Qdrant、storage、workerLease 和 provider 配置检查通过；runtime 文件为 root:root 0600；worker 的 libbrotli1 为 `1.0.9-2+deb12u1`                                                | 当前运行镜像与受控发布一致；不代表真实租户验收                                                                            |
+| 企业智脑官网          | 2026-10-26 已核对 [官网](https://smedatacenter.xyz/)；页面 revision `6630f3921669b46b` 对应已合并 PR #274/#275/#277，页尾为北京殷实麦家管理咨询有限责任公司、京ICP备2026043481号-1                                                                               | HTTPS、HTTP/www 301、13 项静态资源及新增智能体接入章节、未知路由 404、桌面/手机、预约锚点/复制/FAQ 及既有业务入口检查通过 |
+| 业务与客户端验收      | 2026-10-17 门店评价合成验收 172 项、企业接入修复 174 项及清理记录见 [progress](progress.md)                                                                                                                                                                      | 不替代当前真实租户授权、回填、Device Authorization 浏览器验收或完整官方人工验收                                           |
 
 当前安装 pin 由[核心 Skill](../../skills/smedc-mcp/SKILL.md)维护；companion 的版本归属见
 [三仓维护契约](smedc-mcp-skill.md)。仓库同步不等于更新员工本机安装。
 公开包内 README 是发行时快照；历史发布、部署和清理证据保留在 progress 及
 [历史记录](../history/staging-verification.md)，不得当作新的执行授权。
 
-证书续期 timer 与 deploy hook 已配置；本轮 `certbot renew --dry-run` 因 Let’s Encrypt staging CA HTTPS 读取超时未完成，不能记作续期模拟通过。正式证书与生产续期端点保持有效配置。
+证书续期 timer 与 deploy hook 已配置；2026-10-25 的 `certbot renew --dry-run` 因 Let’s Encrypt staging CA HTTPS 读取超时未完成，不能记作续期模拟通过。正式证书与生产续期端点保持有效配置。
 
-自动发布 [run 40206323476](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40206323476) 因缓存 worker 镜像中的 Brotli 漏洞在 rollout 前被阻断；上述成功部署通过既有 main 手动入口重新构建并扫描。当前 CI 系统包缓存仍可能需要同样恢复，不能靠重跑相同旧产物或跳过风险门禁放行。
+自动发布 [run 40211882578](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40211882578) 因缓存 worker 镜像中的 Brotli 漏洞在 rollout 前被阻断；上述成功部署通过既有 main 手动入口重新构建并扫描。当前 CI 系统包缓存仍可能需要同样恢复，不能靠重跑相同旧产物或跳过风险门禁放行。
 
 ## 已批准的部署目标
 
