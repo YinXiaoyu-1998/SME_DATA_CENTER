@@ -88,7 +88,7 @@ PDF 回填和开启交付按 [PDF 运维](ledger-pdf-operations.md)；业务权�
 2. 备份现有 nginx 配置。保留现有 API TLS/代理块，仅将旧 default server 的 `server_name smedatacenter.xyz www.smedatacenter.xyz;` 改为 `server_name _;`（见 `deploy/staging/nginx-smedc.conf`）。不要用仓库样例覆盖 Certbot 或运维新增的有效 API 设置。
 3. 创建 `/var/www/smedc-acme`，安装 `deploy/staging/nginx-marketing-bootstrap.conf` 为独立临时 enabled 配置。它只开放 ACME challenge，其余路径返回 404。先 `nginx -t`，成功才 reload；确认 API 的 health/readiness 和既有业务页面仍可用。
 4. 在主机用已有 Certbot 申请同时覆盖主域与 www 的独立证书：`sudo certbot certonly --webroot -w /var/www/smedc-acme --cert-name smedatacenter.xyz -d smedatacenter.xyz -d www.smedatacenter.xyz`。按获准运维流程提供证书联系信息，不改 API 证书。核对证书 SAN 与续期任务；为成功续期配置 `nginx -t && systemctl reload nginx` 的 deploy hook。
-5. 证书可用后，用 `deploy/staging/nginx-marketing.conf` 替换上述临时官网配置，不能同时启用两者。核对既有 `options-ssl-nginx.conf` 与 `ssl-dhparams.pem` 路径，`nginx -t` 成功后 reload。静态 root 只指向独立发布目录，绝不指向 runtime、业务文件或 OSS bucket。
+5. 证书可用后，用 `deploy/staging/nginx-marketing.conf` 替换上述临时官网配置，不能同时启用两者。核对既有 `options-ssl-nginx.conf` 与 `ssl-dhparams.pem` 路径，`nginx -t` 成功后 reload。重载返回时新 worker 可能尚未接管，首次 TLS 探测使用短暂、有限重试（如 curl 的 `--retry 5 --retry-all-errors --retry-delay 1`），始终保留证书校验；持续失败才恢复备份。静态 root 只指向独立发布目录，绝不指向 runtime、业务文件或 OSS bucket。
 6. 核对 HTTPS 主域首页、CSS/JS/图片；HTTP 主域与 HTTP/HTTPS www 均跳转 `https://smedatacenter.xyz/`；未知路径和 `/readyz` 返回 404。确认 `https://api.smedatacenter.xyz/healthz` 为 200、`/readyz` 为 404、未授权业务请求仍被拒绝，并检查既有权限页、台账页和 OAuth 入口。通过后创建空标记 `/opt/smedc/marketing-enabled`（root 所有），后续受控发布自动检查官网。
 
 若首次启用检查失败，恢复备份的 nginx 配置并通过 `nginx -t` 后 reload，移除官网启用标记；不改业务授权、数据或 API 证书。配置通过与本地测试均不代表线上 TLS/路由已经验收。
