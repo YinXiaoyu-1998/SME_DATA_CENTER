@@ -359,6 +359,57 @@ nav > a {
 .foundation p {
   font-size: 16px;
 }
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 24px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.agent-grid li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 32px 12px 24px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+.agent-grid img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.agent-grid span {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.agent-grid small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.integration-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin-top: 32px;
+}
+.integration-footer p {
+  max-width: 700px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.integration-footer a {
+  flex-shrink: 0;
+}
 .workflow {
   background: #eaf1eb;
 }
@@ -624,6 +675,32 @@ details > p {
   }
 }
 @media (max-width: 700px) {
+  .agent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .agent-grid li {
+    padding: 24px 8px;
+    gap: 16px;
+  }
+  .agent-grid li:last-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: calc((100% - 12px) / 2);
+  }
+  .agent-grid img {
+    width: 48px;
+    height: 48px;
+  }
+  .agent-grid span {
+    font-size: 16px;
+  }
+  .integration-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    margin-top: 24px;
+  }
   .container {
     width: calc(100% - 40px);
   }
