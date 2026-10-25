@@ -18,6 +18,8 @@
 公开包内 README 是发行时快照；历史发布、部署和清理证据保留在 progress 及
 [历史记录](../history/staging-verification.md)，不得当作新的执行授权。
 
+证书续期 timer 与 deploy hook 已配置；本轮 `certbot renew --dry-run` 因 Let’s Encrypt staging CA HTTPS 读取超时未完成，不能记作续期模拟通过。正式证书与生产续期端点保持有效配置。
+
 自动发布 [run 40206323476](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40206323476) 因缓存 worker 镜像中的 Brotli 漏洞在 rollout 前被阻断；上述成功部署通过既有 main 手动入口重新构建并扫描。当前 CI 系统包缓存仍可能需要同样恢复，不能靠重跑相同旧产物或跳过风险门禁放行。
 
 ## 已批准的部署目标
