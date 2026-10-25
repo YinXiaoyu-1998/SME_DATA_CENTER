@@ -37,7 +37,7 @@
     "deploy:staging:rollback": "tsx scripts/deploy-staging.ts --rollback",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:release": "tsup --config tsup.release.config.ts",
+    "build:release": "tsup --config tsup.release.config.ts && npm run build:marketing",
     "api:dev": "tsx apps/api/src/index.ts",
     "permissions:operator": "tsx apps/api/src/permissions-operator/cli.ts",
     "auth:operator": "tsx apps/api/src/auth/operator-cli.ts",
@@ -59,7 +59,8 @@
     "db:seed": "prisma db seed --config packages/db/prisma.config.ts",
     "ledger:pdf": "tsx scripts/ledger-pdf.ts",
     "ledger:shelf-life": "tsx scripts/ledger-shelf-life.ts",
-    "shelf-life:catalog": "tsx scripts/shelf-life-catalog.ts"
+    "shelf-life:catalog": "tsx scripts/shelf-life-catalog.ts",
+    "build:marketing": "npm --workspace @smedc/marketing-web run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
