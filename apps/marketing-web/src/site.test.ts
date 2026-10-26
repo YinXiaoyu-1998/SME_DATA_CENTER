@@ -18,6 +18,10 @@ describe("public marketing page", () => {
       expect(html).toContain('href="#reports"');
       expect(html).toMatch(/<details>[\s\S]*?<summary>/);
       expect(html).not.toMatch(/<form\b/);
+      expect(html).toContain('data-composition-id="smedc-setup"');
+      expect(html).toContain('id="copy-setup-prompt"');
+      expect(html).not.toContain("__SETUP_DEMO__");
+      expect(html).not.toMatch(/<script[^>]+src="https?:/);
       const client = await readFile(join(directory, "client.js"), "utf8");
       expect(() => new Script(client)).not.toThrow();
     } finally {
@@ -73,7 +77,7 @@ describe("contact copy interaction", () => {
     const directory = await mkdtemp(join(tmpdir(), "smedc-contact-"));
     try {
       await buildSite(directory);
-      const client = await readFile(join(directory, "client.js"), "utf8");
+      const { clientSource: client } = await import("./client.js");
       let click: (() => Promise<void>) | undefined;
       let copied = "";
       const button = {
@@ -111,7 +115,7 @@ it.each(["denied", "unavailable"])(
     const directory = await mkdtemp(join(tmpdir(), "smedc-contact-"));
     try {
       await buildSite(directory);
-      const client = await readFile(join(directory, "client.js"), "utf8");
+      const { clientSource: client } = await import("./client.js");
       let click: (() => Promise<void>) | undefined;
       const button = {
         hidden: true,
@@ -201,4 +205,78 @@ it.each([false, true])("keeps content readable with reduced motion set to %s", a
     expect(classes.has("is-revealed")).toBe(true);
     expect(unobserved).toBe(1);
   }
+});
+
+it.each([false, true])(
+  "copies the complete setup request while typing (clipboard denied: %s)",
+  async (denied) => {
+    const { setupPlayerSource } = await import("./setup-player.js");
+    const prompt =
+      "帮我安装或更新 https://github.com/YinXiaoyu-1998/smedc-mcp-skill 的核心和配套 SKILL，并按官方说明安装、配置最新版 MCP。完成后告诉我如何登录。";
+    let click: (() => Promise<void>) | undefined;
+    let copied = "";
+    const button = {
+      hidden: true,
+      addEventListener: (_event: string, handler: () => Promise<void>) => {
+        click = handler;
+      }
+    };
+    const status = { textContent: "" };
+    const root = {
+      dataset: { installPrompt: prompt },
+      querySelector: () => ({ textContent: "帮我" })
+    };
+    new Script(setupPlayerSource).runInNewContext({
+      document: {
+        getElementById: (id: string) =>
+          id === "smedc-setup" ? root : id === "copy-setup-prompt" ? button : status
+      },
+      window: { matchMedia: () => ({ matches: false }) },
+      navigator: {
+        clipboard: {
+          writeText: async (text: string) => {
+            if (denied) throw new Error("denied");
+            copied = text;
+          }
+        }
+      }
+    });
+    expect(button.hidden).toBe(false);
+    await click!();
+    expect(copied).toBe(denied ? "" : prompt);
+    expect(status.textContent).toContain(denied ? "手动复制" : "已复制");
+  }
+);
+
+it("shows the complete setup illustration without playback when reduced motion is requested", async () => {
+  const { setupPlayerSource } = await import("./setup-player.js");
+  let plays = 0;
+  const root = { dataset: { installPrompt: "安装 SMEDC", demoState: "" } };
+  const control = { hidden: true, textContent: "", value: "", max: "", addEventListener: () => {} };
+  const playback = { hidden: false };
+  const timeline = {
+    progress: () => timeline,
+    pause: () => timeline,
+    play: () => {
+      plays++;
+      return timeline;
+    },
+    duration: () => 14.6,
+    time: () => 14.6,
+    eventCallback: () => {}
+  };
+  new Script(setupPlayerSource).runInNewContext({
+    document: {
+      getElementById: (id: string) => (id === "smedc-setup" ? root : control),
+      querySelector: () => playback,
+      addEventListener: () => {}
+    },
+    window: {
+      matchMedia: () => ({ matches: true, addEventListener: () => {} }),
+      __timelines: { "smedc-setup": timeline }
+    }
+  });
+  expect(root.dataset.demoState).toBe("static");
+  expect(playback.hidden).toBe(true);
+  expect(plays).toBe(0);
 });

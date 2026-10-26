@@ -14,6 +14,14 @@
 
 公开文案描述资料服务、业务 Skills 与可配置自动化组成的整体方案。访客可以自行使用熟悉的 Agent，或选择开发者托管和定制；此页面不实现业务分析或调度。
 
+## 智能体安装示意
+
+`animation/` 是 HyperFrames 合成源，包含 HTML、样式、GSAP 时间轴及局部视觉约定。构建时将同一份内容与本地 GSAP 3.14.2 / TextPlugin 合并进官网已有静态文件，并输出独立的 `dist/marketing-animation` 供 HyperFrames 编辑和验证；不增加公开路由或第三方运行时请求。GSAP 按其 [Standard License](https://gsap.com/standard-license/) 使用，构建保留库内许可头。
+
+演示进入视口后播放一次，离开视口或页面隐藏时暂停，提供播放、重播和进度拖动。减少动态效果或 JavaScript 不可用时保留完整静态示意。复制按钮始终取完整安装请求；剪贴板失败时显示完整对话以便手动复制。演示不执行实际安装、连接或登录，具体客户端按官方 Skill 的当前说明完成配置，登录由用户确认。
+
+修改后先运行 `npm run build:marketing`，再用 `npx hyperframes lint dist/marketing-animation` 和 `npx hyperframes check dist/marketing-animation` 检查。可在 `dist/marketing-animation` 目录运行 `npx hyperframes preview` 编辑时间轴。网页内的示意会随同一次构建更新。
+
 ## 交付与静态安全策略
 
 静态文件随既有 release-ops 镜像交付。上线本版前须应用更新的 `deploy/staging/nginx-marketing.conf`：首页只允许同源 frame，只有公开周报允许同源嵌入，新增三个明确的样例路径和静态 SVG 路径；其他未知路径仍返回 404，未开放内联脚本、网络连接或业务服务代理。仅发布静态产物不会更新主机上已有的 nginx 配置。

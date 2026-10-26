@@ -338,6 +338,39 @@
                 /><span>Codex</span>
               </li>
             </ul>
+            <figure class="setup-demo-block" aria-labelledby="setup-demo-title">
+              <div class="setup-demo-heading">
+                <h3 id="setup-demo-title">一句话，开始接入。</h3>
+                <p>把安装配置交给智能体，接着聊你的业务。</p>
+              </div>
+              __SETUP_DEMO__
+              <p class="visually-hidden">
+                安装示意：向你熟悉的智能体提出安装 SMEDC 核心和配套技能、配置 MCP 的请求。
+                智能体读取官方说明，核对环境，安装技能并检查连接配置。完成登录后，即可查询资料和分析经营数据。
+              </p>
+              <figcaption class="setup-demo-footer">
+                <div class="setup-demo-controls" data-demo-playback hidden>
+                  <button type="button" id="setup-play">播放演示</button>
+                  <input
+                    id="setup-progress"
+                    type="range"
+                    min="0"
+                    max="18"
+                    step="0.1"
+                    value="18"
+                    aria-label="安装演示进度"
+                  />
+                </div>
+                <button type="button" id="copy-setup-prompt" hidden>复制安装请求</button>
+                <p class="setup-demo-caption">安装配置示意 · 登录由你确认</p>
+              </figcaption>
+              <p
+                class="setup-demo-status"
+                id="setup-demo-status"
+                role="status"
+                aria-live="polite"
+              ></p>
+            </figure>
           </div>
         </div>
       </section>
