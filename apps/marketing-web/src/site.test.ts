@@ -11,11 +11,11 @@ describe("public marketing page", () => {
     try {
       await buildSite(directory);
       const html = await readFile(join(directory, "index.html"), "utf8");
-      expect(html).toMatch(/href="#contact"[^>]*>预约演示/);
+      expect(html).toMatch(/href="#contact"[^>]*>聊聊你的门店/);
       expect(html).toContain('id="contact"');
       expect(html).toContain('href="tel:18514577162"');
       expect(html).toContain('href="mailto:consyinxy@gmail.com?subject=');
-      expect(html).toContain('href="#scenarios"');
+      expect(html).toContain('href="#reports"');
       expect(html).toMatch(/<details>[\s\S]*?<summary>/);
       expect(html).not.toMatch(/<form\b/);
       const client = await readFile(join(directory, "client.js"), "utf8");
@@ -24,6 +24,47 @@ describe("public marketing page", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+it("ships the anonymized, interactive report as a lazy isolated reader with a direct-link fallback", async () => {
+  const { buildSite } = await import("./build.js");
+  const directory = await mkdtemp(join(tmpdir(), "smedc-report-sample-"));
+  try {
+    await buildSite(directory);
+    const html = await readFile(join(directory, "index.html"), "utf8");
+    expect(html).toContain('href="/samples/weekly-report.html"');
+    const iframe = html.match(/<iframe\b[^>]*>/)?.[0];
+    expect(iframe).toContain('sandbox="allow-scripts"');
+    expect(iframe).toContain('data-src="/samples/weekly-report.html?v=');
+    expect(iframe).not.toMatch(/\ssrc=/);
+    const report = await readFile(join(directory, "samples/weekly-report.html"), "utf8");
+    const serialized = report.match(/<script[^>]*id="report-data"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+    expect(serialized).toBeDefined();
+    const data = JSON.parse(serialized!);
+    expect(data.meta.company).toBe("某餐饮企业");
+    expect(data.meta.anonymized_sample).toBe(true);
+    expect(Object.keys(data.meta.store_groups).sort()).toEqual(
+      "ABCDEFGHIJ".split("").map((letter) => `门店 ${letter}`)
+    );
+    expect(data.comparison).toHaveLength(10);
+    for (const row of data.comparison) expect(row["门店名称"]).toMatch(/^门店 [A-J]$/);
+    expect(report).not.toMatch(/<style\b|\sstyle=/);
+    for (const script of report.matchAll(/<script\b([^>]*)>/g)) {
+      const attributes = script[1] ?? "";
+      expect(
+        attributes.includes('type="application/json"') ||
+          attributes.includes('src="/samples/weekly-report.js"')
+      ).toBe(true);
+    }
+    const runtime = await readFile(join(directory, "samples/weekly-report.js"), "utf8");
+    expect(() => new Script(runtime)).not.toThrow();
+    expect(runtime).not.toMatch(/\sstyle=/);
+    expect(await readFile(join(directory, "samples/weekly-report.css"), "utf8")).toContain(
+      'data-sample-color="#006d77"'
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 describe("contact copy interaction", () => {
@@ -103,3 +144,61 @@ it.each(["denied", "unavailable"])(
     }
   }
 );
+
+it.each([false, true])("keeps content readable with reduced motion set to %s", async (reduced) => {
+  const { clientSource } = await import("./client.js");
+  const classes = new Set<string>();
+  let animations = 0;
+  let unobserved = 0;
+  let intersect:
+    ((entries: { isIntersecting: boolean; target: typeof element }[]) => void) | undefined;
+  const element = {
+    style: { transitionDelay: "" },
+    classList: {
+      add: (name: string) => classes.add(name),
+      remove: (name: string) => classes.delete(name)
+    },
+    getBoundingClientRect: () => ({ top: 1000 }),
+    animate: () => {
+      animations++;
+      return { cancel: () => {} };
+    }
+  };
+  class Observer {
+    constructor(callback: typeof intersect) {
+      intersect = callback;
+    }
+    observe() {}
+    unobserve() {
+      unobserved++;
+    }
+    disconnect() {}
+  }
+  new Script(clientSource).runInNewContext({
+    document: {
+      getElementById: () => null,
+      querySelector: () => null,
+      querySelectorAll: (selector: string) =>
+        ["[data-reveal]", "[data-entrance]"].includes(selector) ? [element] : [],
+      addEventListener: () => {},
+      documentElement: { scrollHeight: 2000 }
+    },
+    window: {
+      matchMedia: () => ({ matches: reduced, addEventListener: () => {} }),
+      addEventListener: () => {},
+      innerHeight: 800,
+      scrollY: 0,
+      location: { hash: "" },
+      IntersectionObserver: Observer
+    },
+    IntersectionObserver: Observer
+  });
+  expect(animations).toBe(reduced ? 0 : 1);
+  expect(classes.has("is-pending")).toBe(!reduced);
+  if (!reduced) {
+    intersect!([{ isIntersecting: true, target: element }]);
+    expect(classes.has("is-pending")).toBe(false);
+    expect(classes.has("is-revealed")).toBe(true);
+    expect(unobserved).toBe(1);
+  }
+});

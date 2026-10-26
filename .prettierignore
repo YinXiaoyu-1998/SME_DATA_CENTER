@@ -9,3 +9,5 @@ deploy/staging/nginx-smedc.conf
 docs/adr/
 docs/context/
 docs/implementation/implementation-plan.md
+# Supplied report: retain the generated HTML and embedded dataset without reflowing it.
+apps/marketing-web/public/samples/weekly-report.html
