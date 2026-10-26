@@ -326,24 +326,9 @@ h1 {
 .scroll-link:hover .icon {
   transform: translateY(4px);
 }
-.chapter {
-  display: inline-flex;
-  align-items: center;
-  gap: 18px;
-  color: var(--red);
-  font-family: var(--serif);
-  font-size: 15px;
-  line-height: 1.4;
-}
-.chapter::after {
-  content: "";
-  height: 1px;
-  width: 30px;
-  background: currentColor;
-}
 .section-meta {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 20px;
   align-items: center;
   margin-bottom: 14px;
@@ -425,7 +410,6 @@ h1 {
   padding-top: 46px;
 }
 .section-lead h2 {
-  margin-top: 24px;
   font-size: clamp(36px, 4.8vw, 60px);
 }
 .section-lead > p {
@@ -501,9 +485,6 @@ summary::-webkit-details-marker {
   align-items: flex-end;
   gap: 48px;
   margin-bottom: 42px;
-}
-.section-heading h2 {
-  margin-top: 20px;
 }
 .section-heading > p {
   margin-bottom: 5px;
@@ -621,7 +602,6 @@ summary::-webkit-details-marker {
   gap: 64px;
 }
 .faq h2 {
-  margin-top: 20px;
   font-size: 36px;
 }
 .questions details {
@@ -998,7 +978,6 @@ summary::-webkit-details-marker {
     padding-top: 38px;
   }
   .section-lead h2 {
-    margin-top: 18px;
     font-size: 33px;
   }
   .section-lead > p {
