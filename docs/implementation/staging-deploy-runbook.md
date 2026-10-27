@@ -74,23 +74,8 @@ npm run deploy:staging:rollback
 
 PDF 回填和开启交付按 [PDF 运维](ledger-pdf-operations.md)；业务权限补齐/激活按 [企业切换](business-authorization-cutover.md)。这些操作与部署分别授权。完整官方人工验收也须单独请求。
 
-## 企业智脑官网静态产物
+## 企业智脑官网独立发布
 
-`apps/marketing-web` 是公开介绍与联系页面，不使用业务 API 或凭据。`npm run build:marketing` 输出 `dist/marketing`；`build:release` 同时构建该目录，现有 release-ops 镜像携带它。发布仍使用同一质量门禁、镜像交接和 GitHub `staging` Environment，不增加网站常驻服务或本地直传通道。
+官网代码、素材、动画、脱敏公开样例、nginx 配置与发布流程迁至 [SMEDC_LANDING_PAGE](https://github.com/YinXiaoyu-1998/SMEDC_LANDING_PAGE)。本仓库的构建、镜像、发布和回滚只管理业务服务，不再读写 `/opt/smedc/marketing` 或官网回滚指针；现有官网静态文件原样保留。
 
-受控 rollout 从对应不可变 release-ops 镜像的未启动容器提取静态目录，存入 `/opt/smedc/marketing/releases/<sha>.<suffix>`，原子切换 `current` 符号链接。`previous-marketing-release` 保存之前目标；事务失败和现有 `--rollback` 同时恢复它。首次上线前若无旧页面，回滚删除 `current`，官网返回 404，API/业务页保持原契约。历史静态目录保留，不自动删除；获准清理时保留 `current` 与 `previous-marketing-release` 指向的目录。
-
-**main 合并仍会触发现有自动发布链。** 默认只交付静态文件，不改 nginx、不申请证书、不启用公网官网。主机显式存在 `/opt/smedc/marketing-enabled` 后，rollout 才额外验证官网版本、首页、图片、HTTP/www 跳转与未知路由 404；失败进入已有回滚。静态版本变更无需 nginx reload。`version.json` 是页面代码版本校验，发布 SHA 由目录和 release-ops 镜像 tag 确定。
-
-### 首次启用：单独授权的主机操作
-
-以下步骤是准备说明，不是本 PR 的执行记录。只在获得官网启用、证书与 nginx 变更授权后执行；不要把含缺失证书路径的 HTTPS 配置提前装入已启用目录。
-
-1. 核对 `smedatacenter.xyz` 与 `www.smedatacenter.xyz` 的 DNS 指向本机，80/443 可达；核对官网页尾主体“北京殷实麦家管理咨询有限责任公司”和网站备案号“京ICP备2026043481号-1”（2026-10-25 已在阿里云备案记录核实对应域名，不能用主体号省略网站序号）。验证首次受控发布已生成 `/opt/smedc/marketing/current/index.html` 与图片。
-2. 备份现有 nginx 配置。保留现有 API TLS/代理块，仅将旧 default server 的 `server_name smedatacenter.xyz www.smedatacenter.xyz;` 改为 `server_name _;`（见 `deploy/staging/nginx-smedc.conf`）。不要用仓库样例覆盖 Certbot 或运维新增的有效 API 设置。
-3. 创建 `/var/www/smedc-acme`，安装 `deploy/staging/nginx-marketing-bootstrap.conf` 为独立临时 enabled 配置。它只开放 ACME challenge，其余路径返回 404。先 `nginx -t`，成功才 reload；确认 API 的 health/readiness 和既有业务页面仍可用。
-4. 在主机用已有 Certbot 申请同时覆盖主域与 www 的独立证书：`sudo certbot certonly --webroot -w /var/www/smedc-acme --cert-name smedatacenter.xyz -d smedatacenter.xyz -d www.smedatacenter.xyz`。按获准运维流程提供证书联系信息，不改 API 证书。核对证书 SAN 与续期任务；为成功续期配置 `nginx -t && systemctl reload nginx` 的 deploy hook。
-5. 证书可用后，用 `deploy/staging/nginx-marketing.conf` 替换上述临时官网配置，不能同时启用两者。核对既有 `options-ssl-nginx.conf` 与 `ssl-dhparams.pem` 路径，`nginx -t` 成功后 reload。静态 root 只指向独立发布目录，绝不指向 runtime、业务文件或 OSS bucket。
-6. 核对 HTTPS 主域首页、CSS/JS/图片；HTTP 主域与 HTTP/HTTPS www 均跳转 `https://smedatacenter.xyz/`；未知路径和 `/readyz` 返回 404。确认 `https://api.smedatacenter.xyz/healthz` 为 200、`/readyz` 为 404、未授权业务请求仍被拒绝，并检查既有权限页、台账页和 OAuth 入口。通过后创建空标记 `/opt/smedc/marketing-enabled`（root 所有），后续受控发布自动检查官网。
-
-若首次启用检查失败，恢复备份的 nginx 配置并通过 `nginx -t` 后 reload，移除官网启用标记；不改业务授权、数据或 API 证书。配置通过与本地测试均不代表线上 TLS/路由已经验收。
+独立发布的配置、切换顺序、TLS 初始化及回滚说明见 [官网部署手册](https://github.com/YinXiaoyu-1998/SMEDC_LANDING_PAGE/blob/main/deploy/README.md)。必须先完成本仓库拆分版本的受控部署并排空旧任务，再启用新仓库发布；此后不得重跑拆分前的服务发布工作流，否则旧脚本仍可能覆盖官网。代码拆分和 PR 不是线上发布完成的证据。
