@@ -13,6 +13,7 @@
 - 只有同一 PR 的新检查会取消旧检查；main、手动任务和串行 staging 发布不因此被取消。
 - PR 仅修改测试或 Skill 工具时保留单元、权限和真实 MySQL/Qdrant 集成检查，跳过镜像构建；运行代码、依赖、镜像/工作流配置或未知路径仍构建。main/手动质量任务保留完整门禁。
 - 三个镜像各用 GitHub Actions v2 分层缓存；缓存写入失败不跳过构建或验收，缓存不充当发布证据。main push 的镜像通过既有打包、Prisma、Calamine、PDF 检查后，导出压缩归档及 SHA/镜像 ID 清单，保留一天。同一 run 的重试可复用已测试的同 SHA 产物。
+- CI 和手动发布构建均禁用 `runtime-base` 阶段缓存，worker 另禁用 `worker` 阶段缓存，确保每次构建重新获取系统安全更新及 Office/PDF 依赖；仅拉取基础镜像不会刷新已缓存的 apt 层。npm 依赖、应用与 Rust 编译继续复用缓存。系统包阶段需重新执行，构建耗时可能增加；自动部署仍复用本次质量门禁的原始镜像，漏洞检查保持阻断，不做自动豁免。
 - 自动部署只下载触发它的成功 main 质量 run 的产物，验证完整提交、归档 SHA-256、三个镜像 ID、linux/amd64 和 revision 标签后，重新打不可变 ACR tag 并推送，不再构建。发布前风险扫描、迁移、smoke 和回滚保持原流程。
 - 产物缺失、过期或不匹配时停止，不改用其他 run/PR 产物。需要恢复时使用获准的 main 手动部署重新构建。短期镜像归档增加 Actions artifact 存储与传输；一天保留期控制累积，不修改账单预算。
 - Launcher 三平台验收与发布仅由 `smedc-mcp-launcher-v*` 版本 tag 或显式手动任务触发；普通 main push 不自动启动。版本必须匹配 package，仍先完成三平台验证和受控 staged publish，已发布版本不可覆盖。
