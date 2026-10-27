@@ -1,5 +1,7 @@
 # 企业资料中枢
 
+公开官网、素材与独立发布流程由 [SMEDC_LANDING_PAGE](https://github.com/YinXiaoyu-1998/SMEDC_LANDING_PAGE) 管理，不再随本服务构建或部署。
+
 企业资料中枢是给员工自有 agent、MCP client、API client 和极简管理面使用的数据服务。它不是员工直接对话的 AI agent，不生成自然语言结论，不做报表/dashboard，不执行 Skill Directory 条目。
 
 当前产品面是 Phase 3-only：

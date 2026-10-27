@@ -117,9 +117,8 @@ describe("runtime image contracts", () => {
   });
 });
 
-it("ships the static marketing artifact only with the existing release operations image", () => {
-  expect(dockerStage("release-ops")).toContain("/app/dist/marketing ./dist/marketing");
-  for (const stage of ["api", "worker"]) {
+it("keeps static website artifacts out of all service images", () => {
+  for (const stage of ["api", "worker", "release-ops"]) {
     expect(dockerStage(stage)).not.toContain("dist/marketing");
   }
 });

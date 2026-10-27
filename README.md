@@ -1,5 +1,7 @@
 # SMEDC
 
+The public website, assets and independent release workflow live in [SMEDC_LANDING_PAGE](https://github.com/YinXiaoyu-1998/SMEDC_LANDING_PAGE). They are not built or deployed with this service.
+
 SMEDC is a company knowledge service for employee-owned agents, MCP clients, APIs, and a minimal admin surface. It stores source document catalog metadata, original files, local processing state, current category/scope/clearance authorization, audit logs, structured datasets, and evidence retrieval metadata.
 
 SMEDC is not an employee-facing AI agent, report generator, dashboard service, or skill execution platform. Authorization and permission filtering belong on the backend for every non-health endpoint. The public surface includes evidence retrieval, structured imports and partition downloads, authorized row queries, quarantine certificates, ledger PDF delivery and permission administration.

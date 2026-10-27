@@ -155,13 +155,10 @@ describe("deploy-staging remote scripts", () => {
     }
   });
 
-  it("packages the public site with the release and restores its previous version on rollback", () => {
-    const [rollout, rollback] = remoteScriptsForValidation();
-    expect(rollout).toContain('marketing_publish "$release_ops_image"');
-    expect(rollout).toContain("marketing_restore");
-    expect(rollback).toContain("marketing_restore");
-    expect(rollout).toContain("/app/dist/marketing/.");
-    expect(rollout).toContain("/opt/smedc/marketing-enabled");
+  it("never publishes or rolls back the independently managed website", () => {
+    for (const script of remoteScriptsForValidation()) {
+      expect(script).not.toContain("marketing");
+    }
   });
 
   it("parses rollback metadata as data instead of sourcing it as shell", () => {
@@ -331,7 +328,7 @@ cp "\${files[0]}" "\${files[1]}"
     }
   }, 10_000);
 
-  it("switches the served site and restores it with the existing release rollback", async () => {
+  it("leaves the independent website untouched during service deploy and rollback", async () => {
     const root = await mkdtemp(join(tmpdir(), "smedc-site-rollout-"));
     const bin = join(root, "bin");
     try {
@@ -346,18 +343,13 @@ cp "\${files[0]}" "\${files[1]}"
       await writeFile(join(root, "docker-compose.yml"), "old compose");
       await writeFile(join(root, "docker-compose.yml.next"), "new compose");
       const commands: Record<string, string> = {
-        docker: `case "$1" in
-  create) echo site-container ;;
-  cp) mkdir -p "$3/assets"; printf 'new public page' > "$3/index.html"; printf '{}' > "$3/version.json"; printf 'image' > "$3/assets/hero.webp" ;;
-esac`,
+        docker: "exit 0",
         install: `if [ "$1" = "-d" ]; then mkdir -p "\${@: -1}"; exit 0; fi
 files=()
 while [ "$#" -gt 0 ]; do
   case "$1" in -o|-g|-m) shift 2 ;; *) files+=("$1"); shift ;; esac
 done
 cp "\${files[0]}" "\${files[1]}"`,
-        // Host uses GNU mv -T; emulate that OS boundary on macOS test machines.
-        mv: `"${process.execPath}" -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$2" "$3"`,
         chown: "exit 0",
         flock: "exit 0",
         curl: "exit 0"
@@ -382,7 +374,7 @@ cp "\${files[0]}" "\${files[1]}"`,
       ]);
       expect(deployed.status, deployed.stderr).toBe(0);
       expect(await readFile(join(root, "marketing/current/index.html"), "utf8")).toBe(
-        "new public page"
+        "previous public page"
       );
       const restored = run(rollback!, []);
       expect(restored.status, restored.stderr).toBe(0);
