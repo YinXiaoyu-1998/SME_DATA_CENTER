@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMEDC 安装配置示意</title>
+    <link rel="stylesheet" href="./setup.css" />
+    <script src="./gsap.min.js"></script>
+    <script src="./TextPlugin.min.js"></script>
+  </head>
+  <body class="setup-export">
+    <!-- setup-demo:start -->
+    <div
+      id="smedc-setup"
+      class="setup-window"
+      data-composition-id="smedc-setup"
+      data-start="0"
+      data-duration="18"
+      data-width="1120"
+      data-height="680"
+      aria-hidden="true"
+    >
+      <aside class="setup-sidebar">
+        <div class="setup-workspace">
+          <img src="/assets/agent-codex.png" alt="" width="28" height="28" /><span>我的工作区</span>
+        </div>
+        <span class="setup-new-task">新的任务</span>
+        <div class="setup-sidebar-label">最近的会话</div>
+        <div class="setup-selected-task">AI 原生接入 · SMEDC</div>
+        <div class="setup-other-task">这一周的经营重点</div>
+        <div class="setup-sidebar-bottom">您的工具，您的工作方式。</div>
+      </aside>
+      <div class="setup-main">
+        <div class="setup-titlebar">
+          <span>AI 原生接入 · SMEDC</span><span class="setup-demo-label">AI 原生接入示意</span>
+        </div>
+        <div class="setup-conversation">
+          <div class="setup-request">
+            <span class="setup-speaker">您</span>
+            <p class="setup-request-text">
+              帮我安装或更新 https://github.com/YinXiaoyu-1998/smedc-mcp-skill 的核心和配套
+              SKILL，并按官方说明安装、配置最新版 MCP。完成后告诉我如何登录。
+            </p>
+          </div>
+          <div class="setup-agent-intro">
+            <img src="/assets/agent-codex.png" alt="" width="24" height="24" />
+            <p>好的，我来按您的环境完成安装与配置。</p>
+          </div>
+          <ul class="setup-steps">
+            <li class="setup-step">
+              <img src="/assets/check-circle.svg" alt="" width="20" height="20" /><span
+                >读取官方安装说明，核对当前环境</span
+              >
+            </li>
+            <li class="setup-step">
+              <img src="/assets/check-circle.svg" alt="" width="20" height="20" /><span
+                >安装或更新核心与配套 SKILL</span
+              >
+            </li>
+            <li class="setup-step">
+              <img src="/assets/check-circle.svg" alt="" width="20" height="20" /><span
+                >安装 MCP，配置主流 Agent 连接</span
+              >
+            </li>
+            <li class="setup-step">
+              <img src="/assets/check-circle.svg" alt="" width="20" height="20" /><span
+                >完成配置检查，准备登录入口</span
+              >
+            </li>
+          </ul>
+          <div class="setup-finish">
+            <p class="setup-finish-title">SMEDC 已配置就绪。</p>
+            <p class="setup-finish-tail">登录后，就可以让我分析经营数据了。</p>
+          </div>
+        </div>
+        <div class="setup-composer">
+          <span>接下来，告诉智能体您想做什么…</span
+          ><img src="/assets/arrow-up-right.svg" alt="" width="20" height="20" />
+        </div>
+      </div>
+    </div>
+    <!-- setup-demo:end -->
+    <script src="./setup.js"></script>
+  </body>
+</html>
