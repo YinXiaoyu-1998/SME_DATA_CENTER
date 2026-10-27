@@ -98,7 +98,7 @@ it("caches each runtime target and hands off only tested main images to the matc
     const build = quality
       .split(`- name: Build ${target} runtime image`)[1]
       ?.split("\n      - name:")[0];
-    const freshStages = target === "worker" ? "runtime-base,worker" : "runtime-base";
+    const freshStages = `runtime-base,${target}`;
     expect(build).toContain(`no-cache-filters: ${freshStages}\n`);
     expect(build).not.toMatch(/\n\s+no-cache:\s+true/);
   }

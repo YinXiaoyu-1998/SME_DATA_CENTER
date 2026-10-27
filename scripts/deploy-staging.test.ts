@@ -117,7 +117,7 @@ describe("deploy-staging image build", () => {
       "build",
       "--pull",
       "--no-cache-filter",
-      "runtime-base",
+      "runtime-base,api",
       "--platform",
       "linux/amd64",
       "--target",
@@ -133,15 +133,18 @@ describe("deploy-staging image build", () => {
     ]);
   });
 
-  it("refreshes worker OS dependencies even when the base image has no new packages", () => {
-    const args = stagingBuildxBuildArgs(
-      "worker",
-      "registry.example.com/smedc/worker:0123456789ab",
-      "0123456789ab"
-    );
-    expect(args[args.indexOf("--no-cache-filter") + 1]).toBe("runtime-base,worker");
-    expect(args).not.toContain("--no-cache");
-  });
+  it.each(["api", "worker", "release-ops"])(
+    "prevents cached final-stage COPY results from restoring stale OS packages in %s",
+    (target) => {
+      const args = stagingBuildxBuildArgs(
+        target,
+        `registry.example.com/smedc/${target}:0123456789ab`,
+        "0123456789ab"
+      );
+      expect(args[args.indexOf("--no-cache-filter") + 1]).toBe(`runtime-base,${target}`);
+      expect(args).not.toContain("--no-cache");
+    }
+  );
 });
 
 describe("deploy-staging remote scripts", () => {
