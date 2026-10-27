@@ -455,9 +455,9 @@ export function stagingBuildxBuildArgs(target: string, image: string, tag: strin
     "buildx",
     "build",
     "--pull",
-    // Pulling the base image does not invalidate cached apt security updates.
+    // Cached final-stage COPY results can restore an older runtime-base snapshot.
     "--no-cache-filter",
-    target === "worker" ? "runtime-base,worker" : "runtime-base",
+    `runtime-base,${target}`,
     "--platform",
     "linux/amd64",
     "--target",
