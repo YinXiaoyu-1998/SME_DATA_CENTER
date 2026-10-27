@@ -11,7 +11,7 @@ describe("public marketing page", () => {
     try {
       await buildSite(directory);
       const html = await readFile(join(directory, "index.html"), "utf8");
-      expect(html).toMatch(/href="#contact"[^>]*>聊聊你的门店/);
+      expect(html).toMatch(/href="#contact"[^>]*>聊聊您的门店/);
       expect(html).toContain('id="contact"');
       expect(html).toContain('href="tel:18514577162"');
       expect(html).toContain('href="mailto:consyinxy@gmail.com?subject=');

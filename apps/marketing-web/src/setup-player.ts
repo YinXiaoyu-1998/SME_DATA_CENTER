@@ -13,7 +13,7 @@ if (typeof window !== "undefined") {
     copyPrompt.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(prompt);
-        demoStatus.textContent = "安装请求已复制，发给你熟悉的智能体即可。";
+        demoStatus.textContent = "安装请求已复制，发给您熟悉的主流 Agent 智能体，即可开始 AI 原生接入。";
       } catch {
       timeline?.progress(1).pause();
         demoStatus.textContent = "暂时无法自动复制，请选中对话中的完整安装请求手动复制。";

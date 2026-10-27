@@ -502,7 +502,6 @@ summary::-webkit-details-marker {
 .work-tab {
   display: flex;
   align-items: center;
-  gap: 20px;
   min-height: 80px;
   padding-block: 18px;
   border-bottom: 1px solid var(--line);
@@ -511,10 +510,6 @@ summary::-webkit-details-marker {
     color 160ms,
     padding-left 300ms var(--ease);
 }
-.work-tab span {
-  font: 14px/1 var(--sans);
-  color: var(--muted);
-}
 .work-tab:hover,
 .work-tab[aria-selected="true"] {
   color: var(--red);
@@ -522,9 +517,6 @@ summary::-webkit-details-marker {
 }
 .work-tab[aria-selected="true"] {
   border-bottom-color: var(--red);
-}
-.work-tab[aria-selected="true"] span {
-  color: var(--red);
 }
 .work-panels {
   padding-top: 34px;
@@ -1017,10 +1009,6 @@ summary::-webkit-details-marker {
   .work-tab {
     min-height: 60px;
     font-size: 17px;
-    gap: 10px;
-  }
-  .work-tab span {
-    font-size: 11px;
   }
   .work-panel h3 {
     font-size: 30px;
