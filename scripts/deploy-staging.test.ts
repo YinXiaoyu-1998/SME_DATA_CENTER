@@ -116,6 +116,8 @@ describe("deploy-staging image build", () => {
       "buildx",
       "build",
       "--pull",
+      "--no-cache-filter",
+      "runtime-base",
       "--platform",
       "linux/amd64",
       "--target",
@@ -129,6 +131,16 @@ describe("deploy-staging image build", () => {
       "--push",
       "."
     ]);
+  });
+
+  it("refreshes worker OS dependencies even when the base image has no new packages", () => {
+    const args = stagingBuildxBuildArgs(
+      "worker",
+      "registry.example.com/smedc/worker:0123456789ab",
+      "0123456789ab"
+    );
+    expect(args[args.indexOf("--no-cache-filter") + 1]).toBe("runtime-base,worker");
+    expect(args).not.toContain("--no-cache");
   });
 });
 

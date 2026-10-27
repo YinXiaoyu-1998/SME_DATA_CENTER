@@ -95,6 +95,12 @@ it("caches each runtime target and hands off only tested main images to the matc
   for (const target of ["api", "worker", "release-ops"]) {
     expect(quality).toContain(`cache-from: type=gha,version=2,scope=smedc-${target}`);
     expect(quality).toContain(`cache-to: type=gha,version=2,scope=smedc-${target},mode=max`);
+    const build = quality
+      .split(`- name: Build ${target} runtime image`)[1]
+      ?.split("\n      - name:")[0];
+    const freshStages = target === "worker" ? "runtime-base,worker" : "runtime-base";
+    expect(build).toContain(`no-cache-filters: ${freshStages}\n`);
+    expect(build).not.toMatch(/\n\s+no-cache:\s+true/);
   }
   expect(quality).toContain("retention-days: 1");
   expect(quality).toContain("overwrite: true");

@@ -455,6 +455,9 @@ export function stagingBuildxBuildArgs(target: string, image: string, tag: strin
     "buildx",
     "build",
     "--pull",
+    // Pulling the base image does not invalidate cached apt security updates.
+    "--no-cache-filter",
+    target === "worker" ? "runtime-base,worker" : "runtime-base",
     "--platform",
     "linux/amd64",
     "--target",
