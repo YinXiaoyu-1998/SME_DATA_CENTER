@@ -1,14 +1,13 @@
 # Settled orders: complete store-day snapshots and local CSV
 
-## Release gate
+## Release and tenant readiness
 
-`settled_orders` (店内已结账订单明细) is implemented in source for candidate launcher `0.14.0`.
-It requires a future published, independently verified launcher `0.14.0` or newer, matching
-service deployment and current tenant authorization. The approved installation pin remains
-`0.13.1`; follow the core Skill's installation authority. This reference does not approve
-installing the candidate. If the approved client or target service lacks support, report the
-release blocker and retain the original operation for later. Static tools/list, branch code,
-a successful login and service recommendations alone do not prove readiness.
+`settled_orders` (店内已结账订单明细) is included in published, independently verified launcher `0.14.0`.
+The approved exact installation pin is `0.14.0`; follow the core Skill's installation authority.
+Confirm matching service deployment and current tenant authorization before use. Publication,
+installation, static tools/list, a successful login and service recommendations alone do not
+establish category grants or tenant readiness. If the approved client or target service lacks
+support, report the blocker and retain the original operation for later.
 
 ## Upload one complete source
 

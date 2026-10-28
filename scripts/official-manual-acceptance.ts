@@ -40,7 +40,7 @@ import {
 loadDotenv({ quiet: true, override: false });
 
 const SERVICE_ORIGIN = "https://api.smedatacenter.xyz";
-export const MANUAL_ACCEPTANCE_LAUNCHER_VERSION = "0.13.1";
+export const MANUAL_ACCEPTANCE_LAUNCHER_VERSION = "0.14.0";
 const LAUNCHER_VERSION = MANUAL_ACCEPTANCE_LAUNCHER_VERSION;
 const READ_ONLY_CHECKS = ["identity", "catalog", "ledger-denial"] as const;
 type ReadOnlyCheck = (typeof READ_ONLY_CHECKS)[number];

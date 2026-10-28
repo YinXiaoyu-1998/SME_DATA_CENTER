@@ -154,7 +154,7 @@ The API entrypoint automatically loads `.env` from the current working directory
 ## Official Employee MCP
 
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
-`smedc-mcp-launcher@0.13.1` local stdio launcher. The dual-homed
+`smedc-mcp-launcher@0.14.0` local stdio launcher. The dual-homed
 `skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
 browser-login, recovery, logout, and uninstall runbook. It prohibits agent-visible
 email/password/token/code input, uses `smedc_login`, `smedc_logout`,
@@ -162,13 +162,13 @@ email/password/token/code input, uses `smedc_login`, `smedc_logout`,
 operates service infrastructure.
 
 The official identity, launcher, and public MCP code are implemented.
-`smedc-mcp-launcher@0.13.1` is published on npm and its registry integrity, clean install,
+`smedc-mcp-launcher@0.14.0` is published on npm and its registry integrity, clean install,
 CLI, packaging, and production dependency audit have been verified. The supported installation
 matrix is macOS, Windows, and Linux. macOS/Windows use their native secure stores; Linux uses a
 compatible Secret Service when available and otherwise keeps the session in launcher-process
-memory, so headless Linux requires a fresh tap-link login after restart. Client/business acceptance and target service rollout remain separate from npm package verification. The service source recommends launcher 0.13.1 and requires at least 0.12.0 for OAuth issuance and refresh.
+memory, so headless Linux requires a fresh tap-link login after restart. Client/business acceptance and target service rollout remain separate from npm package verification. The service source recommends launcher 0.14.0 and requires at least 0.12.0 for OAuth issuance and refresh.
 Current live version policy and deployment evidence are maintained in [staging readiness](docs/implementation/staging-readiness.md). Below-minimum launchers receive `LAUNCHER_UPGRADE_REQUIRED`.
-Launcher 0.13.1 allows 45 seconds for business MCP calls; connection and profile checks retain
+Launcher 0.14.0 allows 45 seconds for business MCP calls; connection and profile checks retain
 30 seconds. It supports store-filtered coverage/range downloads and optional prepare/status/requestId
 ZIP downloads, plus cost-card directory lookup, per-card CSV downloads and single-card archive.
 It also exposes atomic store-review upserts, authorized queries, operation-specific enterprise
@@ -182,9 +182,9 @@ Only active admins upload evidence, structured datasets (including Delivery Ledg
 certificates. Employee uploads at every clearance receive HTTP `403` from direct HTTP endpoints;
 MCP JSON-RPC transport returns HTTP `200` with `isError: true` in the tool result. Both carry
 `UPLOAD_ADMIN_REQUIRED`, `File upload requires the admin role.`, and `retryable: false`.
-Tools stay visible; launcher 0.13.1 preflights the role
+Tools stay visible; launcher 0.14.0 preflights the role
 before reading a file, while the backend remains authoritative for accepted requests. Current category/scope grants and sufficient clearance jointly govern ordinary reads. See the [upload endpoint and audit contract](docs/implementation/api-contract.md#file-upload-capability).
-Launcher 0.13.1 exposes the four ledger PDF download tools and no employee PDF generation tool.
+Launcher 0.14.0 exposes the four ledger PDF download tools and no employee PDF generation tool.
 Archive delivery is gated by the service rollout; until enabled, report `LEDGER_PDF_NOT_ENABLED`.
 The service automatically updates affected daily PDFs; uploads reaching `applied`
 do not mean PDF completion. Current release/deployment evidence is maintained in [staging readiness](docs/implementation/staging-readiness.md); tenant activation is separate.
@@ -219,11 +219,11 @@ partition metadata. Clients poll `get_partition_import_status`, inspect coverage
 launcher and callers must clean the returned scratch directory. Generic
 `query_structured_dataset` intentionally rejects these two datasets.
 
-Current source extends this partition path to independent `settled_orders` complete store-day
-snapshots, preserving all 30 source fields plus ordered payment JSON. This source candidate requires
-a future published, independently verified launcher `0.14.0+`, matching service deployment and current
-category grants; the approved installation pin/recommendation remains `0.13.1`. See
-[settled-order usage and release gate](skills/smedc-mcp/references/settled-orders.md) before use.
+Published, independently verified launcher `0.14.0` extends this partition path to independent
+`settled_orders` complete store-day snapshots, preserving all 30 source fields plus ordered payment
+JSON. The approved installation pin/source recommendation is `0.14.0`; matching service deployment
+and observed live policy are recorded in staging readiness. Current category grants remain required.
+See [settled-order usage and authorization](skills/smedc-mcp/references/settled-orders.md) before use.
 
 ## Dish catalog snapshots
 

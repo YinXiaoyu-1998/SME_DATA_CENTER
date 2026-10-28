@@ -21,7 +21,7 @@
 | 企业管理入口 | 企业专属 UI、共享浏览器身份、默认中文/English、内部代办 CLI | [入驻流程](tenant-onboarding.md) |
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
 
-这些能力已存在于当前源码。`settled_orders` 使用候选 launcher `0.14.0`，发行及服务部署待独立核验；订单能力需要未来已验证的 `0.14.0+`、匹配服务与当前类别授权，现行安装 pin 和推荐仍为 `0.13.1`。代码合并、launcher 发布、服务部署、某租户的配置/激活和正式业务验收分别取证，不互相替代。最近已验证的部署/公开版本见 [staging 状态](staging-readiness.md)。
+这些能力已存在于当前源码。`settled_orders` 已随 launcher `0.14.0` 公开发布并独立核验，匹配服务部署也已核实；批准安装 pin 和源码推荐为 `0.14.0`，使用仍需当前类别授权。代码合并、launcher 发布、服务部署、某租户的配置/激活和正式业务验收分别取证，不互相替代。最近已验证的部署、公开版本与线上推荐值见 [staging 状态](staging-readiness.md)。
 
 ## 阶段边界
 
@@ -39,7 +39,7 @@
 
 ## 验收前提
 
-官方人工验收运行器使用 0.13.1，支持选定只读检查，并核对原台账汇总的精确拒绝码。完整验收前须通过 `--evidence-config` 提供显式类别及完整 scopes，并确认目标租户配置；抽查通过不等于完整验收。当前说明见 [验收配置](official-manual-acceptance.md#current-runner-limitation)。
+官方人工验收运行器使用 0.14.0，支持选定只读检查，并核对原台账汇总的精确拒绝码。完整验收前须通过 `--evidence-config` 提供显式类别及完整 scopes，并确认目标租户配置；抽查通过不等于完整验收。当前说明见 [验收配置](official-manual-acceptance.md#current-runner-limitation)。
 
 ## 验证与发布
 

@@ -14,7 +14,7 @@
 ## 业务指导边界
 
 - 当前有效 admin 才能上传；在本地读取文件前执行角色预检，服务端仍为授权主体。
-- 原件按确切字节交付。经营/菜品及 release-gated 订单的大文件使用 launcher 路径上传；数据修复属于服务或独立 workflow Skill。
+- 原件按确切字节交付。经营/菜品及订单的大文件使用 launcher 路径上传；数据修复属于服务或独立 workflow Skill。
 - Evidence 明确类别、完整范围和逐文件等级；照片明确企业和单门店；固定类别使用服务端当前密级。缺失值不推断。
 - 异步上传/打包只能按返回 ID 轮询；queued、pending 和失败不能当成完成或无数据。幂等键仅精确重放复用。
 - 经营/菜品/订单分析使用受权分区下载；其他可读取数据集按 schema 的 canonicalName 查询。台账只通过 PDF 交付，员工不触发生成。
@@ -23,7 +23,7 @@
 - 退出、移除单宿主集成和完全卸载分别处理，不删除服务账号、业务数据、Node/npm 或其他 MCP 配置。
 - Skill 目录只发现元数据，不在 SMEDC 服务内执行 Skill 或生成答案。
 
-订单上传/范围下载/可选 ZIP、完整快照及支付 JSON 语义由[订单 reference](../../skills/smedc-mcp/references/settled-orders.md)维护。订单源码候选为 `0.14.0`，须待未来实际发行、独立验证、匹配服务部署及当前授权；不改变现行安装 pin、推荐版本或人工验收运行器。
+订单上传/范围下载/可选 ZIP、完整快照及支付 JSON 语义由[订单 reference](../../skills/smedc-mcp/references/settled-orders.md)维护。Launcher `0.14.0` 已发行并独立验证，批准安装 pin、源码推荐与人工验收运行器同步为 `0.14.0`；全局最低保持 `0.12.0`。实际使用仍需匹配服务及当前授权，线上策略以 [staging 状态](staging-readiness.md)的观测为准。
 
 ## 变更和验证
 
