@@ -240,6 +240,47 @@ describe("published launcher artifact", () => {
           snapshotDate: { type: "string" }
         }
       });
+      for (const name of [
+        "upload_structured_dataset",
+        "describe_structured_dataset_coverage",
+        "download_structured_partitions",
+        "prepare_structured_partition_download"
+      ]) {
+        expect(tools.tools.find((tool) => tool.name === name)?.inputSchema, name).toMatchObject({
+          type: "object",
+          properties: { dataset: { enum: expect.arrayContaining(["settled_orders"]) } }
+        });
+      }
+      expect(structuredUpload?.description).toContain("0.14.0+");
+      expect(structuredUpload?.inputSchema).toMatchObject({
+        properties: {
+          file: {
+            anyOf: expect.arrayContaining([
+              expect.objectContaining({
+                properties: expect.objectContaining({
+                  encoding: expect.objectContaining({ type: "string", const: "path" }),
+                  filePath: expect.objectContaining({ type: "string" })
+                })
+              })
+            ])
+          },
+          startDate: { type: "string", pattern: "^\\d{8}$" },
+          endDate: { type: "string", pattern: "^\\d{8}$" }
+        }
+      });
+      expect(
+        tools.tools.find((tool) => tool.name === "get_partition_import_status")?.inputSchema
+      ).toMatchObject({
+        required: ["partitionImportJobId"],
+        properties: { partitionImportJobId: { type: "string" } }
+      });
+      expect(
+        tools.tools.find((tool) => tool.name === "get_structured_partition_download_status")
+          ?.inputSchema
+      ).toMatchObject({
+        required: ["requestId"],
+        properties: { requestId: { type: "string" } }
+      });
       expect(structuredUpload?.inputSchema.required).not.toEqual(
         expect.arrayContaining(["startDate", "endDate", "snapshotDate"])
       );

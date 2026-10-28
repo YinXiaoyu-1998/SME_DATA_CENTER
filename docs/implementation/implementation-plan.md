@@ -1,6 +1,6 @@
 # SMEDC 当前实施范围与阶段边界
 
-更新：2026-10-20。本文只记录当前已实现范围和仍需独立完成的阶段，不维护已完成任务的执行清单。
+更新：2026-10-28。本文只记录当前已实现范围和仍需独立完成的阶段，不维护已完成任务的执行清单。
 
 ## 产品边界
 
@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 身份与客户端 | 第一方密码设置/登录、Device Authorization、不透明 token、轮换 durable session、官方 stdio launcher | [安装登录](official-user-install-and-login.md) |
 | 普通文档 | MD/TXT/DOCX 解析、版本化混合检索、重排/相关性裁剪、按页原件链接 | [处理管线](data-pipelines.md) |
-| 经营与菜品销售 | launcher multipart 原件传输、worker 原子发布 OSS 当前门店日分区、授权清单及本地校验下载 | [分区契约](structured-partitions.md) |
+| 经营、菜品销售与店内已结账订单 | launcher multipart 原件传输、worker 原子发布 OSS 当前门店日分区、授权清单及本地校验下载 | [分区契约](structured-partitions.md) |
 | 其他结构化资料 | 会员、菜品目录、供应商目录的受控查询和原件关联；配送台账仅内部输入 | [API 契约](api-contract.md) |
 | 检疫证明与台账 | 单门店照片、独立 PDF 权限、计划生成/修复、覆盖与 ZIP 下载 | [PDF 运维](ledger-pdf-operations.md) |
 | 成本卡 | 原件校验、逐卡 CSV 与 MySQL 目录、受权本地下载、归档/恢复 | [成本卡设计](cost-card-design.md) |
@@ -21,7 +21,7 @@
 | 企业管理入口 | 企业专属 UI、共享浏览器身份、默认中文/English、内部代办 CLI | [入驻流程](tenant-onboarding.md) |
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
 
-这些能力已经存在于当前 main。代码合并、launcher 发布、服务部署、某租户的配置/激活和正式业务验收分别取证，不互相替代。最近已验证的部署/公开版本见 [staging 状态](staging-readiness.md)。
+这些能力已存在于当前源码。`settled_orders` 使用候选 launcher `0.14.0`，发行及服务部署待独立核验；订单能力需要未来已验证的 `0.14.0+`、匹配服务与当前类别授权，现行安装 pin 和推荐仍为 `0.13.1`。代码合并、launcher 发布、服务部署、某租户的配置/激活和正式业务验收分别取证，不互相替代。最近已验证的部署/公开版本见 [staging 状态](staging-readiness.md)。
 
 ## 阶段边界
 

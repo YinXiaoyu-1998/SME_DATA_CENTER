@@ -1,6 +1,6 @@
-# Business / Dishes 当前分区契约
+# 经营、菜品销售与店内已结账订单当前分区契约
 
-`business` 和 `dishes` 使用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。该路径已经实现；当前部署证据见 [staging 状态](staging-readiness.md)。历史迁移清单不再作为操作入口。
+`business`、`dishes` 和 `settled_orders` 使用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。这些源码路径已经实现；`settled_orders` 仍需未来已发布并独立核验的 launcher `0.14.0+`、匹配服务部署及当前独立类别授权，批准安装 pin 保持 `0.13.1`。当前部署证据见 [staging 状态](staging-readiness.md)。历史迁移清单不再作为操作入口。
 
 ## 身份与权威数据
 
@@ -8,15 +8,21 @@
 
 物理 storeKey 与当前授权门店名是不同概念。业务授权仍按企业内精确门店名称及完整类别/维度匹配，不能用物理键形成第二套放行规则。只为来源实际出现的门店/日期生成分区；没有出现不表示删除其他已有分区。
 
-OSS canonical CSV 是权威业务数据，MySQL 保存当前指针、行数、字节数、SHA-256、业务身份/权限及发布元数据。不保留分区历史版本、MySQL business/dishes 明细表或原始 Excel 下载入口。
+OSS canonical CSV 是权威业务数据，MySQL 保存当前指针、行数、字节数、SHA-256、业务身份/权限及发布元数据。不保留分区历史版本、MySQL business/dishes/settled_orders 明细表或原始 Excel 下载入口。
 
 ## Canonical CSV
 
 - UTF-8 无 BOM，逗号分隔，RFC 4180 引号，LF 换行及末尾换行。
-- 使用注册表中 inputSource=file 的固定中文字段和顺序；一个表头，至少一行有效数据；不加入 source_document_id 等不存在于 canonical schema 的字段。
+- 使用注册表中 inputSource=file 的固定中文字段和顺序；`settled_orders` 末尾追加派生“结账方式JSON”，合计 31 列。一个表头，至少一行有效数据；不加入 source_document_id 等不存在于 canonical schema 的字段。
 - 保留来源 sheet/行顺序；按解析规则排除标题/筛选/汇总行；空 nullable 字段输出空字段。
 - 使用确定性的已验证值：日期 YYYY-MM-DD、日期时间 YYYY-MM-DD HH:mm:ss、布尔 true/false、非指数十进制数，身份字段保持字符串语义。
 - SHA-256 覆盖确切字节；输出不依赖机器 locale/timezone 或文件名。语义相同但顺序不同的来源可以产生不同 hash。
+
+## 订单来源边界
+
+`settled_orders` 上传必须是所选门店完整单日或多日来源快照；上传方保证业务完整性，服务不能从文件名、标题或筛选说明证明完整。仅替换文件中实际出现的门店日，整份空数据拒绝；重复行/订单号不去重。按来源营业日分区，跨午夜不调整；本来源无商户号，机构编码不代替 merchantId。
+
+全部 30 个输入列必需，允许重排；仅门店和营业日期必填。可空日期/时间/数值中的 `--` 转空，普通文本/编号保留。结账方式保留原文及有序 `{method, amount, marker}` JSON 数组，重复项不合并，退款/找零保留符号与标记；空白/`--` 派生 JSON null，非空解析失败整份拒绝。金额不补零、不推净额或跨字段对账。字段及员工操作见[订单 reference](../../skills/smedc-mcp/references/settled-orders.md)。
 
 ## 上传和发布
 
@@ -37,7 +43,7 @@ OSS canonical CSV 是权威业务数据，MySQL 保存当前指针、行数、�
 
 ## 读取与下载
 
-coverage/manifest 根据当前账号、组织、类别密级、企业、精确门店和全部维度先限权，再应用日期/店名筛选。`query_structured_dataset` 不支持这两个数据集；分析由调用 agent 在下载后的本地文件上完成。
+coverage/manifest 根据当前账号、组织、类别密级、企业、精确门店和全部维度先限权，再应用日期/店名筛选。`query_structured_dataset` 不支持这三个数据集；分析由调用 agent 在下载后的本地文件上完成。
 
 Range 是默认方式。可选异步 ZIP 必须确认目标服务支持；发现工具名本身不是可用性证明。提交打包时完整授权并固定实际清单，后台制作不因发起人单纯权限变化失败；领取新链接再校验本人当前完整权限与来源。旧清单无法证明身份/内容/范围时要求重新准备。
 
@@ -55,7 +61,7 @@ Launcher 消费内部链接、核验下载文件/清单的身份、checksum、�
 
 ## Independent cost-card storage boundary
 
-This document remains the business/dishes store-date partition contract. Cost cards use an
+This document covers business/dishes/settled_orders store-date partitions. Cost cards use an
 independent directory and one complete CSV per card; they do not enter these partition/date APIs.
 See the [cost-card contract](api-contract.md#cost-cards-published-launcher-separate-service-gate) and
 [employee workflow](../../skills/smedc-mcp/references/cost-cards.md).

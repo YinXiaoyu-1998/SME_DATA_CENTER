@@ -7,7 +7,7 @@
 当前产品面是 Phase 3-only：
 
 - 非结构化证据：上传 MD/TXT/DOCX → 解析/切块/embedding/Qdrant indexing → 检索 evidence chunks。
-- 结构化数据：`business`/`dishes` 原始 CSV/XLSX 经流式上传与严格校验后，原子发布为 OSS 门店日分区；其他数据集继续进入 MySQL 受控 JSON 查询。
+- 结构化数据：`business`/`dishes` 原始 CSV/XLSX 经流式上传与严格校验后，原子发布为 OSS 门店日分区；订单 `settled_orders` 的候选源码复用分区流程，发行门禁见下文；其他可查询数据集使用受控查询。
 
 旧的 legacy ordinary document 入口已经移除。底层 documents catalog/storage/audit 仍作为源文件记录、密级、状态和审计基础设施使用。
 
@@ -153,6 +153,10 @@ CSV，MySQL 仅保存当前分区目录。客户端用 `get_partition_import_sta
 清理返回的 scratch 目录。
 
 MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登录员工推导。Evidence search 的 cursor 是不透明、短期有效的翻页 token：下一页必须沿用相同 query/filter/limit 原样传回 `page.nextCursor`。遇到 `INVALID_CURSOR` 可不带 cursor 重新开始；遇到 `CURSOR_EXPIRED`，先说明 cursor 已过期，只有用户仍希望继续时才重新搜索。结构化导入只有在同一个文件和同一组 metadata 精确重试时才复用 `idempotencyKey`；精确重放会返回第一次持久化的 ID/storage key，不可见的 import status 与不存在批次一样返回非枚举 404。
+
+源码新增独立门店级 `settled_orders`，复用上述分区流程，要求完整门店营业日快照，保留 30 个来源字段及有序支付 JSON。
+订单能力需未来已发布并独立核验的 launcher `0.14.0+`、匹配服务部署及当前类别授权；现行批准安装 pin/推荐保持 `0.13.1`。
+使用前阅读[订单指导及发行门禁](skills/smedc-mcp/references/settled-orders.md)，不能以源码完成宣称线上可用。
 
 ## 菜品目录快照
 
