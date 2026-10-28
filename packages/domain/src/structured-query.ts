@@ -395,7 +395,7 @@ function normalizeQuery(
   if (registry.accessMode === "partition_extract") {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
-      "business and dishes are available through partition extracts, not row queries.",
+      "business, dishes, and settled_orders are available through partition extracts, not row queries.",
       { dataset }
     );
   }

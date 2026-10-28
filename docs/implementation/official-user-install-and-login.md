@@ -2,7 +2,7 @@
 
 Status: `smedc-mcp-launcher@0.13.1` is published and independently verified. The approved installation pin and source recommendation are 0.13.1; the source minimum remains 0.12.0. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
 
-Last updated: 2026-10-24
+Last updated: 2026-10-28
 
 ## Business Authorization Release
 
@@ -15,6 +15,14 @@ role or upload ownership does not grant ordinary content reads. See
 management status and versioned preparation/activation. Use these transport fields with the approved launcher
 0.13.1 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
 launcher. Publication does not authorize tenant activation or establish live tenant readiness.
+
+## Settled-order candidate boundary
+
+Current source adds `settled_orders` in candidate launcher `0.14.0`. Use requires a future published,
+independently verified `0.14.0+`, matching service deployment and current independent category grants.
+This does not change the global OAuth minimum `0.12.0`, recommendation or approved install pin
+`0.13.1`, or the manual-acceptance runner. Source implementation and local package verification
+are not publication or deployment evidence. See [the order workflow](../../skills/smedc-mcp/references/settled-orders.md).
 
 ## Enterprise Onboarding Prerequisite
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { getStructuredRegistry, type StructuredFieldRegistryEntry } from "@smedc/domain";
 import { afterEach, describe, expect, test } from "vitest";
+import { parse as parseCsv } from "csv-parse/sync";
 import { exportStructuredPartitions } from "./partition-export.js";
 
 const roots: string[] = [];
@@ -26,6 +27,326 @@ afterEach(async () => {
 });
 
 describe("exportStructuredPartitions", () => {
+  test("preserves complete settled-order rows and ordered exact payment JSON", async () => {
+    const root = await temporaryRoot();
+    const fields = getStructuredRegistry("settled_orders").fields.filter(
+      (f) => f.inputSource === "file"
+    );
+    expect(fields).toHaveLength(30);
+    const values: Record<string, string> = {
+      store_name: "合成门店",
+      business_date: "20261027",
+      organization_code: "0001",
+      order_id: "000023",
+      ordered_at: "2026-10-28 00:03",
+      diner_count: "--",
+      refunded_at: "--",
+      order_amount: "-001.2300",
+      pickup_number: "--",
+      member: "未知",
+      payment_method:
+        "员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.1（找零），精确 9007199254740993.123456789",
+      order_note: '备注,含"引号"'
+    };
+    const csv = (cells: string[]) => cells.map((v) => `"${v.replaceAll('"', '""')}"`).join(",");
+    const sourcePath = path.join(root, "source.csv");
+    const row = fields.map((f) => values[f.canonicalName] ?? "");
+    await writeFile(
+      sourcePath,
+      [csv(fields.map((f) => f.sourceColumn)), csv(row), csv(row)].join("\n")
+    );
+    const result = await exportStructuredPartitions({
+      dataset: "settled_orders",
+      sourcePath,
+      outputDirectory: root,
+      limits
+    });
+    expect(result.totalRowCount).toBe(2n);
+    expect(result.partitions[0]).toMatchObject({
+      businessDate: "2026-10-27",
+      merchantId: null,
+      storeKey: "name:合成门店"
+    });
+    const rows = parseCsv(await readFile(result.partitions[0]!.filePath), {
+      columns: true
+    }) as Record<string, string>[];
+    expect(Object.keys(rows[0]!)).toHaveLength(31);
+    expect(rows[0]).toMatchObject({
+      机构编码: "0001",
+      订单号: "000023",
+      下单时间: "2026-10-28 00:03:00",
+      退单时间: "",
+      用餐人数: "",
+      "订单金额（元）": "-1.23",
+      取餐号: "--",
+      会员: "未知",
+      结账方式: values.payment_method
+    });
+    expect(rows[0]!["结账方式JSON"]).toBe(
+      '[{"method":"员工 卡","amount":10,"marker":null},{"method":"现金","amount":-2.3,"marker":"退款"},{"method":"现金","amount":-2.3,"marker":"退款"},{"method":"现金","amount":-0.1,"marker":"找零"},{"method":"精确","amount":9007199254740993.123456789,"marker":null}]'
+    );
+    expect(rows[1]).toEqual(rows[0]);
+  });
+
+  test.each(["", "--", "   "])("keeps absent payment %j as JSON null", async (payment) => {
+    const root = await temporaryRoot();
+    const fields = getStructuredRegistry("settled_orders").fields.filter(
+      (f) => f.inputSource === "file"
+    );
+    const sourcePath = path.join(root, "source.csv");
+    await writeFile(
+      sourcePath,
+      fields.map((f) => f.sourceColumn).join(",") +
+        "\n" +
+        fields
+          .map(
+            (f) =>
+              (
+                ({
+                  store_name: "合成门店",
+                  business_date: "20261027",
+                  payment_method: payment
+                }) as Record<string, string>
+              )[f.canonicalName] ?? ""
+          )
+          .join(",")
+    );
+    const result = await exportStructuredPartitions({
+      dataset: "settled_orders",
+      sourcePath,
+      outputDirectory: root,
+      limits
+    });
+    const [row] = parseCsv(await readFile(result.partitions[0]!.filePath), {
+      columns: true
+    }) as Record<string, string>[];
+    expect(row!["结账方式JSON"]).toBe("null");
+    expect(row!["结账方式"]).toBe(payment);
+  });
+
+  test.each([
+    { field: "payment_method", value: "现金 10，无法解析" },
+    { field: "payment_method", value: "现金 10 trailing" },
+    { field: "store_name", value: "--" },
+    { field: "business_date", value: "--" },
+    { field: "diner_count", value: "unknown" }
+  ])("rejects the complete source for invalid $field", async ({ field, value }) => {
+    const root = await temporaryRoot();
+    const fields = getStructuredRegistry("settled_orders").fields.filter(
+      (f) => f.inputSource === "file"
+    );
+    const values: Record<string, string> = { store_name: "合成门店", business_date: "20261027" };
+    const sourcePath = path.join(root, "source.csv");
+    await writeFile(
+      sourcePath,
+      [
+        fields.map((f) => f.sourceColumn).join(","),
+        fields.map((f) => values[f.canonicalName] ?? "").join(","),
+        fields
+          .map((f) => (f.canonicalName === field ? value : (values[f.canonicalName] ?? "")))
+          .join(",")
+      ].join("\n")
+    );
+    await expect(
+      exportStructuredPartitions({
+        dataset: "settled_orders",
+        sourcePath,
+        outputDirectory: root,
+        limits
+      })
+    ).rejects.toThrow(/Row 3/);
+    expect(await readdir(path.join(root, "candidates"))).toEqual([]);
+  });
+
+  test("accepts reordered settled-order source headers but rejects missing, unknown, duplicate and derived input columns", async () => {
+    const fields = getStructuredRegistry("settled_orders").fields.filter(
+      (f) => f.inputSource === "file"
+    );
+    const headers = fields.map((f) => f.sourceColumn).reverse();
+    const { resolveStructuredHeaders } = await import("@smedc/domain");
+    expect(resolveStructuredHeaders("settled_orders", headers).ok).toBe(true);
+    for (const invalid of [
+      headers.slice(1),
+      [...headers, "未知列"],
+      [...headers, headers[0]!],
+      [...headers, "结账方式JSON"]
+    ]) {
+      expect(resolveStructuredHeaders("settled_orders", invalid).ok).toBe(false);
+    }
+  });
+
+  test.each(["order_note", "order_status"] as const)(
+    "preserves summary labels in reordered settled-order %s text and excludes footers",
+    async (firstField) => {
+      const root = await temporaryRoot();
+      const fields = getStructuredRegistry("settled_orders").fields.filter(
+        (field) => field.inputSource === "file"
+      );
+      const reordered = [
+        fields.find((field) => field.canonicalName === firstField)!,
+        ...fields.filter((field) => field.canonicalName !== firstField)
+      ];
+      const values: Record<string, string> = {
+        store_name: "合成甲店",
+        business_date: "20261027",
+        order_id: "0001",
+        order_note: "合计",
+        order_status: "总计"
+      };
+      const sourcePath = path.join(root, "reordered.csv");
+      await writeFile(
+        sourcePath,
+        [
+          reordered.map((field) => field.sourceColumn).join(","),
+          reordered.map((field) => values[field.canonicalName] ?? "").join(","),
+          ...["合计", "总计"].map((label) =>
+            reordered.map((_field, index) => (index === 0 ? label : "")).join(",")
+          )
+        ].join("\n")
+      );
+      const result = await exportStructuredPartitions({
+        dataset: "settled_orders",
+        sourcePath,
+        outputDirectory: root,
+        limits
+      });
+      expect(result.totalRowCount).toBe(1n);
+      const rows = parseCsv(await readFile(result.partitions[0]!.filePath), {
+        columns: true
+      }) as Record<string, string>[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        门店: "合成甲店",
+        营业日期: "2026-10-27",
+        订单号: "0001",
+        整单备注: "合计",
+        订单状态: "总计"
+      });
+    }
+  );
+
+  test.each([
+    { field: "store_name", value: "--" },
+    { field: "business_date", value: "not-a-date" }
+  ])(
+    "validates $field when a reordered order starts with a summary label",
+    async ({ field, value }) => {
+      const root = await temporaryRoot();
+      const fields = getStructuredRegistry("settled_orders")
+        .fields.filter((entry) => entry.inputSource === "file")
+        .reverse();
+      const values: Record<string, string> = {
+        store_name: "合成甲店",
+        business_date: "20261027",
+        order_note: "合计",
+        [field]: value
+      };
+      const sourcePath = path.join(root, "invalid-reordered.csv");
+      await writeFile(
+        sourcePath,
+        [
+          fields.map((entry) => entry.sourceColumn).join(","),
+          fields.map((entry) => values[entry.canonicalName] ?? "").join(",")
+        ].join("\n")
+      );
+      await expect(
+        exportStructuredPartitions({
+          dataset: "settled_orders",
+          sourcePath,
+          outputDirectory: root,
+          limits
+        })
+      ).rejects.toThrow(new RegExp(`Row 2 ${field}`));
+    }
+  );
+
+  calamineIntegrationTest(
+    "reads original settled-order XLSX with raw payments and source business dates",
+    async () => {
+      const root = await temporaryRoot();
+      const { default: ExcelJS } = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("已结账合成");
+      const fields = getStructuredRegistry("settled_orders").fields.filter(
+        (f) => f.inputSource === "file"
+      );
+      sheet.addRow(["已结账订单明细"]);
+      sheet.addRow(fields.map((f) => f.sourceColumn));
+      const values: Record<string, string> = {
+        store_name: "合成店",
+        organization_code: "001",
+        business_date: "20261027",
+        order_id: "0001",
+        ordered_at: "2026-10-28 00:01",
+        payment_method: "  员工 卡 1.20，现金 -0.1（找零）  ",
+        diner_count: "--",
+        member: "--"
+      };
+      sheet.addRow(fields.map((f) => values[f.canonicalName] ?? ""));
+      const sourcePath = path.join(root, "original.xlsx");
+      await workbook.xlsx.writeFile(sourcePath);
+      const result = await exportStructuredPartitions({
+        dataset: "settled_orders",
+        sourcePath,
+        outputDirectory: root,
+        limits
+      });
+      expect(result.partitions[0]).toMatchObject({ businessDate: "2026-10-27", merchantId: null });
+      const [row] = parseCsv(await readFile(result.partitions[0]!.filePath), {
+        columns: true
+      }) as Record<string, string>[];
+      expect(row).toMatchObject({
+        机构编码: "001",
+        订单号: "0001",
+        下单时间: "2026-10-28 00:01:00",
+        结账方式: values.payment_method,
+        会员: "--",
+        用餐人数: ""
+      });
+      expect(JSON.parse(row!["结账方式JSON"]!)).toEqual([
+        { method: "员工 卡", amount: 1.2, marker: null },
+        { method: "现金", amount: -0.1, marker: "找零" }
+      ]);
+    }
+  );
+
+  test.each([
+    ["business", "7f21e56922bdf510e000c7af4863934c2f7e36b5eb257679445f9311ca072050"],
+    ["dishes", "cef9d62a49a995d63655b06d734cf49371ff6eddd124d61e1ea8de880a3d484e"]
+  ] as const)("preserves pre-order canonical bytes for %s", async (dataset, checksum) => {
+    const root = await temporaryRoot();
+    const sourcePath = path.join(root, "source.csv");
+    await writeFile(
+      sourcePath,
+      csvFor(dataset, [dataset === "business" ? businessRow() : dishRow()])
+    );
+    const result = await exportStructuredPartitions({
+      dataset,
+      sourcePath,
+      outputDirectory: root,
+      limits
+    });
+    // Recorded from the unchanged exporter at 291d6e5, before settled_orders support.
+    expect(result.partitions[0]!.checksumSha256).toBe(checksum);
+  });
+
+  test.each(["business", "dishes"] as const)(
+    "continues rejecting typed placeholders in %s",
+    async (dataset) => {
+      const root = await temporaryRoot();
+      const sourcePath = path.join(root, "source.csv");
+      const numeric = fileFields(dataset).find((field) => field.type === "decimal")!;
+      const row =
+        dataset === "business"
+          ? businessRow({ [numeric.canonicalName]: "--" })
+          : dishRow({ [numeric.canonicalName]: "--" });
+      await writeFile(sourcePath, csvFor(dataset, [row]));
+      await expect(
+        exportStructuredPartitions({ dataset, sourcePath, outputDirectory: root, limits })
+      ).rejects.toThrow(/must be numeric/);
+    }
+  );
+
   test("streams a real XLSX fixture into store-day partitions", async () => {
     const root = await temporaryRoot();
     const result = await exportStructuredPartitions({

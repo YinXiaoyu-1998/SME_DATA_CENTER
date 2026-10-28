@@ -16,6 +16,8 @@ describe("permissions browser pages", () => {
     expect(html).toContain("权限设置");
     expect(html).toContain("店铺评价");
     expect(html).toContain("Store reviews");
+    expect(html).toContain("店内已结账订单明细");
+    expect(html).toContain("Settled in-store order details");
     expect(html).toContain("Permissions");
     expect(html).toContain("smedc-locale");
     expect(html).not.toContain('<script>alert("x")</script>');

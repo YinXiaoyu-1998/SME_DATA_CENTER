@@ -147,7 +147,7 @@ describe("device authorization grant", () => {
       intervalSeconds: 5
     });
     expect(device.verificationUriComplete?.toString()).toContain("user_code=ABCDEFGH");
-    expect(deviceRequest?.launcherVersion).toBe("0.13.1");
+    expect(deviceRequest?.launcherVersion).toBe("0.14.0");
     expect(deviceRequest?.body.get("client_id")).toBe("smedc-desktop-launcher");
     expect(deviceRequest?.body.get("instanceName")).toBe("agent-a");
     expect(deviceRequest?.body.get("instanceHostname")).toBe("vps-1");

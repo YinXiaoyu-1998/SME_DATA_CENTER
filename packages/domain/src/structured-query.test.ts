@@ -12,11 +12,14 @@ function compile(query: unknown) {
 }
 
 describe("structured query compiler", () => {
-  it.each(["business", "dishes"])("rejects %s before producing row-table SQL", (dataset) => {
-    expect(() => compile({ dataset })).toThrowError(
-      expect.objectContaining({ code: PHASE3_ERROR_CODES.datasetRequiresPartitionExtract })
-    );
-  });
+  it.each(["business", "dishes", "settled_orders"])(
+    "rejects %s before producing row-table SQL",
+    (dataset) => {
+      expect(() => compile({ dataset })).toThrowError(
+        expect.objectContaining({ code: PHASE3_ERROR_CODES.datasetRequiresPartitionExtract })
+      );
+    }
+  );
 
   it("keeps a bounded, parameterized row query for vip", () => {
     const result = compile({

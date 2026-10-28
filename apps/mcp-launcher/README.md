@@ -1,6 +1,6 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher. Source version `0.13.1` prepares a MIME tool-schema regex compatibility fix and is not yet published. Version `0.13.0` remains the published, independently verified installation pin. The current approved installation pin is maintained in the official `smedc-mcp` Skill; package README files are immutable release-time snapshots. Current release and target deployment evidence is maintained in the repository's `docs/implementation/staging-readiness.md`.
+Official stdio MCP launcher. Source candidate `0.14.0` adds `settled_orders` uploads and current store-day CSV/range/optional ZIP delivery. This candidate is not published or deployed by the source change. Order use requires a future published, independently verified `0.14.0+`, matching service deployment and current independent category grants. The approved installation pin remains `0.13.1`, maintained in the official `smedc-mcp` Skill; package README files are release-time snapshots. Current release and target deployment evidence is maintained in `docs/implementation/staging-readiness.md`.
 
 ## Installation and identity
 
@@ -15,7 +15,8 @@ Login uses OAuth Device Authorization. The employee authenticates and confirms t
 - Permission cards and admin configuration use current server state. Grants are not cached. Writes carry the current expected version; conflicts require rereading state.
 - Active admins upload. Cached profiles provide an early denial before local file access; the service remains authoritative. The cache holds display name, email, role, clearance and organization name only. Current-user lookup reads live state.
 - Evidence uploads require explicit category, complete scopes and file level. Photos require one enterprise and exact store. Fixed-category uploads cannot override enabled server category levels with a legacy level field.
-- Business/dishes local file paths use launcher-owned multipart transport. Status is polled by job ID; accepted uploads are not completed processing.
+- Business/dishes and release-gated settled_orders local file paths use launcher-owned multipart transport. Status is polled by job ID; accepted uploads are not completed processing.
+- Orders require complete store-day snapshots; only present store-days replace current content. The 31-column CSV retains all 30 source fields plus ordered payment JSON, including duplicate items, refunds and change. See the core Skill `references/settled-orders.md` for upload, permissions and local cleanup.
 - Range partition download is the default. Optional prepared ZIP download uses prepare, status and then a succeeded requestId, with no selectors mixed into that final call. Confirm matching service support; tools/list alone is insufficient. Verify scope, ZIP/CSV integrity and safe paths before returning local extracts. Internal signed partition URLs never reach the agent.
 - Ledger tools expose coverage, preparation, request status and URL issuance. They do not generate PDFs; changed/missing outputs wait for the configured daily service job. PDF delivery is independently enabled on the target service.
 - Published `0.11.0` adds atomic structured `upsert_store_reviews` and authorized `query_store_reviews`; matching service release is required. They use JSON MCP calls, with no file transfer or worker. The stdio input budget accepts a full review batch; query pages bound escaped response bytes for default MCP clients. Enterprise candidates come from current permission cards; only verified published platform replies are recorded.
@@ -31,4 +32,4 @@ Business MCP calls have a 45-second deadline; connection/profile calls have 30 s
 
 `logout` attempts remote family revocation and local credential deletion, reporting `remoteRevocationConfirmed` and `localCredentialRemoved`. Removing one host's MCP entry is distinct from logout or complete uninstall.
 
-The package is published through npm Trusted Publisher from a private source repository; npm provenance is unavailable. Source, API schemas and full usage guidance remain in the product repository and official Skill; this README does not authorize publishing, deployment or tenant activation.
+Package releases use npm Trusted Publisher; verify the particular release and provenance in the repository readiness record. Source, API schemas and full usage guidance remain in the product repository and official Skill; this README does not authorize publishing, deployment or tenant activation.

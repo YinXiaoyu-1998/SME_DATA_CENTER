@@ -14,7 +14,8 @@ const fixed = [
   "quarantine_certificate",
   "ledger_pdf",
   "store_reviews",
-  "cost_cards"
+  "cost_cards",
+  "settled_orders"
 ];
 function inventory(): CutoverInventory {
   return {

@@ -240,7 +240,7 @@ export function registerStructuredImportRoutes(
         .send(
           errorResponse(
             "PARTITION_UPLOAD_SESSION_REQUIRED",
-            "business and dishes must use the partition upload session."
+            "business, dishes, and settled_orders must use the partition upload session."
           )
         );
     }

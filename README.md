@@ -219,6 +219,12 @@ partition metadata. Clients poll `get_partition_import_status`, inspect coverage
 launcher and callers must clean the returned scratch directory. Generic
 `query_structured_dataset` intentionally rejects these two datasets.
 
+Current source extends this partition path to independent `settled_orders` complete store-day
+snapshots, preserving all 30 source fields plus ordered payment JSON. This source candidate requires
+a future published, independently verified launcher `0.14.0+`, matching service deployment and current
+category grants; the approved installation pin/recommendation remains `0.13.1`. See
+[settled-order usage and release gate](skills/smedc-mcp/references/settled-orders.md) before use.
+
 ## Dish catalog snapshots
 
 `dish_catalog` is a complete, append-only menu snapshot, not a business-date-window import. Upload

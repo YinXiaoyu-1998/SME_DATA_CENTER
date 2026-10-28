@@ -82,7 +82,7 @@ suite("fixed category bootstrap through supported administration", () => {
     const migrated = await repository.listCategories(orgId);
     expect(migrated.map((c) => [c.key, c.allowGroup ? "group" : "store"]).sort()).toEqual(
       Object.entries(ownership)
-        .filter(([key]) => !["cost_cards", "store_reviews"].includes(key))
+        .filter(([key]) => !["cost_cards", "store_reviews", "settled_orders"].includes(key))
         .sort()
     );
     expect(migrated.find((c) => c.key === "ledger_pdf")).toMatchObject(existing);
@@ -97,11 +97,17 @@ suite("fixed category bootstrap through supported administration", () => {
     expect(
       (await repository.initializeFixedCategories({ orgId, actorId, expectedVersion: "6" })).value
         .createdCount
-    ).toBe(2);
+    ).toBe(3);
     const initialized = await repository.listCategories(orgId);
     expect(
       initialized.find((category) => category.key === "cost_cards")?.confidentialityLevel
     ).toBeNull();
+    expect(initialized.find((category) => category.key === "settled_orders")).toMatchObject({
+      confidentialityLevel: null,
+      allowGroup: false,
+      allowStore: true
+    });
+    expect(await prisma.businessGrant.count({ where: { orgId } })).toBe(0);
     await prisma.$transaction(async (tx) => {
       await lockAuthorizationPublication(tx, orgId);
       expect((await initializeFixedBusinessCategories(tx, orgId)).count).toBe(0);
@@ -120,7 +126,7 @@ suite("fixed category bootstrap through supported administration", () => {
       const listed = (await app.inject({ url: "/v1/admin/permissions/categories" })).json();
       const report = (await app.inject({ url: "/v1/admin/permissions/cutover" })).json();
       expect(report.ready).toBe(false);
-      expect(report.missing).toHaveLength(8);
+      expect(report.missing).toHaveLength(9);
       expect(report.missing).toContainEqual({
         code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
         targetId: "cost_cards"

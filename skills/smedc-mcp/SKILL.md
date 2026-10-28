@@ -276,7 +276,7 @@ row-query structured upload also keep `importBatchId`. Poll `get_evidence_docume
   structured idempotency key only for the exact same file bytes and metadata; use a new key only
   after the employee intentionally corrects or changes the upload.
 
-For `business` and `dishes`, keep `partitionImportJobId` and poll
+For `business`, `dishes` and release-gated `settled_orders`, keep `partitionImportJobId` and poll
 `get_partition_import_status`. For a source file larger than 50 MiB, check first after 2 minutes,
 then every 2 minutes, for at most 20 minutes; this replaces the ordinary polling schedule above.
 Tell the employee once that large-file processing may take 10–20 minutes, then use a passive wait
@@ -286,6 +286,15 @@ checks. For a source file at or below 50 MiB, use the ordinary polling schedule 
 `rejected`, `failed`, `cancelled`, and `expired` are terminal non-success states. A `queued` or
 `processing` response is not complete. Exact-repeat uploads may return the existing published job;
 same-key requests with different bytes or metadata are conflicts, not retries.
+
+## Settled Orders (Future Release Gated)
+
+For 店内已结账订单明细 (`settled_orders`) complete store-day uploads, independent permissions,
+ordered payment JSON and authorized local CSV downloads, read
+[settled orders](references/settled-orders.md) before any operation. Source support requires a
+future published and independently verified launcher `0.14.0` or newer plus matching service
+and tenant configuration. The approved installation pin remains `0.13.1`; source support does
+not approve installing a candidate or establish live availability.
 
 ## Business And Dishes Partition Uploads
 
@@ -942,7 +951,7 @@ content, do not paste file contents into chat, and do not silently retry with an
   privacy protection, sandbox, or another OS access boundary).
 - `MCP_LOCAL_FILE_INVALID`: the path is relative, a directory, or not a regular file.
 - `MCP_LOCAL_FILE_TOO_LARGE`: the file exceeds the applicable contract (2 GiB for path-mode
-  `business`/`dishes`; 50 MiB for ordinary uploads).
+  `business`/`dishes` and release-gated `settled_orders`; 50 MiB for ordinary uploads).
 - `MCP_LOCAL_FILE_READ_FAILED`: another read error.
 
 Example employee-facing reply (Chinese):
@@ -952,7 +961,7 @@ Example employee-facing reply (Chinese):
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
 location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, do not split `business`, `dishes`,
-or `dish_catalog`; ask the employee for a smaller complete export, a service-supported larger
+`settled_orders` or `dish_catalog`; ask the employee for a smaller complete export, a service-supported larger
 limit, or operator help.
 
 ## Typed Recovery

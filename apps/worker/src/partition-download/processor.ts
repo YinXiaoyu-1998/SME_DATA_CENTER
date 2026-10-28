@@ -21,7 +21,7 @@ export interface PartitionDownloadBuildLimits {
 }
 /** Full store-key digest; same-name stores retain distinct identities. Duplicate paths fail closed. */
 export function partitionDownloadFileName(
-  dataset: "business" | "dishes",
+  dataset: "business" | "dishes" | "settled_orders",
   entry: Pick<PartitionDownloadEntry, "storeKey" | "businessDate">
 ): string {
   const digest = createHash("sha256").update(entry.storeKey, "utf8").digest("hex");

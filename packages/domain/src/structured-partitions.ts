@@ -1,4 +1,4 @@
-export const PARTITION_DATASETS = ["business", "dishes"] as const;
+export const PARTITION_DATASETS = ["business", "dishes", "settled_orders"] as const;
 
 export type PartitionDatasetName = (typeof PARTITION_DATASETS)[number];
 

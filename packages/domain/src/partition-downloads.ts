@@ -36,7 +36,7 @@ export function loadPartitionDownloadLimits(env: RuntimeLimitEnv): PartitionDown
 /** Public extract metadata. Counts and byte sizes use base-10 strings to preserve precision. */
 export interface PartitionDownloadManifest {
   version: 1;
-  dataset: "business" | "dishes";
+  dataset: "business" | "dishes" | "settled_orders";
   enterpriseName: string;
   startDate: string;
   endDate: string;
@@ -57,7 +57,7 @@ export interface PartitionDownloadManifestFile {
 
 /** Sanitized authorized scope; internal enterprise keys and partition entries are excluded. */
 export interface PublicPartitionDownloadScope {
-  dataset: "business" | "dishes";
+  dataset: "business" | "dishes" | "settled_orders";
   enterpriseName: string;
   startDate: string;
   endDate: string;
