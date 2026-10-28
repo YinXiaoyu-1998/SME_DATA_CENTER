@@ -5,6 +5,7 @@ import {
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   PUBLIC_INPUT_LIMITS,
   STRUCTURED_DATASETS,
+  PARTITION_DATASETS,
   STRUCTURED_QUERY_LIMITS,
   getStructuredRegistry,
   COST_CARD_DIRECTORY_REGISTRY,
@@ -306,7 +307,7 @@ const partitionDownloadRequestId = z
     "Prepared partition download request ID. In download_structured_partitions, provide only this field and no range selectors; the request must have succeeded."
   );
 const partitionDownloadScopeShape = {
-  dataset: z.enum(["business", "dishes", "settled_orders"]),
+  dataset: z.enum(PARTITION_DATASETS),
   enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
   startDate: z.string().regex(/^\d{8}$/),
   endDate: z.string().regex(/^\d{8}$/),

@@ -175,6 +175,91 @@ describe("exportStructuredPartitions", () => {
     }
   });
 
+  test.each(["order_note", "order_status"] as const)(
+    "preserves summary labels in reordered settled-order %s text and excludes footers",
+    async (firstField) => {
+      const root = await temporaryRoot();
+      const fields = getStructuredRegistry("settled_orders").fields.filter(
+        (field) => field.inputSource === "file"
+      );
+      const reordered = [
+        fields.find((field) => field.canonicalName === firstField)!,
+        ...fields.filter((field) => field.canonicalName !== firstField)
+      ];
+      const values: Record<string, string> = {
+        store_name: "合成甲店",
+        business_date: "20261027",
+        order_id: "0001",
+        order_note: "合计",
+        order_status: "总计"
+      };
+      const sourcePath = path.join(root, "reordered.csv");
+      await writeFile(
+        sourcePath,
+        [
+          reordered.map((field) => field.sourceColumn).join(","),
+          reordered.map((field) => values[field.canonicalName] ?? "").join(","),
+          ...["合计", "总计"].map((label) =>
+            reordered.map((_field, index) => (index === 0 ? label : "")).join(",")
+          )
+        ].join("\n")
+      );
+      const result = await exportStructuredPartitions({
+        dataset: "settled_orders",
+        sourcePath,
+        outputDirectory: root,
+        limits
+      });
+      expect(result.totalRowCount).toBe(1n);
+      const rows = parseCsv(await readFile(result.partitions[0]!.filePath), {
+        columns: true
+      }) as Record<string, string>[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        门店: "合成甲店",
+        营业日期: "2026-10-27",
+        订单号: "0001",
+        整单备注: "合计",
+        订单状态: "总计"
+      });
+    }
+  );
+
+  test.each([
+    { field: "store_name", value: "--" },
+    { field: "business_date", value: "not-a-date" }
+  ])(
+    "validates $field when a reordered order starts with a summary label",
+    async ({ field, value }) => {
+      const root = await temporaryRoot();
+      const fields = getStructuredRegistry("settled_orders")
+        .fields.filter((entry) => entry.inputSource === "file")
+        .reverse();
+      const values: Record<string, string> = {
+        store_name: "合成甲店",
+        business_date: "20261027",
+        order_note: "合计",
+        [field]: value
+      };
+      const sourcePath = path.join(root, "invalid-reordered.csv");
+      await writeFile(
+        sourcePath,
+        [
+          fields.map((entry) => entry.sourceColumn).join(","),
+          fields.map((entry) => values[entry.canonicalName] ?? "").join(",")
+        ].join("\n")
+      );
+      await expect(
+        exportStructuredPartitions({
+          dataset: "settled_orders",
+          sourcePath,
+          outputDirectory: root,
+          limits
+        })
+      ).rejects.toThrow(new RegExp(`Row 2 ${field}`));
+    }
+  );
+
   calamineIntegrationTest(
     "reads original settled-order XLSX with raw payments and source business dates",
     async () => {

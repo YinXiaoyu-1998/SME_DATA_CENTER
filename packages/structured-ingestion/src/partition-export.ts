@@ -127,7 +127,18 @@ export async function exportStructuredPartitions(input: {
       mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>;
     }
   ): Promise<void> => {
-    if (!row.cells.some((cell) => cell.trim()) || isSummary(row.cells)) return;
+    if (!row.cells.some((cell) => cell.trim())) return;
+    // Reordered order text may occupy the first cell; dated rows still require full validation.
+    if (
+      isSummary(row.cells) &&
+      (input.dataset !== "settled_orders" ||
+        !header.mappings.some(
+          (mapping) =>
+            mapping.canonicalName === "business_date" &&
+            row.cells[mapping.sourceColumnIndex]?.trim()
+        ))
+    )
+      return;
     if (
       row.cells.length > header.width &&
       row.cells.slice(header.width).some((cell) => cell.trim())

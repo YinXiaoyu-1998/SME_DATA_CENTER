@@ -9,6 +9,7 @@ import {
 } from "@smedc/db";
 import {
   normalizeEnterpriseIdentity,
+  PARTITION_DATASETS,
   PUBLIC_INPUT_LIMITS,
   type PublicPartitionDownloadStatus,
   type PartitionDownloadUrlResponse
@@ -67,7 +68,7 @@ const date = z
   );
 const prepareSchema = z
   .object({
-    dataset: z.enum(["business", "dishes", "settled_orders"]),
+    dataset: z.enum(PARTITION_DATASETS),
     enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
     startDate: date,
     endDate: date,
