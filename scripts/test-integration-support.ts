@@ -1,3 +1,4 @@
+import { parse as parseCsv } from "csv-parse/sync";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
@@ -121,6 +122,72 @@ export async function createCostCardIntegrationFixture() {
   };
 }
 
+/** A tiny original settled-order export, independent of the runtime field registry. */
+export async function createSettledOrderIntegrationFixture(
+  overrides?: Array<Record<string, string>>
+) {
+  const headers = [
+    "门店",
+    "机构编码",
+    "营业日期",
+    "订单号",
+    "经营模式",
+    "订单来源",
+    "用餐方式",
+    "下单时间",
+    "结账时间",
+    "退单时间",
+    "取餐号",
+    "桌牌号",
+    "全渠道流水号",
+    "桌台区域",
+    "用餐人数",
+    "订单金额（元）",
+    "顾客应付（元）",
+    "支付合计（元）",
+    "订单优惠（元）",
+    "订单收入（元）",
+    "结账方式",
+    "订单状态",
+    "退单标识",
+    "菜品收入（元）",
+    "服务费（元）",
+    "服务费优惠（元）",
+    "服务费收入（元）",
+    "预定用餐时间",
+    "会员",
+    "整单备注"
+  ];
+  const base = {
+    门店: "合成甲店",
+    机构编码: "0007",
+    营业日期: "20261027",
+    订单号: "000012",
+    下单时间: "2026-10-28 00:03",
+    退单时间: "--",
+    取餐号: "--",
+    用餐人数: "--",
+    "订单金额（元）": "12.30",
+    "订单收入（元）": "12.30",
+    结账方式: "员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.10（找零）",
+    订单状态: "来源新状态",
+    会员: "来源文本",
+    整单备注: '合成,含"引号"\n第二行'
+  };
+  const rows: Array<Record<string, string>> = overrides ?? [
+    { ...base },
+    { ...base },
+    { ...base, 营业日期: "20261026", 结账方式: "--", "订单收入（元）": "5" },
+    { ...base, 门店: "合成乙店", 订单号: "000013", 结账方式: "现金 8", "订单收入（元）": "8" }
+  ];
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("已结账合成");
+  sheet.addRow(["店内订单明细—已结账（合成）"]);
+  sheet.addRow(headers);
+  rows.forEach((row) => sheet.addRow(headers.map((header) => row[header] ?? "")));
+  return { headers, rows, xlsx: Buffer.from(await book.xlsx.writeBuffer()) };
+}
+
 export function integrationDatabasePlan(baseUrl: string, mysqlPort: string) {
   let base: URL;
   try {
@@ -194,12 +261,11 @@ async function summarizeExtract(extract: LocalExtract, amountColumn: string) {
   for (const file of extract.files) {
     const bytes = await readFile(path.join(extract.localDirectory, file));
     csvHashes.push(createHash("sha256").update(bytes).digest("hex"));
-    // This deliberately small synthetic workload has no quoted/newline fields.
-    const [header, ...rows] = bytes.toString("utf8").trim().split(/\r?\n/);
-    const amountIndex = header!.split(",").indexOf(amountColumn);
+    const [header, ...rows] = parseCsv(bytes) as string[][];
+    const amountIndex = header!.indexOf(amountColumn);
     assert(amountIndex >= 0, "Synthetic CSV must contain the aggregate column.");
     for (const row of rows) {
-      const value = row.split(",")[amountIndex]!;
+      const value = row[amountIndex]!;
       assert(/^\d+(\.\d{1,2})?$/.test(value), "Synthetic amount must be exact decimal money.");
       const [units, fraction = ""] = value.split(".");
       amountCents += Number(units) * 100 + Number(fraction.padEnd(2, "0"));
@@ -219,7 +285,7 @@ async function summarizeExtract(extract: LocalExtract, amountColumn: string) {
 export async function comparePartitionDownloads(input: {
   context: PartitionTransferContext;
   scope: {
-    dataset: "business" | "dishes";
+    dataset: "business" | "dishes" | "settled_orders";
     enterpriseName: string;
     startDate: string;
     endDate: string;

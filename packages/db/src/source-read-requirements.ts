@@ -333,7 +333,7 @@ export async function persistPartitionReadRequirement(
   input: {
     orgId: string;
     partitionId: string;
-    dataset: "business" | "dishes";
+    dataset: "business" | "dishes" | "settled_orders";
     enterpriseKey: string;
     storeName: string;
     workerId: string;

@@ -360,6 +360,22 @@ describe("upload MCP tool handlers", () => {
     });
   });
 
+  it.each([null, "0.13.1"])(
+    "requires a settled-order capable launcher before legacy proxy (%s)",
+    async (launcherVersion) => {
+      const { handlers, requests } = createHandlers({});
+      const result = await handlers.upload_structured_dataset!(
+        validStructuredInput({ dataset: "settled_orders" }),
+        {
+          ...mcpContext,
+          audit: { ...mcpAudit, launcherVersion }
+        }
+      );
+      expect(parseResult(result)).toMatchObject({ error: { code: "LAUNCHER_UPGRADE_REQUIRED" } });
+      expect(requests).toEqual([]);
+    }
+  );
+
   it("maps quarantine certificate uploads to the dedicated multipart route", async () => {
     const { handlers, requests } = createHandlers({});
     const result = await handlers.upload_quarantine_certificate?.(

@@ -12,7 +12,7 @@ import { literalStoreNameScope, readablePartitionScope } from "./structured-part
 import { enqueueStorageGarbage, storageGarbageKeyHash } from "./storage-garbage.js";
 
 export interface PartitionDownloadScope {
-  dataset: "business" | "dishes";
+  dataset: "business" | "dishes" | "settled_orders";
   enterpriseKey: string;
   enterpriseName: string;
   startDate: string;
@@ -112,7 +112,7 @@ export function canonicalizePartitionDownloadScope(
     Number.isFinite(Date.parse(value)) &&
     new Date(value).toISOString().slice(0, 10) === value;
   if (
-    !["business", "dishes"].includes(scope.dataset) ||
+    !["business", "dishes", "settled_orders"].includes(scope.dataset) ||
     !scope.enterpriseKey.trim() ||
     !scope.enterpriseName.trim() ||
     !date(scope.startDate) ||

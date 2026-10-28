@@ -6,7 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getParseErrorMessage } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { CallToolRequestSchema, ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import type { CostCardManifest } from "@smedc/domain";
+import { isPartitionDataset, type CostCardManifest } from "@smedc/domain";
 import {
   FILE_UPLOAD_ADMIN_REQUIRED_CODE,
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
@@ -388,7 +388,8 @@ async function proxyLocalPathUpload(
   const structuredInput = input as Record<string, unknown>;
   if (
     toolName === "upload_structured_dataset" &&
-    (structuredInput["dataset"] === "business" || structuredInput["dataset"] === "dishes")
+    typeof structuredInput["dataset"] === "string" &&
+    isPartitionDataset(structuredInput["dataset"])
   ) {
     return proxyPartitionUpload(
       {
@@ -430,7 +431,7 @@ async function proxyPartitionUpload(
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   const value = parsed.data as {
     file: { name: string; mediaType: string; encoding: "path"; filePath: string };
-    dataset: "business" | "dishes";
+    dataset: "business" | "dishes" | "settled_orders";
     enterpriseName: string;
     startDate: string;
     endDate: string;
@@ -441,7 +442,7 @@ async function proxyPartitionUpload(
   if (!value.startDate || !value.endDate) {
     return errorToolResult(
       "MCP_INPUT_VALIDATION_ERROR",
-      "business and dishes require startDate and endDate."
+      "Partition datasets require startDate and endDate."
     );
   }
   try {

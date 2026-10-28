@@ -65,7 +65,7 @@ export interface ClaimedProcessingRun {
   };
   partitionImport?: {
     jobId: string;
-    dataset: "business" | "dishes";
+    dataset: "business" | "dishes" | "settled_orders";
     enterpriseKey: string;
     enterpriseName: string;
     confidentialityLevel: number;

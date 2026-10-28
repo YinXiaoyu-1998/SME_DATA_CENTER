@@ -9,9 +9,10 @@ import {
 } from "./structured-registry.js";
 
 describe("structured field registries", () => {
-  test("routes only business and dishes through partition extracts", () => {
+  test("routes operating datasets through partition extracts", () => {
     expect(getStructuredRegistry("business").accessMode).toBe("partition_extract");
     expect(getStructuredRegistry("dishes").accessMode).toBe("partition_extract");
+    expect(getStructuredRegistry("settled_orders").accessMode).toBe("partition_extract");
 
     for (const dataset of ["vip", "dish_catalog", "delivery_ledger", "supplier_catalog"] as const) {
       expect(getStructuredRegistry(dataset).accessMode).toBe("row_query");
@@ -26,7 +27,8 @@ describe("structured field registries", () => {
       "dish_catalog",
       "delivery_ledger",
       "supplier_catalog",
-      "cost_cards"
+      "cost_cards",
+      "settled_orders"
     ]);
 
     expect(getStructuredRegistry("delivery_ledger")).toMatchObject({

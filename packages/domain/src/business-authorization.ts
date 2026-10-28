@@ -3,6 +3,7 @@ export type BusinessOwnership = "group" | "store";
 export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
   business: "store",
   dishes: "store",
+  settled_orders: "store",
   vip: "group",
   dish_catalog: "group",
   supplier_catalog: "group",

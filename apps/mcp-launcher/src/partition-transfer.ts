@@ -49,7 +49,7 @@ async function uploadPartitionDatasetInternal(input: {
   filePath: string;
   name: string;
   mediaType: string;
-  dataset: "business" | "dishes";
+  dataset: "business" | "dishes" | "settled_orders";
   enterpriseName: string;
   startDate: string;
   endDate: string;
@@ -129,7 +129,7 @@ async function uploadPartitionDatasetInternal(input: {
 
 async function downloadPartitionDatasetInternal(input: {
   context: PartitionTransferContext;
-  dataset: "business" | "dishes";
+  dataset: "business" | "dishes" | "settled_orders";
   enterpriseName: string;
   startDate: string;
   endDate: string;
@@ -259,7 +259,7 @@ interface UploadSession {
   nextAfterPartNumber: number | null;
 }
 interface RemoteManifest {
-  dataset: "business" | "dishes";
+  dataset: "business" | "dishes" | "settled_orders";
   enterpriseName: string;
   startDate: string;
   endDate: string;

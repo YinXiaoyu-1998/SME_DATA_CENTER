@@ -49,7 +49,7 @@ const filterShape = {
 };
 const scopeSchema = z
   .object({
-    dataset: z.enum(["business", "dishes"]),
+    dataset: z.enum(["business", "dishes", "settled_orders"]),
     enterpriseName: z.string(),
     startDate: z.iso.date(),
     endDate: z.iso.date(),
@@ -70,7 +70,7 @@ const fileSchema = z
 const manifestSchema = z
   .object({
     version: z.literal(1),
-    dataset: z.enum(["business", "dishes"]),
+    dataset: z.enum(["business", "dishes", "settled_orders"]),
     enterpriseName: z.string(),
     startDate: z.iso.date(),
     endDate: z.iso.date(),
@@ -262,7 +262,7 @@ async function extractArchive(
           try {
             const mode = (entry.externalFileAttributes >>> 16) & 0xf000;
             if (
-              !/^(manifest\.json|(?:business|dishes)_[0-9]{8}_[a-f0-9]{64}\.csv)$/.test(
+              !/^(manifest\.json|(?:business|dishes|settled_orders)_[0-9]{8}_[a-f0-9]{64}\.csv)$/.test(
                 entry.fileName
               ) ||
               entries.has(entry.fileName) ||

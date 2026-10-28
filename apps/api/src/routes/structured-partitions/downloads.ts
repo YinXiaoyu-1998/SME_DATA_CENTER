@@ -67,7 +67,7 @@ const date = z
   );
 const prepareSchema = z
   .object({
-    dataset: z.enum(["business", "dishes"]),
+    dataset: z.enum(["business", "dishes", "settled_orders"]),
     enterpriseName: z.string().min(1).max(PUBLIC_INPUT_LIMITS.enterpriseNameChars),
     startDate: date,
     endDate: date,
