@@ -128,17 +128,20 @@ export async function exportStructuredPartitions(input: {
     }
   ): Promise<void> => {
     if (!row.cells.some((cell) => cell.trim())) return;
-    // Reordered order text may occupy the first cell; dated rows still require full validation.
-    if (
-      isSummary(row.cells) &&
-      (input.dataset !== "settled_orders" ||
-        !header.mappings.some(
-          (mapping) =>
-            mapping.canonicalName === "business_date" &&
-            row.cells[mapping.sourceColumnIndex]?.trim()
-        ))
-    )
-      return;
+    if (input.dataset === "settled_orders") {
+      const fieldText = (name: string) => {
+        const column = header.mappings.find((mapping) => mapping.canonicalName === name);
+        return column ? (row.cells[column.sourceColumnIndex]?.trim() ?? "") : "";
+      };
+      const absent = (value: string) => value === "" || value === "--";
+      const storeName = fieldText("store_name");
+      // Export footers use -- for dates; real stores still require full row validation.
+      if (
+        absent(fieldText("business_date")) &&
+        (isSummary([storeName]) || (absent(storeName) && isSummary(row.cells)))
+      )
+        return;
+    } else if (isSummary(row.cells)) return;
     if (
       row.cells.length > header.width &&
       row.cells.slice(header.width).some((cell) => cell.trim())

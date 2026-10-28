@@ -158,6 +158,48 @@ describe("exportStructuredPartitions", () => {
     expect(await readdir(path.join(root, "candidates"))).toEqual([]);
   });
 
+  test.each([
+    { label: "合计", reordered: false },
+    { label: "总计", reordered: true }
+  ])(
+    "excludes settled-order $label footer with placeholder business date",
+    async ({ label, reordered }) => {
+      const root = await temporaryRoot();
+      const fields = getStructuredRegistry("settled_orders").fields.filter(
+        (field) => field.inputSource === "file"
+      );
+      if (reordered) fields.reverse();
+      const values: Record<string, string> = {
+        store_name: "合成门店",
+        business_date: "20261026",
+        order_amount: "10"
+      };
+      const footer: Record<string, string> = { store_name: label, order_amount: "10" };
+      const sourcePath = path.join(root, "footer.csv");
+      await writeFile(
+        sourcePath,
+        [
+          fields.map((field) => field.sourceColumn).join(","),
+          fields.map((field) => values[field.canonicalName] ?? "").join(","),
+          fields.map((field) => footer[field.canonicalName] ?? "--").join(",")
+        ].join("\n")
+      );
+      const result = await exportStructuredPartitions({
+        dataset: "settled_orders",
+        sourcePath,
+        outputDirectory: root,
+        limits
+      });
+      expect(result.totalRowCount).toBe(1n);
+      expect(result.partitions).toHaveLength(1);
+      const rows = parseCsv(await readFile(result.partitions[0]!.filePath), {
+        columns: true
+      }) as Record<string, string>[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ 门店: "合成门店", 营业日期: "2026-10-26" });
+    }
+  );
+
   test("accepts reordered settled-order source headers but rejects missing, unknown, duplicate and derived input columns", async () => {
     const fields = getStructuredRegistry("settled_orders").fields.filter(
       (f) => f.inputSource === "file"
@@ -227,7 +269,9 @@ describe("exportStructuredPartitions", () => {
 
   test.each([
     { field: "store_name", value: "--" },
-    { field: "business_date", value: "not-a-date" }
+    { field: "business_date", value: "not-a-date" },
+    { field: "business_date", value: "--" },
+    { field: "business_date", value: "" }
   ])(
     "validates $field when a reordered order starts with a summary label",
     async ({ field, value }) => {
@@ -283,6 +327,8 @@ describe("exportStructuredPartitions", () => {
         member: "--"
       };
       sheet.addRow(fields.map((f) => values[f.canonicalName] ?? ""));
+      const footer: Record<string, string> = { store_name: "合计", order_amount: "1.20" };
+      sheet.addRow(fields.map((f) => footer[f.canonicalName] ?? "--"));
       const sourcePath = path.join(root, "original.xlsx");
       await workbook.xlsx.writeFile(sourcePath);
       const result = await exportStructuredPartitions({
@@ -291,6 +337,8 @@ describe("exportStructuredPartitions", () => {
         outputDirectory: root,
         limits
       });
+      expect(result.totalRowCount).toBe(1n);
+      expect(result.partitions).toHaveLength(1);
       expect(result.partitions[0]).toMatchObject({ businessDate: "2026-10-27", merchantId: null });
       const [row] = parseCsv(await readFile(result.partitions[0]!.filePath), {
         columns: true
