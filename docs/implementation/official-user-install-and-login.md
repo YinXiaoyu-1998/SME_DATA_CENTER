@@ -1,28 +1,29 @@
 # Official User Installation, Login, and Session Design
 
-Status: `smedc-mcp-launcher@0.13.1` is published and independently verified. The approved installation pin and source recommendation are 0.13.1; the source minimum remains 0.12.0. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
+Status: `smedc-mcp-launcher@0.14.0` is published and independently verified. The approved installation pin and source recommendation are 0.14.0; the source minimum remains 0.12.0. Current service deployment evidence is recorded in [staging readiness](staging-readiness.md), separately from tenant activation and client acceptance.
 
 Last updated: 2026-10-28
 
 ## Business Authorization Release
 
-Launcher `0.13.1` is published and independently verified for current permission cards and
+Launcher `0.14.0` is published and independently verified for current permission cards and
 controlled admin configuration. The approved installation pin and source recommendation are
-`0.13.1`; the source minimum remains `0.12.0`. Grants are never stored in the launcher profile. The matching
+`0.14.0`; the source minimum remains `0.12.0`. Grants are never stored in the launcher profile. The matching
 service enforces current category/scope/clearance rules after explicit tenant activation; admin
 role or upload ownership does not grant ordinary content reads. See
 [the current API/MCP contract](api-contract.md) for explicit evidence/photo metadata, safe
 management status and versioned preparation/activation. Use these transport fields with the approved launcher
-0.13.1 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
+0.14.0 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
 launcher. Publication does not authorize tenant activation or establish live tenant readiness.
 
-## Settled-order candidate boundary
+## Settled-order release boundary
 
-Current source adds `settled_orders` in candidate launcher `0.14.0`. Use requires a future published,
-independently verified `0.14.0+`, matching service deployment and current independent category grants.
-This does not change the global OAuth minimum `0.12.0`, recommendation or approved install pin
-`0.13.1`, or the manual-acceptance runner. Source implementation and local package verification
-are not publication or deployment evidence. See [the order workflow](../../skills/smedc-mcp/references/settled-orders.md).
+Launcher `0.14.0` is published and independently verified, including `settled_orders`. The approved
+install pin, source recommendation and manual-acceptance runner use `0.14.0`; the global OAuth
+minimum stays `0.12.0`. Order service deployment and the observed live recommendation are recorded
+in [staging readiness](staging-readiness.md). Use still requires current independent category grants;
+publication does not configure tenants or upgrade installed clients. See
+[the order workflow](../../skills/smedc-mcp/references/settled-orders.md).
 
 ## Enterprise Onboarding Prerequisite
 
@@ -471,21 +472,21 @@ therefore be reviewed together.
 
 The official distribution artifact is a public, versioned npm package with a CLI `bin` and no
 embedded secrets. The public main GitHub repository publishes through npm Trusted Publisher/OIDC.
-Release 0.13.1 includes signed npm provenance linking the package to its GitHub Actions build and
+Release 0.14.0 includes signed npm provenance linking the package to its GitHub Actions build and
 source commit; verify it alongside registry integrity and the independently installed artifact. The standalone SMEDC skill repository contains installation and usage
 guidance plus the exact approved launcher version. It may direct an authorized employee-owned agent
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Current launcher release status: `smedc-mcp-launcher@0.13.1` is public and independently verified,
+Current launcher release status: `smedc-mcp-launcher@0.14.0` is public and independently verified,
 the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
 Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
 stage-publish-only permission. This source policy requires at least 0.12.0 for OAuth issuance and refresh and recommends
-the published 0.13.1 release; both core Skill homes pin 0.13.1. Archive delivery remains gated by the
+the published 0.14.0 release; both core Skill homes pin 0.14.0. Archive delivery remains gated by the
 service rollout.
-Launcher 0.13.1 allows 45 seconds for business MCP calls while connection and profile checks retain
+Launcher 0.14.0 allows 45 seconds for business MCP calls while connection and profile checks retain
 30 seconds; existing installations must complete the normal authorized update flow to use it.
-Npm provenance is available for 0.13.1 from the public source repository.
+Npm provenance is available for 0.14.0 from the public source repository.
 
 The launcher CLI has stable `serve`, `self-check`, and `logout` commands. Every invocation receives
 only `SMEDC_BASE_URL` with the canonical HTTPS origin. `serve` is the stdio MCP process.
@@ -741,7 +742,7 @@ authorization codes, PKCE material, passwords, or complete configuration files.
 
 ## Current Delivery Status
 
-Current source implements the installation, Device Authorization, token/session, secure-store and memory-only custody, browser administrator session, recovery, password and audit contracts above. The exact published pin is 0.13.1; supported operating systems are macOS, Windows and Linux.
+Current source implements the installation, Device Authorization, token/session, secure-store and memory-only custody, browser administrator session, recovery, password and audit contracts above. The exact published pin is 0.14.0; supported operating systems are macOS, Windows and Linux.
 
 Use [staging readiness](staging-readiness.md) for the latest verified deployment/public metadata and [beta readiness](beta-access-readiness.md) for remaining human inputs and acceptance limits. A package, login or deployment check alone does not prove a particular tenant's business permissions or every client host.
 
@@ -749,8 +750,8 @@ There is no development email-login endpoint, JWT compatibility, Authorization C
 
 ## Cost-card publication and rollout boundary
 
-Cost-card directory/CSV tools are included in published, independently verified `0.13.1`.
-The approved install pin and recommendation are 0.13.1. Verify matching service deployment
+Cost-card directory/CSV tools are included in published, independently verified `0.14.0`.
+The approved install pin and recommendation are 0.14.0. Verify matching service deployment
 and explicit cost_cards category configuration before employee use; static tool discovery
 or installation alone does not establish live service or tenant readiness.
 The addition does not change device login, secure-store/session behavior or upload role preflight.

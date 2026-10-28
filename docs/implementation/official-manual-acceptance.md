@@ -1,8 +1,8 @@
 # Official macOS Codex Manual Acceptance
 
-Last updated: 2026-10-20
+Last updated: 2026-10-28
 
-The runner uses published `smedc-mcp-launcher@0.13.1` through the official staging MCP boundary.
+The runner uses published `smedc-mcp-launcher@0.14.0` through the official staging MCP boundary.
 The employee installation pin belongs to the [core Skill](../../skills/smedc-mcp/SKILL.md).
 Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md` and `test-cases.md` before
 running it. Beta onboarding uses [the operator runbook](beta-user-onboarding-runbook.md).

@@ -1,6 +1,6 @@
 # 经营、菜品销售与店内已结账订单当前分区契约
 
-`business`、`dishes` 和 `settled_orders` 使用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。这些源码路径已经实现；`settled_orders` 仍需未来已发布并独立核验的 launcher `0.14.0+`、匹配服务部署及当前独立类别授权，批准安装 pin 保持 `0.13.1`。当前部署证据见 [staging 状态](staging-readiness.md)。历史迁移清单不再作为操作入口。
+`business`、`dishes` 和 `settled_orders` 使用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。Launcher `0.14.0` 已公开发布并独立核验，匹配服务部署已核实，批准安装 pin 为 `0.14.0`；使用仍需当前独立类别授权。当前部署和线上推荐值证据见 [staging 状态](staging-readiness.md)。历史迁移清单不再作为操作入口。
 
 ## 身份与权威数据
 

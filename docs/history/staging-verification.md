@@ -2,6 +2,18 @@
 
 本文件保留当时验证证据，不说明当前部署、权限或操作授权。当前状态见 [staging-readiness](../implementation/staging-readiness.md)。旧路径/版本仅为历史引用。
 
+## 2026-10-24：此前公开版本与部署快照
+
+以下是 2026-10-28 本次核验前的旧状态快照，供追溯；当前状态仍以 staging-readiness 为准。
+
+| 项目                 | 最新证据                                                                                                                                                                                                                                                         | 可得结论                                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Canonical 部署       | [部署 run 40066161844](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40066161844) 成功，提交 `ec9f104d902d615d3fdf113f9598d07d26b400a8`；对应 [main 质量门禁](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40065626851) 成功  | 干净重建后三个运行镜像风险门禁、发布及合成 smoke 通过；未跳过漏洞检查                                                 |
+| 公开客户端策略       | 2026-10-24 部署后只读核对官方 `/.well-known/oauth-authorization-server`：包名 `smedc-mcp-launcher`、推荐 `0.13.1`、最低 `0.12.0`；`/healthz` 200、公开 `/readyz` 404、未认证 MCP 401                                                                             | 线上推荐版本与源码及核心 Skill pin 一致，最低兼容版本不变；不替代真实租户或客户端验收                                 |
+| npm 发行物           | 2026-10-24 官方 registry 的 `0.13.1` 与 `latest` 已公开，shasum `631cd4c10e89f546b636e066e8206a5582db7458`，源码 `775034f`；[发布 run 40064001340](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40064001340) 三平台检查成功，含 npm provenance | 独立空目录安装、CLI、48 个工具发现及六处上传 MIME schema 验证通过；生产依赖审计零漏洞；不替代客户端登录或真实租户验收 |
+| 最近主机/schema 核验 | 2026-10-19 API/worker 镜像 `9484dcb6e9a9`、feedbackId 迁移及健康核验见 [此前部署](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/39243990110) 和 progress                                                                                        | 这是上一发布的现场证据，不是本次重新核实的运行镜像；之后部署以首行工作流证据为限                                      |
+| 业务与客户端验收     | 2026-10-17 门店评价合成验收 172 项、企业接入修复 174 项及清理记录见 [progress](../implementation/progress.md)                                                                                                                                                    | 不替代当前真实租户授权、回填、Device Authorization 浏览器验收或完整官方人工验收                                       |
+
 ## 2026-10-17：门店评价 0.11.0 发布与针对性验收
 
 - 发布链路：产品 [PR #248](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/248) 合并为 `ad66f31d22e51cf38e748d58e1bb4b2af6c1c440`；[native release 39007346787](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/39007346787) 在 macOS、Windows、Ubuntu 通过后，经本人批准公开发布 launcher 0.11.0。独立官方 registry 安装验证全部五个包文件与该提交构建一致、生产审计零漏洞、48 tools 且新增两个评价工具的输入均要求 `enterpriseName`。Registry shasum 为 `4e1d011d687b017a28d340993d9321ecbc26b5ab`；完整 integrity 见同日 [progress](../implementation/progress.md) 记录。

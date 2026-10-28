@@ -1,6 +1,6 @@
 # 店内已结账订单实施入口
 
-权威规格：[Issue #283 — 支持店内已结账订单完整快照与结账方式 JSON](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/283)，标签 `ready-for-agent`。业务设计及测试边界已确认；类别、解析和上传→原子发布→授权本地 CSV/ZIP 链路已在当前源码实现，候选 launcher 为 `0.14.0`，发行和匹配服务部署仍待独立核验。本文仅保留实施拆分和代码定位，不复制完整规格。
+权威规格：[Issue #283 — 支持店内已结账订单完整快照与结账方式 JSON](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/283)。类别、解析和上传→原子发布→授权本地 CSV/ZIP 链路已实现；launcher `0.14.0` 已公开发布并独立核验，匹配服务部署已核实。发布及线上策略证据见 [staging 状态](staging-readiness.md)。本文仅保留实施拆分和代码定位，不复制完整规格。
 
 实现以 `main` 为基线。领域术语见 [CONTEXT.md](../../CONTEXT.md)，既有架构及生命周期见[经营分区契约](structured-partitions.md)。按根规则保持单一实现主线、比例适当的测试和一次完整交付核查。
 
@@ -24,6 +24,6 @@
 
 ## 交付边界
 
-当前有效用法见[核心订单 reference](../../skills/smedc-mcp/references/settled-orders.md)。订单能力须等待未来已发布、独立验证的 launcher `0.14.0+`，匹配服务部署和当前类别授权。源码候选版本不改变全局最低 `0.12.0`、推荐及安装 pin `0.13.1`，不更新人工验收运行器 pin。
+当前有效用法见[核心订单 reference](../../skills/smedc-mcp/references/settled-orders.md)。批准安装 pin、源码推荐及人工验收运行器使用已发布且独立验证的 `0.14.0`，全局最低仍为 `0.12.0`；实际使用还需当前类别授权。线上推荐值由后续服务部署应用，不从源码同步推断已生效。
 
 实现 PR 应引用 Issue #283，并提供已确认公共行为的测试证据、兼容性说明和分类 diff 行数。功能合并、launcher 发布、服务部署、企业授权和真实导入分别取证。基础实施不增加外部设施或环境配置；若发现需要实质扩大范围，先说明原因。

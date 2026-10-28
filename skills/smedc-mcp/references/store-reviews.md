@@ -1,7 +1,7 @@
 # Store reviews
 
-Launcher `0.13.1` is published, independently verified and approved for installation. Use the
-core Skill's exact `smedc-mcp-launcher@0.13.1` installation procedure. Store-review tools require
+Launcher `0.14.0` is published, independently verified and approved for installation. Use the
+core Skill's exact `smedc-mcp-launcher@0.14.0` installation procedure. Store-review tools require
 the matching service release and explicit tenant category/grant configuration. Publication,
 installation, a Skill refresh or tools/list alone does not establish service or tenant readiness;
 verify current permission candidates and follow authoritative server denials.
