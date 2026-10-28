@@ -91,15 +91,20 @@ One launcher child process per connected host is normal. Several hosts — inclu
 session, Codex, or another MCP client — can legitimately run their own copy of the same launcher
 at the same time, from the same versioned directory.
 
-- **Never kill or remove launcher processes or configuration entries you did not create.** An idle
-  or seemingly redundant launcher may belong to another host that is still using it. Leaving a
-  foreign entry in place is always safer than cleaning it up.
+- **During an approved upgrade, migrate all discovered current-user SMEDC integrations.** An old
+  process belonging to dsh, Codex or an earlier session must be updated or stopped even when this
+  agent did not create it. Another host using the old version is not a reason to preserve it.
 - Identify a process by its resolved executable path and parent process, not by its argv shape
   alone, and never print secret arguments.
-- To refresh this host, disconnect or restart only dsh's own connection. Do not stop the shared
-  daemon, do not remove other hosts' entries, and do not uninstall the launcher to "reset".
-- `self-check` is credential-free and safe to run repeatedly; prefer it over restarting anything.
-- Do not delete files under the versioned launcher directory as part of troubleshooting.
+- Repoint the affected profiles and other hosts to the approved launcher, then use supported
+  connection reloads or stop each revalidated obsolete SMEDC child PID. Preserve unrelated plugins
+  and shared runtimes; never use a broad node/process kill. Check for respawn and fix its owning
+  SMEDC configuration before retrying.
+- `self-check` checks the new package; complete an upgrade with native host reconnection and
+  removal of superseded SMEDC entries and files under the shared upgrade procedure. A required
+  manual host restart is a pending verification step, not a reason to retain the old installation
+  after all references and old processes have been retired.
+- Routine troubleshooting does not authorize uninstalling clients or changing unrelated hosts.
 
 ## Scope reminder
 

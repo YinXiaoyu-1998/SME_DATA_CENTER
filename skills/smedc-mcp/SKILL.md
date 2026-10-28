@@ -509,8 +509,9 @@ looks like a certificate.
 An employee may ask in natural language to install, update, or repair SMEDC. The
 employee does not need to run these commands personally. Agents should also offer an update when
 a self-check reports `recommendedUpdateAvailable: true` (see Tool Discovery). Work only for the
-current OS user. Ordinary installation targets the invoking agent; full old-version cleanup also
-covers that user's safely discoverable SMEDC integrations as defined in the required
+current OS user. A new installation targets the invoking agent. An upgrade covers that user's
+safely discoverable existing SMEDC integrations across hosts, including their obsolete processes,
+launcher installations and MCP entries, as defined in the required
 [upgrade and cleanup procedure](references/upgrade-cleanup.md). Read it before any launcher update
 or old-version cleanup, including when the approved version is already installed. Refresh the
 official skill first; use only its approved exact version.
@@ -821,10 +822,11 @@ pointing `command` at the absolute launcher path in the versioned directory abov
 `args: ["serve"]` and the sole `SMEDC_BASE_URL` value. dsh exposes the tools as
 `mcp__smedc__<tool>`; the launcher still receives the bare name.
 
-See [dsh-compat.md](references/dsh-compat.md) for the copy-paste entry, the name mapping, and
-launcher process hygiene. Never remove or kill launcher processes or configuration entries that
-belong to another host, even when they appear idle or unused. This subsection covers the current
-dsh release only; other hosts do not need that file.
+See [dsh-compat.md](references/dsh-compat.md) for the copy-paste entry, name mapping and process
+hygiene. During an upgrade, migrate dsh and other discovered current-user SMEDC integrations
+together; another host using an obsolete launcher is a migration target, not a reason to retain it.
+Verify each SMEDC process and entry before changing it. This subsection covers the current dsh
+release only; other hosts do not need that file.
 
 ### Other Agents
 
