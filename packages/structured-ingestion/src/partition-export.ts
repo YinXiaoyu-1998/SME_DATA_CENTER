@@ -458,15 +458,21 @@ function canonicalCell(
 
 function paymentJson(value: string, rowNumber: number): string {
   if (!value.trim() || value.trim() === "--") return "null";
-  const items = value.split("，").map((item) => {
+  const items = value.split("，").map((item, index) => {
+    const location = `Row ${rowNumber} payment_method item ${index + 1}`;
     const match =
-      /^(.*?)\s+([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:\((退款|找零)\)|（(退款|找零)）)?\s*$/u.exec(
+      /^(.*?)\s+([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:\(([^()（）]*)\)|（([^()（）]*)）)?\s*$/u.exec(
         item.trim()
       );
     if (!match || !match[1]?.trim())
-      throw invalidSource(`Row ${rowNumber} payment_method cannot be parsed completely.`);
+      throw invalidSource(`${location} cannot be parsed completely.`);
+    const marker = match[3] ?? match[4] ?? null;
+    if (marker !== null && !["退款", "找零", "撤销找零"].includes(marker))
+      throw invalidSource(
+        `${location} has an unsupported marker; supported markers: 退款, 找零, 撤销找零.`
+      );
     // Emit the canonical decimal token directly: JSON numbers must not pass through IEEE-754.
-    return `{"method":${JSON.stringify(match[1].trim())},"amount":${canonicalDecimal(match[2]!)},"marker":${JSON.stringify(match[3] ?? match[4] ?? null)}}`;
+    return `{"method":${JSON.stringify(match[1].trim())},"amount":${canonicalDecimal(match[2]!)},"marker":${JSON.stringify(marker)}}`;
   });
   return `[${items.join(",")}]`;
 }
