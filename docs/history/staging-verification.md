@@ -2,6 +2,10 @@
 
 本文件保留当时验证证据，不说明当前部署、权限或操作授权。当前状态见 [staging-readiness](../implementation/staging-readiness.md)。旧路径/版本仅为历史引用。
 
+## 2026-10-28：订单首次部署与客户端策略快照
+
+[部署 40698985223](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40698985223) 和 [质量门禁 40697665741](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40697665741) 对应订单首次实现提交 `3f4eeff`。当时只读发现线上推荐仍为 `0.13.1`、最低为 `0.12.0`；尚未执行本次订单线上认证端到端验收。此前直接主机/schema 核验停留在 2026-10-19 的 `9484dcb6e9a9`。这是更新前的历史快照，后续部署、当前策略及已完成范围见 [当前就绪状态](../implementation/staging-readiness.md)。
+
 ## 2026-10-24：此前公开版本与部署快照
 
 以下是 2026-10-28 本次核验前的旧状态快照，供追溯；当前状态仍以 staging-readiness 为准。
