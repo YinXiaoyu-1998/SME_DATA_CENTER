@@ -170,7 +170,8 @@ exact decimal value. CSV is UTF-8 without BOM, quoted as needed, LF with a final
 
 `结账方式` retains the original text. `结账方式JSON` is an ordered array of
 `{method, amount, marker}`: full method name, signed JSON number, and `null` or the original
-`退款`/`找零` marker. For example, source `员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.1（找零）`
+`退款`/`找零`/`撤销找零` marker, accepting halfwidth or fullwidth parentheses.
+For example, source `员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.1（找零），现金 0.1(撤销找零)`
 produces:
 
 ```json
@@ -178,15 +179,20 @@ produces:
   { "method": "员工 卡", "amount": 10, "marker": null },
   { "method": "现金", "amount": -2.3, "marker": "退款" },
   { "method": "现金", "amount": -2.3, "marker": "退款" },
-  { "method": "现金", "amount": -0.1, "marker": "找零" }
+  { "method": "现金", "amount": -0.1, "marker": "找零" },
+  { "method": "现金", "amount": 0.1, "marker": "撤销找零" }
 ]
 ```
 
 Preserve repeated methods and identical entries; do not sum them into a method-to-amount object,
 net refunds against sales, infer transaction links or treat array order as event chronology.
+`撤销找零` support requires a matching service release containing the compatibility fix;
+installing launcher `0.14.0` alone does not add server parsing support.
 Use exact decimal parsing for CSV and JSON amounts (for example Python JSON `parse_float=Decimal`,
 `parse_int=Decimal`) rather than binary floating point. An empty/`--` payment cell emits JSON `null`
-while retaining its raw text; nonempty unparseable content rejects the entire source with a row
-location. The service does not validate payment totals against order totals or infer missing amounts.
+while retaining its raw text; nonempty unparseable content or unsupported markers reject the entire
+source with the source row, 1-based payment item index and failure reason. Report the service error
+and retain the original file for resubmission after the service update; do not remove markers or skip
+orders to bypass validation. The service does not validate payment totals against order totals or infer missing amounts.
 Current CSVs are authoritative; temporary source workbooks are cleaned after terminal processing.
 There is no retained original Excel, historical partition or MySQL order-row download path.

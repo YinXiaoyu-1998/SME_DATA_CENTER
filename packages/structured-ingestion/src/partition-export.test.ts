@@ -45,7 +45,7 @@ describe("exportStructuredPartitions", () => {
       pickup_number: "--",
       member: "未知",
       payment_method:
-        "员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.1（找零），精确 9007199254740993.123456789",
+        "员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.1（找零），现金 +0.10(撤销找零)，现金 +0.10（撤销找零），精确 9007199254740993.123456789",
       order_note: '备注,含"引号"'
     };
     const csv = (cells: string[]) => cells.map((v) => `"${v.replaceAll('"', '""')}"`).join(",");
@@ -83,7 +83,7 @@ describe("exportStructuredPartitions", () => {
       结账方式: values.payment_method
     });
     expect(rows[0]!["结账方式JSON"]).toBe(
-      '[{"method":"员工 卡","amount":10,"marker":null},{"method":"现金","amount":-2.3,"marker":"退款"},{"method":"现金","amount":-2.3,"marker":"退款"},{"method":"现金","amount":-0.1,"marker":"找零"},{"method":"精确","amount":9007199254740993.123456789,"marker":null}]'
+      '[{"method":"员工 卡","amount":10,"marker":null},{"method":"现金","amount":-2.3,"marker":"退款"},{"method":"现金","amount":-2.3,"marker":"退款"},{"method":"现金","amount":-0.1,"marker":"找零"},{"method":"现金","amount":0.1,"marker":"撤销找零"},{"method":"现金","amount":0.1,"marker":"撤销找零"},{"method":"精确","amount":9007199254740993.123456789,"marker":null}]'
     );
     expect(rows[1]).toEqual(rows[0]);
   });
@@ -123,6 +123,51 @@ describe("exportStructuredPartitions", () => {
     expect(row!["结账方式JSON"]).toBe("null");
     expect(row!["结账方式"]).toBe(payment);
   });
+
+  test.each([
+    { payment: "现金 10，现金 1(未知标记)", reason: "has an unsupported marker" },
+    { payment: "现金 10，现金 1(撤销找零) trailing", reason: "cannot be parsed completely" }
+  ])(
+    "locates invalid payment items and cleans the whole source: $payment",
+    async ({ payment, reason }) => {
+      const root = await temporaryRoot();
+      const fields = getStructuredRegistry("settled_orders").fields.filter(
+        (field) => field.inputSource === "file"
+      );
+      const values: Record<string, string> = {
+        store_name: "合成门店",
+        business_date: "20261027",
+        payment_method: "现金 10"
+      };
+      const sourcePath = path.join(root, "source.csv");
+      await writeFile(
+        sourcePath,
+        [
+          fields.map((field) => field.sourceColumn).join(","),
+          fields.map((field) => values[field.canonicalName] ?? "").join(","),
+          fields
+            .map((field) =>
+              field.canonicalName === "payment_method"
+                ? payment
+                : (values[field.canonicalName] ?? "")
+            )
+            .join(",")
+        ].join("\n")
+      );
+      await expect(
+        exportStructuredPartitions({
+          dataset: "settled_orders",
+          sourcePath,
+          outputDirectory: root,
+          limits
+        })
+      ).rejects.toMatchObject({
+        code: "PARTITION_SOURCE_INVALID",
+        message: expect.stringContaining(`Row 3 payment_method item 2 ${reason}`)
+      });
+      expect(await readdir(path.join(root, "candidates"))).toEqual([]);
+    }
+  );
 
   test.each([
     { field: "payment_method", value: "现金 10，无法解析" },
@@ -322,7 +367,7 @@ describe("exportStructuredPartitions", () => {
         business_date: "20261027",
         order_id: "0001",
         ordered_at: "2026-10-28 00:01",
-        payment_method: "  员工 卡 1.20，现金 -0.1（找零）  ",
+        payment_method: "  员工 卡 1.20，现金 -0.1（找零），现金 0.1(撤销找零)  ",
         diner_count: "--",
         member: "--"
       };
@@ -353,7 +398,8 @@ describe("exportStructuredPartitions", () => {
       });
       expect(JSON.parse(row!["结账方式JSON"]!)).toEqual([
         { method: "员工 卡", amount: 1.2, marker: null },
-        { method: "现金", amount: -0.1, marker: "找零" }
+        { method: "现金", amount: -0.1, marker: "找零" },
+        { method: "现金", amount: 0.1, marker: "撤销找零" }
       ]);
     }
   );
