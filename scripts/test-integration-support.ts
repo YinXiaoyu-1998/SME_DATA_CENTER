@@ -1,3 +1,4 @@
+import type { PartitionDatasetName } from "@smedc/domain";
 import { parse as parseCsv } from "csv-parse/sync";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -188,6 +189,52 @@ export async function createSettledOrderIntegrationFixture(
   return { headers, rows, xlsx: Buffer.from(await book.xlsx.writeBuffer()) };
 }
 
+export async function createTakeawayOrderIntegrationFixture(
+  overrides?: Array<Record<string, string>>
+) {
+  const headers =
+    "门店,机构编码,订单来源,外卖订单号,收银订单号,订单状态,订单形式,退单标识,取餐号,全渠道流水号,营业日期,下单时间,接单时间,完成时间,取消时间,退单时间,配送方式,菜品总价(元),餐盒费(元),配送费(元),订单金额(元),配送费(商家收入)(元),外卖营业额(元),平台服务费(元),商家活动支出(元),其他支出(元),本单预计收入(原)(元),部分退款(元),营业优惠/支出(元),营业收入(元),顾客实付(元),餐盒费优惠(元),餐盒费收入(元)".split(
+      ","
+    );
+  const base = {
+    门店: "合成甲店",
+    机构编码: "0007",
+    营业日期: "20261027",
+    外卖订单号: "000012",
+    收银订单号: "000900719925474099312345",
+    全渠道流水号: "000000009",
+    订单来源: "平台甲",
+    下单时间: "2026-10-28 00:03",
+    接单时间: "--",
+    完成时间: "--",
+    退单时间: "2026-10-29 01:00",
+    取餐号: "--",
+    订单状态: "制作中",
+    订单形式: "新形式",
+    退单标识: "部分退款",
+    配送方式: '未知配送,含"引号"\n第二行',
+    "订单金额(元)": "12.30",
+    "营业收入(元)": "12.30",
+    "部分退款(元)": "-2.30",
+    "平台服务费(元)": "-0.10",
+    "餐盒费(元)": "0",
+    "配送费(元)": "--"
+  };
+  const rows: Array<Record<string, string>> = overrides ?? [
+    { ...base },
+    { ...base },
+    { ...base, 营业日期: "20261026", "营业收入(元)": "5" },
+    { ...base, 门店: "合成乙店", 外卖订单号: "000013", "营业收入(元)": "8" },
+    { ...base, 订单来源: "未来平台乙", 订单状态: "配送中", "营业收入(元)": "2" }
+  ];
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet("有效外卖合成");
+  sheet.addRow(["平台外卖订单明细—有效订单（合成）"]);
+  sheet.addRow(headers);
+  rows.forEach((row) => sheet.addRow(headers.map((header) => row[header] ?? "")));
+  return { headers, rows, xlsx: Buffer.from(await book.xlsx.writeBuffer()) };
+}
+
 export function integrationDatabasePlan(baseUrl: string, mysqlPort: string) {
   let base: URL;
   try {
@@ -285,7 +332,7 @@ async function summarizeExtract(extract: LocalExtract, amountColumn: string) {
 export async function comparePartitionDownloads(input: {
   context: PartitionTransferContext;
   scope: {
-    dataset: "business" | "dishes" | "settled_orders";
+    dataset: PartitionDatasetName;
     enterpriseName: string;
     startDate: string;
     endDate: string;

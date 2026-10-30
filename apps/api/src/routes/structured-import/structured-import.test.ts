@@ -309,7 +309,7 @@ describe("structured imports", () => {
     expect(structuredImportRepository.rows).toHaveLength(0);
   });
 
-  it.each(["business", "dishes", "settled_orders"] as const)(
+  it.each(["business", "dishes", "settled_orders", "takeaway_orders"] as const)(
     "requires the partition upload protocol for %s",
     async (dataset) => {
       const { app, documentRepository, storagePutCalls } = await buildStructuredImportTestServer();

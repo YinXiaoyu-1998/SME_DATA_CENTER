@@ -23,7 +23,9 @@
 | 测试与交付                  | [测试入口](implementation/test-cases.md)、[正式人工验收](implementation/official-manual-acceptance.md)、[Beta 就绪条件](implementation/beta-access-readiness.md)、[开户手册](implementation/beta-user-onboarding-runbook.md)          |
 | 依赖风险                    | [当前风险政策](implementation/dependency-risk-register.md)                                                                                                                                                                            |
 | 使用场景                    | [Use Cases](context/use-cases.md)                                                                                                                                                                                                     |
-| 已确认但尚未实现的功能      | [Skills Shop](implementation/skills-shop.md)、[平台外卖订单规格 Issue #293](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/293)；只按明确决策规划，不视为已上线能力                                                         |
+| 已确认但尚未实现的功能      | [Skills Shop](implementation/skills-shop.md)；只按明确决策规划，不视为已上线能力                                                                                                                                                      |
+
+平台外卖订单 `takeaway_orders` 已在源码实现，launcher `0.15.0` 尚未发布；契约见[经营分区](implementation/structured-partitions.md)，来源规格见 [Issue #293](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/293)。发布、部署及租户授权须独立确认。
 
 ## 历史与过程记录
 

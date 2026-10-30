@@ -107,6 +107,7 @@ export const permissionsCopy = {
   supplier_catalog: { zh: "供应商目录", en: "Supplier catalog" },
   store_reviews: { zh: "店铺评价", en: "Store reviews" },
   cost_cards: { zh: "成本卡", en: "Cost cards" },
+  takeaway_orders: { zh: "平台外卖订单明细", en: "Platform takeaway order details" },
   settled_orders: { zh: "店内已结账订单明细", en: "Settled in-store order details" },
   name: { zh: "名称", en: "Name" },
   retired: { zh: "已停用", en: "Retired" },

@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { Prisma, PrismaClient, type PartitionDownloadRequest } from "@prisma/client";
 import {
+  type PartitionDatasetName,
   loadPartitionDownloadLimits,
+  isPartitionDataset,
   parsePartitionStoreNameContains,
   type PartitionDownloadLimits
 } from "@smedc/domain";
@@ -12,7 +14,7 @@ import { literalStoreNameScope, readablePartitionScope } from "./structured-part
 import { enqueueStorageGarbage, storageGarbageKeyHash } from "./storage-garbage.js";
 
 export interface PartitionDownloadScope {
-  dataset: "business" | "dishes" | "settled_orders";
+  dataset: PartitionDatasetName;
   enterpriseKey: string;
   enterpriseName: string;
   startDate: string;
@@ -112,7 +114,7 @@ export function canonicalizePartitionDownloadScope(
     Number.isFinite(Date.parse(value)) &&
     new Date(value).toISOString().slice(0, 10) === value;
   if (
-    !["business", "dishes", "settled_orders"].includes(scope.dataset) ||
+    !isPartitionDataset(scope.dataset) ||
     !scope.enterpriseKey.trim() ||
     !scope.enterpriseName.trim() ||
     !date(scope.startDate) ||

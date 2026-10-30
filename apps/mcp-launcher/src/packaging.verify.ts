@@ -125,7 +125,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.14.0");
+    expect(manifest.version).toBe("0.15.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -151,7 +151,7 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.14.0");
+      expect(client.getServerVersion()?.version).toBe("0.15.0");
       const tools = await client.listTools();
       expect(
         tools.tools.find((tool) => tool.name === "upsert_store_reviews")?.inputSchema
@@ -248,10 +248,12 @@ describe("published launcher artifact", () => {
       ]) {
         expect(tools.tools.find((tool) => tool.name === name)?.inputSchema, name).toMatchObject({
           type: "object",
-          properties: { dataset: { enum: expect.arrayContaining(["settled_orders"]) } }
+          properties: {
+            dataset: { enum: expect.arrayContaining(["settled_orders", "takeaway_orders"]) }
+          }
         });
       }
-      expect(structuredUpload?.description).toContain("0.14.0+");
+      expect(structuredUpload?.description).toContain("0.15.0+");
       expect(structuredUpload?.inputSchema).toMatchObject({
         properties: {
           file: {

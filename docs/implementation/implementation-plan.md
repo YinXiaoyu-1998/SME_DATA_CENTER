@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 身份与客户端 | 第一方密码设置/登录、Device Authorization、不透明 token、轮换 durable session、官方 stdio launcher | [安装登录](official-user-install-and-login.md) |
 | 普通文档 | MD/TXT/DOCX 解析、版本化混合检索、重排/相关性裁剪、按页原件链接 | [处理管线](data-pipelines.md) |
-| 经营、菜品销售与店内已结账订单 | launcher multipart 原件传输、worker 原子发布 OSS 当前门店日分区、授权清单及本地校验下载 | [分区契约](structured-partitions.md) |
+| 经营、菜品销售、店内订单与平台外卖订单 | launcher multipart 原件传输、worker 原子发布 OSS 当前门店日分区、授权清单及本地校验下载 | [分区契约](structured-partitions.md) |
 | 其他结构化资料 | 会员、菜品目录、供应商目录的受控查询和原件关联；配送台账仅内部输入 | [API 契约](api-contract.md) |
 | 检疫证明与台账 | 单门店照片、独立 PDF 权限、计划生成/修复、覆盖与 ZIP 下载 | [PDF 运维](ledger-pdf-operations.md) |
 | 成本卡 | 原件校验、逐卡 CSV 与 MySQL 目录、受权本地下载、归档/恢复 | [成本卡设计](cost-card-design.md) |
@@ -22,6 +22,8 @@
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
 
 这些能力已存在于当前源码。`settled_orders` 已随 launcher `0.14.0` 公开发布并独立核验，匹配服务部署也已核实；批准安装 pin 和源码推荐为 `0.14.0`，使用仍需当前类别授权。代码合并、launcher 发布、服务部署、某租户的配置/激活和正式业务验收分别取证，不互相替代。最近已验证的部署、公开版本与线上推荐值见 [staging 状态](staging-readiness.md)。
+
+`takeaway_orders` 已在源码接入同一分区链路；launcher 候选 `0.15.0` 尚未发布，安装 pin/推荐仍为 `0.14.0`。前向枚举迁移、匹配服务部署及真实企业授权须分别核验，源码交付不执行发布、部署或真实数据回填。
 
 ## 阶段边界
 

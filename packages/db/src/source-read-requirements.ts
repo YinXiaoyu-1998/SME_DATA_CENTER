@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type BusinessAuthorizationMode, type PrismaClient } from "@prisma/client";
 import {
+  type PartitionDatasetName,
   FIXED_BUSINESS_CATEGORY_OWNERSHIP,
   type FixedBusinessCategoryKey,
   isBusinessClearance,
@@ -333,7 +334,7 @@ export async function persistPartitionReadRequirement(
   input: {
     orgId: string;
     partitionId: string;
-    dataset: "business" | "dishes" | "settled_orders";
+    dataset: PartitionDatasetName;
     enterpriseKey: string;
     storeName: string;
     workerId: string;

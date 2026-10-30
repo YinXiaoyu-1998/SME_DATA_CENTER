@@ -3,6 +3,7 @@ import {
   SMEDC_MCP_TOOL_CONTRACTS,
   COST_CARD_LAUNCHER_VERSION,
   SETTLED_ORDER_LAUNCHER_VERSION,
+  TAKEAWAY_ORDER_LAUNCHER_VERSION,
   apiErrorToolResult,
   errorToolResult,
   jsonToolResult,
@@ -143,6 +144,16 @@ async function uploadStructuredDataset(
     input && typeof input === "object" && "dataset" in input
       ? (input as { dataset?: unknown }).dataset
       : undefined;
+  if (
+    requestedDataset === "takeaway_orders" &&
+    !launcherVersionAtLeast(context.audit.launcherVersion, TAKEAWAY_ORDER_LAUNCHER_VERSION)
+  )
+    return errorToolResult(
+      "LAUNCHER_UPGRADE_REQUIRED",
+      "Update the SMEDC launcher before using takeaway orders.",
+      undefined,
+      { requestId: context.audit.requestId }
+    );
   if (
     requestedDataset === "settled_orders" &&
     !launcherVersionAtLeast(context.audit.launcherVersion, SETTLED_ORDER_LAUNCHER_VERSION)

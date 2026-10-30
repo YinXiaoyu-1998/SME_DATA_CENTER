@@ -86,6 +86,7 @@ enum ImportDataset {
   supplier_catalog
   cost_cards
   settled_orders
+  takeaway_orders
 }
 
 enum ImportBatchStatus {
@@ -102,6 +103,7 @@ enum PartitionDataset {
   dishes
   business
   settled_orders
+  takeaway_orders
 }
 
 enum PartitionImportJobStatus {

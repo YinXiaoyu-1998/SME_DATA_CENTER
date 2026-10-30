@@ -1,3 +1,4 @@
+import type { PartitionDatasetName } from "@smedc/domain";
 import open from "open";
 import os from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -431,7 +432,7 @@ async function proxyPartitionUpload(
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   const value = parsed.data as {
     file: { name: string; mediaType: string; encoding: "path"; filePath: string };
-    dataset: "business" | "dishes" | "settled_orders";
+    dataset: PartitionDatasetName;
     enterpriseName: string;
     startDate: string;
     endDate: string;

@@ -360,17 +360,19 @@ describe("upload MCP tool handlers", () => {
     });
   });
 
-  it.each([null, "0.13.1"])(
-    "requires a settled-order capable launcher before legacy proxy (%s)",
-    async (launcherVersion) => {
+  it.each([
+    ["settled_orders", null],
+    ["settled_orders", "0.13.1"],
+    ["takeaway_orders", null],
+    ["takeaway_orders", "0.14.0"]
+  ])(
+    "requires a capable %s launcher before legacy proxy (%s)",
+    async (dataset, launcherVersion) => {
       const { handlers, requests } = createHandlers({});
-      const result = await handlers.upload_structured_dataset!(
-        validStructuredInput({ dataset: "settled_orders" }),
-        {
-          ...mcpContext,
-          audit: { ...mcpAudit, launcherVersion }
-        }
-      );
+      const result = await handlers.upload_structured_dataset!(validStructuredInput({ dataset }), {
+        ...mcpContext,
+        audit: { ...mcpAudit, launcherVersion }
+      });
       expect(parseResult(result)).toMatchObject({ error: { code: "LAUNCHER_UPGRADE_REQUIRED" } });
       expect(requests).toEqual([]);
     }

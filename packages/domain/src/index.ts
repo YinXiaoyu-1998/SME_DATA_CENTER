@@ -130,6 +130,7 @@ export {
   PARTITION_ERROR_CODES,
   PartitionContractError,
   isPartitionDataset,
+  isOrderPartitionDataset,
   normalizeEnterpriseIdentity,
   partitionStoreIdentity,
   type PartitionDatasetName,

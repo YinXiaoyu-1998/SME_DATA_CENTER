@@ -7,7 +7,7 @@ import path from "node:path";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
-import { PARTITION_DATASETS } from "@smedc/domain";
+import { PARTITION_DATASETS, isPartitionDataset } from "@smedc/domain";
 import {
   abortable,
   apiJson,
@@ -263,9 +263,10 @@ async function extractArchive(
           try {
             const mode = (entry.externalFileAttributes >>> 16) & 0xf000;
             if (
-              !/^(manifest\.json|(?:business|dishes|settled_orders)_[0-9]{8}_[a-f0-9]{64}\.csv)$/.test(
-                entry.fileName
-              ) ||
+              (entry.fileName !== "manifest.json" &&
+                !isPartitionDataset(
+                  /^([a-z_]+)_[0-9]{8}_[a-f0-9]{64}\.csv$/.exec(entry.fileName)?.[1] ?? ""
+                )) ||
               entries.has(entry.fileName) ||
               (mode !== 0 && mode !== 0x8000) ||
               (entry.externalFileAttributes & 0x10) !== 0 ||

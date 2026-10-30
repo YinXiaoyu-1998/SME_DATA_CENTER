@@ -1,4 +1,9 @@
-export const PARTITION_DATASETS = ["business", "dishes", "settled_orders"] as const;
+export const PARTITION_DATASETS = [
+  "business",
+  "dishes",
+  "settled_orders",
+  "takeaway_orders"
+] as const;
 
 export type PartitionDatasetName = (typeof PARTITION_DATASETS)[number];
 
@@ -111,4 +116,9 @@ function normalizeIdentityText(value: string): string {
 
 function asciiLowercase(value: string): string {
   return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+}
+
+/** Order reports were introduced after business authorization; no legacy read entitlement. */
+export function isOrderPartitionDataset(value: string): boolean {
+  return value === "settled_orders" || value === "takeaway_orders";
 }
