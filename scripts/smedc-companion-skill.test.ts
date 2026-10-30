@@ -190,43 +190,47 @@ it("applies published feedback examples without merging same-minute platform rec
   ).toMatchObject({ feedbackId: "feedback-test-a" });
 });
 
-it("validates settled-order Skill examples against the public upload and extract contracts", async () => {
-  const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
-  expect(skill).toContain("references/settled-orders.md");
-  const guide = await readFile(
-    path.join(root, "skills/smedc-mcp/references/settled-orders.md"),
-    "utf8"
-  );
-  const examples = [...guide.matchAll(/`([a-z_]+)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g)];
-  expect(examples.map(([, name]) => name)).toEqual([
-    "upload_structured_dataset",
-    "get_partition_import_status",
-    "describe_structured_dataset_coverage",
-    "download_structured_partitions",
-    "prepare_structured_partition_download",
-    "get_structured_partition_download_status",
-    "download_structured_partitions"
-  ]);
-  for (const [, name, json] of examples) {
-    const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === name)!;
-    const input = JSON.parse(json!);
-    if (name === "upload_structured_dataset") {
-      // The launcher validates its path variant, then sends source bytes outside MCP.
-      expect(launcherUploadFileInputSchema.safeParse(input.file).success).toBe(true);
-      input.file = {
-        name: input.file.name,
-        mediaType: input.file.mediaType,
-        encoding: "base64",
-        contentBase64: "YQ=="
-      };
+it.each(["in_store_orders", "takeaway_orders"])(
+  "validates %s Skill examples against the public upload and extract contracts",
+  async (dataset) => {
+    const reference = dataset === "in_store_orders" ? "in-store-orders" : "takeaway-orders";
+    const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
+    expect(skill).toContain(`references/${reference}.md`);
+    const guide = await readFile(
+      path.join(root, `skills/smedc-mcp/references/${reference}.md`),
+      "utf8"
+    );
+    const examples = [...guide.matchAll(/`([a-z_]+)` —[^\n]*\n\n```json\n([\s\S]*?)\n```/g)];
+    expect(examples.map(([, name]) => name)).toEqual([
+      "upload_structured_dataset",
+      "get_partition_import_status",
+      "describe_structured_dataset_coverage",
+      "download_structured_partitions",
+      "prepare_structured_partition_download",
+      "get_structured_partition_download_status",
+      "download_structured_partitions"
+    ]);
+    for (const [, name, json] of examples) {
+      const contract = SMEDC_MCP_TOOL_CONTRACTS.find((tool) => tool.name === name)!;
+      const input = JSON.parse(json!);
+      if (name === "upload_structured_dataset") {
+        // The launcher validates its path variant, then sends source bytes outside MCP.
+        expect(launcherUploadFileInputSchema.safeParse(input.file).success).toBe(true);
+        input.file = {
+          name: input.file.name,
+          mediaType: input.file.mediaType,
+          encoding: "base64",
+          contentBase64: "YQ=="
+        };
+      }
+      expect(contract.inputSchema.safeParse(input).success, name).toBe(true);
     }
-    expect(contract.inputSchema.safeParse(input).success, name).toBe(true);
+    expect(JSON.parse(examples[0]![2]!)).toMatchObject({
+      dataset,
+      file: { encoding: "path" },
+      startDate: "20261001",
+      endDate: "20261002"
+    });
+    expect(JSON.parse(examples.at(-1)![2]!)).toEqual({ requestId: "pd_synthetic_example" });
   }
-  expect(JSON.parse(examples[0]![2]!)).toMatchObject({
-    dataset: "settled_orders",
-    file: { encoding: "path" },
-    startDate: "20261001",
-    endDate: "20261002"
-  });
-  expect(JSON.parse(examples.at(-1)![2]!)).toEqual({ requestId: "pd_synthetic_example" });
-});
+);

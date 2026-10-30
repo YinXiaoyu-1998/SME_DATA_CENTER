@@ -71,7 +71,7 @@ clearance cannot grant upload permission.
 | `POST /v1/documents/evidence`                           | `upload_evidence_document`                                                 | `evidence_document`          |
 | `POST /v1/structured/imports`                           | `upload_structured_dataset`, including Delivery Ledger (`delivery_ledger`) | `structured_dataset`         |
 | `POST /v1/documents/quarantine-certificates`            | `upload_quarantine_certificate`                                            | `quarantine_certificate`     |
-| `POST /v1/structured/partition-uploads`                 | `business`/`dishes`/`settled_orders` create                                | `structured_dataset`         |
+| `POST /v1/structured/partition-uploads`                 | Partition datasets, including `takeaway_orders`, create                    | `structured_dataset`         |
 | `GET /v1/structured/partition-uploads/:jobId/parts`     | partition part URLs                                                        | `structured_dataset`         |
 | `POST /v1/structured/partition-uploads/:jobId/complete` | partition complete                                                         | `structured_dataset`         |
 
@@ -98,36 +98,36 @@ employee-callable upload boundary.
 
 ## Public HTTP surface
 
-| Method         | Path                                                | Purpose                                                                                            |
-| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET`          | `/healthz`                                          | Liveness                                                                                           |
-| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                                                |
-| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                                     |
-| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                                            |
-| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                                  |
-| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                                                 |
-| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                                  |
-| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                                        |
-| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                                        |
-| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                                    |
-| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                                                |
-| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                                         |
-| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                                   |
-| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                                          |
-| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes`/`settled_orders` |
-| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                                      |
-| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart `business`/`dishes`/`settled_orders` upload session                             |
-| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                                          |
-| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                                         |
-| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                                  |
-| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                                       |
-| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                                          |
-| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                                        |
-| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                                   |
-| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                                            |
-| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                                           |
-| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                                              |
-| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                                           |
+| Method         | Path                                                | Purpose                                                                          |
+| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `GET`          | `/healthz`                                          | Liveness                                                                         |
+| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                              |
+| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                   |
+| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                          |
+| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                |
+| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                               |
+| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                |
+| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                      |
+| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                      |
+| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                  |
+| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                              |
+| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                       |
+| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                 |
+| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                        |
+| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects partition datasets |
+| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                    |
+| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart partition-dataset upload session                              |
+| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                        |
+| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                       |
+| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                |
+| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                     |
+| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                        |
+| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                      |
+| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                 |
+| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                          |
+| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                         |
+| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                            |
+| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                         |
 
 `GET /labels` and `GET /audit` are not registered. `GET /readyz` accepts loopback only.
 
@@ -153,7 +153,7 @@ All uploads retain existing file/type/size validation. The common request fields
 | Row-query structured import | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional legacy level; current fixed category is authoritative when enabled |
 | Store-day partition source  | multipart session metadata, then ordered upload-part ETags                 | optional legacy level; current fixed category is authoritative when enabled |
 
-The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`/`settled_orders`
+The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`/`in_store_orders`/`takeaway_orders`
 paths through multipart storage, with a 2 GiB default source limit. Filenames, titles, idempotency keys, receipt IDs, structured
 metadata, evidence filters, cursors, and structured-query limits retain their existing public
 limits. Label keys and label arrays are not accepted.
@@ -165,7 +165,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.14.0 owns business/dishes/settled_orders upload and partition transfer. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.14.0 owns business/dishes and legacy settled_orders transfer. Canonical in_store_orders and takeaway_orders require the separately gated 0.15.0 source candidate. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -215,14 +215,16 @@ optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return 
 partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
 and store configuration never grant content access or set a category level or tenant mode.
 
-### Settled orders (published launcher, tenant authorization required)
+### In-store orders (source candidate 0.15.0, migration and release gated)
 
-`settled_orders` uses the existing partition upload/status/coverage/manifest/range and optional ZIP
-interfaces in published, independently verified launcher `0.14.0`. Upload through MCP rejects
-launchers below `0.14.0` with `LAUNCHER_UPGRADE_REQUIRED`; the global OAuth floor remains `0.12.0`,
-and the source recommendation/approved installation pin is `0.14.0`. Matching service deployment
-and the observed live recommendation are recorded in [staging readiness](staging-readiness.md).
-Use requires enabled current category grants; publication alone does not establish tenant access.
+`in_store_orders` uses the existing partition upload/status/coverage/manifest/range and optional ZIP
+interfaces in source candidate `0.15.0`, which is not yet published. It replaces the legacy
+`settled_orders` name used by published `0.14.0`. MCP upload requires `0.15.0+` and otherwise returns
+`LAUNCHER_UPGRADE_REQUIRED`; current public schemas accept only the canonical new name. The OAuth
+floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version stay `0.14.0`.
+Use requires verified compatible client publication, coordinated service migration and current
+category grants. [The forward migration guide](in-store-order-design.md) covers retained category
+IDs/grants/CSV objects, expired old ZIP requests and unchanged historical request fingerprints.
 
 It is an independent fixed store-level category, initially without level or grants. Existing
 business/dishes grants do not grant orders; ordinary reads require complete enterprise/store/category
@@ -230,12 +232,36 @@ and dimension coverage plus current clearance, including for admins. Legacy/prep
 provide no fallback reads, including coverage and ZIP preparation/signing. Retained ZIP capabilities
 must still satisfy current dataset authorization before reissue.
 
-Original uploads declare the complete selected store-day window. The server validates all 30 source
+Original “店内订单明细” uploads declare complete selected store-days across 待制作/未结账/已结账/已撤单/已退单. `order_status` remains nullable source text, including unknown states; no settlement-only filtering or inferred status. Empty settlement/payment fields on unpaid rows yield empty typed values and JSON null. The server validates all 30 source
 columns, types and dates, then atomically replaces only store-days actually present; omitted days stay
 unchanged and entirely empty sources fail. All source rows and payment items retain order/multiplicity.
 The 31-column current CSV appends `结账方式JSON` to the 30 source fields; it is not a row-query dataset
 or an original Excel archive. Exact schema/semantics live in [the partition contract](structured-partitions.md)
-and [the core Skill order reference](../../skills/smedc-mcp/references/settled-orders.md).
+and [the core Skill order reference](../../skills/smedc-mcp/references/in-store-orders.md).
+
+### Takeaway orders (source candidate 0.15.0, not yet published)
+
+`takeaway_orders` is a fixed store-level `partition_extract` category implemented through the
+existing upload/status/coverage/manifest/range and optional ZIP interfaces. Source candidate
+`0.15.0` is not yet published; installation pin and recommendation remain `0.14.0`, and the OAuth
+floor remains `0.12.0`. MCP uploads from older launchers return `LAUNCHER_UPGRADE_REQUIRED`.
+Employee use requires independent compatible-client publication verification, matching service
+rollout including `20261030010000_takeaway_orders`, and explicit current tenant category grants.
+No additional environment variables or row tables are introduced.
+
+Upload standard “平台外卖订单明细—有效订单” XLSX/CSV with all platforms and all source valid orders
+for each submitted store-day, including today's complete snapshot at export time. All 33 source
+columns are mandatory and emitted in fixed order without derived fields. Source business date
+controls routing; identifiers remain strings; nullable typed `--` becomes empty while ordinary
+text retains it. States, signed amounts, duplicate rows and order remain unchanged in meaning.
+The complete source validates before atomic replacement of appeared store-days; absent days
+remain, empty sources fail, and later invalid rows cannot partially publish.
+
+The category starts with null level and no grants; initialization uses the existing versioned
+admin write path. Current complete organization/category/enterprise/store/dimension/clearance
+rules apply to all ordinary reads; admin upload rights and legacy mode do not grant reads.
+`query_structured_dataset` returns `DATASET_REQUIRES_PARTITION_EXTRACT`.
+See [partition semantics](structured-partitions.md) and the [takeaway workflow](../../skills/smedc-mcp/references/takeaway-orders.md).
 
 ### Filtered partition extracts and asynchronous bundles
 
@@ -244,7 +270,7 @@ tools/list alone cannot establish server availability. After ZIP rollback regene
 plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.14.0`. This contract is not
 evidence of service deployment or tenant activation.
 
-For `business`/`dishes`/`settled_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
+For `business`/`dishes`/`in_store_orders`/`takeaway_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
 inclusive ISO `startDate`/`endDate`, optional `storeIds` and `storeNameContains`. Coverage accepts
 `dataset` plus optional `enterpriseName` and `storeNameContains`. The latter is 1–20 NFC/trim
 literals of 1–255 characters: case-sensitive substring OR, AND with IDs, scope and backend

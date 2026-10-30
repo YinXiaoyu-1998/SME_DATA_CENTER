@@ -276,7 +276,7 @@ row-query structured upload also keep `importBatchId`. Poll `get_evidence_docume
   structured idempotency key only for the exact same file bytes and metadata; use a new key only
   after the employee intentionally corrects or changes the upload.
 
-For `business`, `dishes` and `settled_orders`, keep `partitionImportJobId` and poll
+For `business`, `dishes`, `in_store_orders` and release-gated `takeaway_orders`, keep `partitionImportJobId` and poll
 `get_partition_import_status`. For a source file larger than 50 MiB, check first after 2 minutes,
 then every 2 minutes, for at most 20 minutes; this replaces the ordinary polling schedule above.
 Tell the employee once that large-file processing may take 10–20 minutes, then use a passive wait
@@ -287,13 +287,23 @@ checks. For a source file at or below 50 MiB, use the ordinary polling schedule 
 `processing` response is not complete. Exact-repeat uploads may return the existing published job;
 same-key requests with different bytes or metadata are conflicts, not retries.
 
-## Settled Orders (Published Launcher, Tenant Gated)
+## In-Store Orders (Source Implemented, Release Gated)
 
-For 店内已结账订单明细 (`settled_orders`) complete store-day uploads, independent permissions,
-ordered payment JSON and authorized local CSV downloads, read
-[settled orders](references/settled-orders.md) before any operation. Launcher `0.14.0` is published,
-independently verified and approved for installation. Confirm matching service support and current
-tenant category grants; publication and installation do not configure or activate a tenant.
+For 店内订单明细 (`in_store_orders`) complete store-day uploads across all order statuses,
+independent permissions, payment JSON and local CSV downloads, read
+[in-store orders](references/in-store-orders.md) before any operation. `订单状态` retains
+待制作、未结账、已结账、已撤单、已退单 and other source text; settlement is not the dataset identity.
+Source candidate `0.15.0` is not yet published and replaces the legacy `settled_orders` name.
+Keep approved installation pin `0.14.0`; use the new name only after a compatible published client,
+matching service migration and current tenant authorization are confirmed.
+
+## Takeaway Orders (Source Implemented, Not Yet Published)
+
+For 平台外卖订单明细 (`takeaway_orders`), read [takeaway orders](references/takeaway-orders.md)
+before upload, status, coverage or download. Source candidate `0.15.0` is not yet published;
+the approved installation pin remains `0.14.0`. Wait for a published, independently verified
+compatible client, matching service deployment and current independent category grants.
+The source report must include all platforms and all valid orders for each submitted store-day.
 
 ## Business And Dishes Partition Uploads
 
@@ -952,7 +962,7 @@ content, do not paste file contents into chat, and do not silently retry with an
   privacy protection, sandbox, or another OS access boundary).
 - `MCP_LOCAL_FILE_INVALID`: the path is relative, a directory, or not a regular file.
 - `MCP_LOCAL_FILE_TOO_LARGE`: the file exceeds the applicable contract (2 GiB for path-mode
-  `business`/`dishes` and `settled_orders`; 50 MiB for ordinary uploads).
+  `business`/`dishes`, `in_store_orders` and release-gated `takeaway_orders`; 50 MiB for ordinary uploads).
 - `MCP_LOCAL_FILE_READ_FAILED`: another read error.
 
 Example employee-facing reply (Chinese):
@@ -962,7 +972,7 @@ Example employee-facing reply (Chinese):
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
 location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, do not split `business`, `dishes`,
-`settled_orders` or `dish_catalog`; ask the employee for a smaller complete export, a service-supported larger
+`in_store_orders`, `takeaway_orders` or `dish_catalog`; ask the employee for a smaller complete export, a service-supported larger
 limit, or operator help.
 
 ## Typed Recovery

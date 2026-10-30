@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { registerPartitionDownloadRoutes } from "../../../apps/api/src/routes/structured-partitions/downloads.js";
 import type { RequestAuth } from "../../../apps/api/src/request-auth.js";
+import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import type { StorageAdapter } from "@smedc/storage";
@@ -12,7 +13,10 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAdapter } from "./adapter.js";
 import { loadPartitionDownloadLimits } from "@smedc/domain";
-import { createPrismaPartitionDownloadRepository } from "./partition-downloads.js";
+import {
+  createPrismaPartitionDownloadRepository,
+  partitionDownloadFingerprint
+} from "./partition-downloads.js";
 const suite = process.env["RUN_PARTITION_PRISMA_INTEGRATION"] === "1" ? describe : describe.skip;
 const orgId = "download_test_org";
 const otherCleanupOrgId = "download_cleanup_other_org";
@@ -131,6 +135,332 @@ suite("partition download persistence", () => {
       }))
     });
   }
+  it("upgrades legacy in-store data without replacing bytes or grants and expires old ZIP requests", async () => {
+    const url = new URL(process.env["DATABASE_URL"]!);
+    expect(["localhost", "127.0.0.1"]).toContain(url.hostname);
+    expect(url.pathname).toMatch(/^\/smedc_integration_[a-f0-9]+$/);
+    const migration = (
+      await readFile(
+        new URL(
+          "../prisma/migrations/20261030020000_in_store_orders/migration.sql",
+          import.meta.url
+        ),
+        "utf8"
+      )
+    )
+      .split(";")
+      .filter((statement) => statement.trim());
+    // The runner migrates an empty schema first. Widen only these enums to seed a pre-upgrade fixture.
+    for (const statement of migration.slice(0, 4)) await prisma.$executeRawUnsafe(statement);
+    await partitions();
+    const old = await publishedRequest();
+    const queued = await repository.prepare(actor, scope, "legacy-pending");
+    const beforePartition = await prisma.structuredPartition.findUniqueOrThrow({
+      where: { id: "download_part_0" }
+    });
+    const beforeJob = await prisma.partitionImportJob.findUniqueOrThrow({
+      where: { id: "download_source" }
+    });
+    await prisma.businessAuthorizationState.create({
+      data: { orgId, mode: "enabled", version: 7n }
+    });
+    await prisma.businessCategory.create({
+      data: {
+        orgId,
+        id: "legacy-orders",
+        key: "settled_orders",
+        name: "店内已结账订单明细",
+        kind: "fixed",
+        confidentialityLevel: 2,
+        allowGroup: false,
+        allowStore: true
+      }
+    });
+    await prisma.businessGrant.create({
+      data: {
+        orgId,
+        id: "legacy-order-grant",
+        employeeId: actor.id,
+        enterpriseKey: "synthetic",
+        ownership: "store",
+        allStores: true,
+        categories: { create: { categoryId: "legacy-orders" } }
+      }
+    });
+    await prisma.businessStore.create({
+      data: { orgId, enterpriseKey: "synthetic", name: "Store 0" }
+    });
+    await prisma.businessResource.create({
+      data: {
+        orgId,
+        id: "legacy-order-resource",
+        categoryId: "legacy-orders",
+        kind: "structured",
+        resourceKey: "partition:download_part_0",
+        valid: true,
+        scopes: {
+          create: {
+            id: "legacy-order-scope",
+            enterpriseKey: "synthetic",
+            ownership: "store",
+            storeName: "Store 0"
+          }
+        }
+      }
+    });
+    await prisma.document.create({
+      data: {
+        id: "legacy-order-doc",
+        orgId,
+        title: "Synthetic old order source",
+        documentType: "structured_dataset",
+        documentKind: "structured",
+        fileType: "csv",
+        status: "active",
+        storageObjectKey: "synthetic/legacy-orders.csv",
+        uploaderId: actor.id,
+        sourceMetadata: {
+          dataset: "settled_orders",
+          parsedBusinessScopes: { dataset: "settled_orders" }
+        }
+      }
+    });
+    await prisma.importBatch.create({
+      data: {
+        id: "legacy-order-batch",
+        orgId,
+        sourceDocumentId: "legacy-order-doc",
+        dataset: "business",
+        idempotencyKey: "legacy-batch",
+        requestFingerprint: "b".repeat(64),
+        naturalKey: "legacy-natural",
+        status: "applied"
+      }
+    });
+    await prisma.importWindowClaim.create({
+      data: {
+        id: "legacy-order-window",
+        orgId,
+        importBatchId: "legacy-order-batch",
+        dataset: "business",
+        startDate: new Date("2026-10-01"),
+        endDate: new Date("2026-10-08")
+      }
+    });
+    for (const table of [
+      "partition_import_jobs",
+      "structured_partitions",
+      "import_batches",
+      "import_window_claims"
+    ])
+      await prisma.$executeRawUnsafe(
+        `UPDATE ${table} SET dataset='settled_orders' WHERE org_id=?`,
+        orgId
+      );
+    const oldScope = { ...scope, dataset: "settled_orders" };
+    await prisma.partitionDownloadRequest.updateMany({
+      where: { orgId },
+      data: { scope: oldScope, requestFingerprint: partitionDownloadFingerprint(oldScope) }
+    });
+    const beforeDownload = await prisma.partitionDownloadRequest.findUniqueOrThrow({
+      where: { id: old.requestId }
+    });
+    const grants = await prisma.businessGrantCategory.findMany({ where: { orgId } });
+    await prisma.businessAuthorizationState.create({
+      data: { orgId: otherCleanupOrgId, mode: "enabled", version: 3n }
+    });
+    await prisma.businessCategory.create({
+      data: {
+        orgId: otherCleanupOrgId,
+        id: "custom-order-category",
+        key: "settled_orders",
+        name: "保留自定义类别名称",
+        kind: "fixed",
+        confidentialityLevel: 1,
+        allowGroup: false,
+        allowStore: true,
+        retired: true
+      }
+    });
+    const apply = () =>
+      prisma.$transaction(
+        async (tx) => {
+          for (const statement of migration) await tx.$executeRawUnsafe(statement);
+        },
+        { timeout: 30_000 }
+      );
+    try {
+      await prisma.businessCategory.create({
+        data: {
+          orgId,
+          id: "new-name-collision",
+          key: "in_store_orders",
+          name: "Existing category",
+          kind: "fixed",
+          confidentialityLevel: 0,
+          allowGroup: false,
+          allowStore: true
+        }
+      });
+      await expect(apply()).rejects.toThrow();
+      expect(
+        await prisma.businessCategory.findUnique({
+          where: { orgId_key: { orgId, key: "settled_orders" } }
+        })
+      ).toMatchObject({ id: "legacy-orders" });
+      expect(
+        await prisma.businessAuthorizationState.findUnique({ where: { orgId } })
+      ).toMatchObject({ version: 7n });
+      await prisma.businessCategory.delete({
+        where: { orgId_id: { orgId, id: "new-name-collision" } }
+      });
+      await prisma.structuredPartition.create({
+        data: {
+          ...beforePartition,
+          id: "new-partition-collision",
+          dataset: "in_store_orders",
+          objectKey: "download-test/collision.csv"
+        }
+      });
+      await expect(apply()).rejects.toThrow();
+      expect(
+        await prisma.$queryRaw<
+          Array<{ dataset: string }>
+        >`SELECT dataset FROM structured_partitions WHERE id='download_part_0'`
+      ).toEqual([{ dataset: "settled_orders" }]);
+      await prisma.structuredPartition.delete({ where: { id: "new-partition-collision" } });
+      await apply();
+      expect(
+        await prisma.businessCategory.findUnique({
+          where: { orgId_key: { orgId, key: "in_store_orders" } }
+        })
+      ).toMatchObject({
+        id: "legacy-orders",
+        name: "店内订单明细",
+        confidentialityLevel: 2,
+        allowGroup: false,
+        allowStore: true
+      });
+      expect(await prisma.businessGrantCategory.findMany({ where: { orgId } })).toEqual(grants);
+      expect(
+        await prisma.businessCategory.findUnique({
+          where: { orgId_id: { orgId: otherCleanupOrgId, id: "custom-order-category" } }
+        })
+      ).toMatchObject({
+        key: "in_store_orders",
+        name: "保留自定义类别名称",
+        confidentialityLevel: 1,
+        retired: true
+      });
+      expect(
+        await prisma.businessAuthorizationState.findUnique({ where: { orgId } })
+      ).toMatchObject({ mode: "enabled", version: 8n });
+      expect(
+        await prisma.structuredPartition.findUniqueOrThrow({ where: { id: beforePartition.id } })
+      ).toMatchObject({ ...beforePartition, dataset: "in_store_orders" });
+      expect(
+        await prisma.partitionImportJob.findUniqueOrThrow({ where: { id: beforeJob.id } })
+      ).toMatchObject({ ...beforeJob, dataset: "in_store_orders" });
+      expect(
+        await prisma.importBatch.findUnique({ where: { id: "legacy-order-batch" } })
+      ).toMatchObject({
+        dataset: "in_store_orders",
+        requestFingerprint: "b".repeat(64),
+        naturalKey: "legacy-natural"
+      });
+      expect(
+        await prisma.importWindowClaim.findUnique({ where: { id: "legacy-order-window" } })
+      ).toMatchObject({ dataset: "in_store_orders" });
+      expect(await prisma.document.findUnique({ where: { id: "legacy-order-doc" } })).toMatchObject(
+        {
+          sourceMetadata: {
+            dataset: "in_store_orders",
+            parsedBusinessScopes: { dataset: "in_store_orders" }
+          }
+        }
+      );
+      const retired = await prisma.partitionDownloadRequest.findUniqueOrThrow({
+        where: { id: old.requestId }
+      });
+      expect(retired).toMatchObject({
+        status: "expired",
+        errorCode: "PARTITION_DOWNLOAD_EXPIRED",
+        scope: oldScope,
+        requestFingerprint: beforeDownload.requestFingerprint,
+        manifestFingerprint: beforeDownload.manifestFingerprint,
+        objectKey: null
+      });
+      const garbage = await prisma.storageGarbage.findFirstOrThrow({
+        where: { objectKey: beforeDownload.objectKey! }
+      });
+      expect(garbage.availableAt.getTime()).toBeGreaterThan(Date.now() + 900_000);
+      expect(
+        await prisma.storageGarbage.findFirst({ where: { objectKey: beforePartition.objectKey } })
+      ).toBeNull();
+      expect(
+        await prisma.processingRun.findUnique({
+          where: { partitionDownloadRequestId: queued.requestId }
+        })
+      ).toMatchObject({ status: "failed", errorCode: "PARTITION_DOWNLOAD_EXPIRED" });
+      const app = urlApp();
+      try {
+        expect(
+          (await app.inject({ url: `/v1/structured/partition-downloads/${old.requestId}` })).json()
+        ).toMatchObject({ status: "expired" });
+        const expired = await app.inject({
+          method: "POST",
+          url: `/v1/structured/partition-downloads/${old.requestId}/url`
+        });
+        expect(expired.statusCode).toBe(410);
+        expect(expired.json()).toMatchObject({ error: { code: "PARTITION_DOWNLOAD_EXPIRED" } });
+        await expect(
+          repository.prepare(
+            actor,
+            { ...scope, dataset: "in_store_orders" },
+            beforeDownload.idempotencyKey
+          )
+        ).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+        const fresh = await repository.prepare(
+          actor,
+          { ...scope, dataset: "in_store_orders" },
+          "new-order-download"
+        );
+        expect(fresh.partitionCount).toBe(1);
+        const lease = await leaseFor(fresh.requestId);
+        const key = `partition-downloads/${orgId}/${fresh.requestId}/1/in-store.zip`;
+        await repository.registerCandidate(lease, key);
+        expect(
+          await repository.publish(lease, {
+            objectKey: key,
+            byteSize: 1n,
+            checksumSha256: "c".repeat(64),
+            expiresAt: fresh.expiresAt
+          })
+        ).toBe(true);
+        const current = await app.inject({
+          method: "POST",
+          url: `/v1/structured/partition-downloads/${fresh.requestId}/url`
+        });
+        expect(current.statusCode).toBe(200);
+        expect(current.json()).toMatchObject({
+          scope: { dataset: "in_store_orders" },
+          partitionCount: 1
+        });
+      } finally {
+        await app.close();
+      }
+    } finally {
+      await prisma.businessCategory.deleteMany({ where: { orgId: otherCleanupOrgId } });
+      await prisma.businessAuthorizationState.deleteMany({ where: { orgId: otherCleanupOrgId } });
+      await prisma.importWindowClaim.deleteMany({ where: { orgId } });
+      await prisma.importBatch.deleteMany({ where: { id: "legacy-order-batch" } });
+      await prisma.document.delete({ where: { id: "legacy-order-doc" } });
+      await prisma.$executeRawUnsafe(
+        "UPDATE partition_import_jobs SET dataset='business' WHERE id='download_source'"
+      );
+    }
+  });
+
   it("fixes A/B at submission, completes after B revocation, and authorizes the whole manifest only at link issuance", async () => {
     await partitions(3);
     await prisma.businessAuthorizationState.create({ data: { orgId, mode: "enabled" } });

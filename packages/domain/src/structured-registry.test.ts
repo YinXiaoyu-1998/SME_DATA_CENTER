@@ -12,7 +12,8 @@ describe("structured field registries", () => {
   test("routes operating datasets through partition extracts", () => {
     expect(getStructuredRegistry("business").accessMode).toBe("partition_extract");
     expect(getStructuredRegistry("dishes").accessMode).toBe("partition_extract");
-    expect(getStructuredRegistry("settled_orders").accessMode).toBe("partition_extract");
+    expect(getStructuredRegistry("in_store_orders").accessMode).toBe("partition_extract");
+    expect(getStructuredRegistry("takeaway_orders").accessMode).toBe("partition_extract");
 
     for (const dataset of ["vip", "dish_catalog", "delivery_ledger", "supplier_catalog"] as const) {
       expect(getStructuredRegistry(dataset).accessMode).toBe("row_query");
@@ -28,7 +29,8 @@ describe("structured field registries", () => {
       "delivery_ledger",
       "supplier_catalog",
       "cost_cards",
-      "settled_orders"
+      "in_store_orders",
+      "takeaway_orders"
     ]);
 
     expect(getStructuredRegistry("delivery_ledger")).toMatchObject({

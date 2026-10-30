@@ -1,6 +1,7 @@
 import { compileStructuredReadScope } from "@smedc/db";
 import type { FastifyInstance } from "fastify";
 import {
+  type PartitionDatasetName,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_DATASETS,
   STRUCTURED_QUERY_LIMITS,
@@ -200,7 +201,7 @@ export function registerStructuredQueryRoutes(
           orgId: employee.orgId,
           clearance: snapshot.clearance,
           authorization: snapshot,
-          dataset: dataset as "business" | "dishes" | "settled_orders",
+          dataset: dataset as PartitionDatasetName,
           ...(enterpriseKey !== undefined ? { enterpriseKey } : {}),
           ...(storeNameContains ? { storeNameContains } : {})
         });
@@ -224,7 +225,7 @@ export function registerStructuredQueryRoutes(
       ) {
         throw new StructuredQueryValidationError(
           PHASE3_ERROR_CODES.invalidQuery,
-          "enterpriseName and storeNameContains coverage scope are supported only for business/dishes/settled_orders."
+          "enterpriseName and storeNameContains coverage scope are supported only for business/dishes/in_store_orders/takeaway_orders."
         );
       }
       const compiled = compileStructuredCoverageQuery({

@@ -1,3 +1,10 @@
+import {
+  PARTITION_DATASETS,
+  normalizeEnterpriseIdentity,
+  parsePartitionStoreNameContains,
+  type PartitionDatasetName
+} from "@smedc/domain";
+import { z } from "zod";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
@@ -6,6 +13,30 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable, Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
+
+const unsignedInteger = z.union([
+  z.number().int().nonnegative(),
+  z.string().regex(/^(0|[1-9][0-9]*)$/)
+]);
+
+// Shared CSV metadata shape; range responses may encode large counts as strings.
+export const partitionFileMetadataSchema = z.object({
+  businessDate: z.iso.date(),
+  storeId: z.string().nullable(),
+  storeName: z.string(),
+  rowCount: unsignedInteger,
+  byteSize: unsignedInteger,
+  checksumSha256: z.string().regex(/^[a-f0-9]{64}$/)
+});
+const remoteManifestSchema = z.object({
+  dataset: z.enum(PARTITION_DATASETS),
+  enterpriseName: z.string(),
+  startDate: z.iso.date(),
+  endDate: z.iso.date(),
+  partitionCount: z.number().int().nonnegative(),
+  totalRowCount: unsignedInteger,
+  partitions: z.array(partitionFileMetadataSchema.extend({ presignedDownloadUrl: z.url() }))
+});
 
 const UPLOAD_CONCURRENCY = 4;
 export const DOWNLOAD_CONCURRENCY = 6;
@@ -49,7 +80,7 @@ async function uploadPartitionDatasetInternal(input: {
   filePath: string;
   name: string;
   mediaType: string;
-  dataset: "business" | "dishes" | "settled_orders";
+  dataset: PartitionDatasetName;
   enterpriseName: string;
   startDate: string;
   endDate: string;
@@ -129,7 +160,7 @@ async function uploadPartitionDatasetInternal(input: {
 
 async function downloadPartitionDatasetInternal(input: {
   context: PartitionTransferContext;
-  dataset: "business" | "dishes" | "settled_orders";
+  dataset: PartitionDatasetName;
   enterpriseName: string;
   startDate: string;
   endDate: string;
@@ -178,17 +209,60 @@ async function downloadPartitionDatasetInternal(input: {
 async function requestManifest(
   input: Parameters<typeof downloadPartitionDataset>[0]
 ): Promise<RemoteManifest> {
-  return (await apiJson(input.context, "/v1/structured/partition-manifests", {
+  const scope = {
+    dataset: input.dataset,
+    enterpriseName: normalizeEnterpriseIdentity(input.enterpriseName).enterpriseName,
+    startDate: compactDateToIso(input.startDate),
+    endDate: compactDateToIso(input.endDate),
+    storeIds: input.storeIds?.length ? input.storeIds.map((id) => id.trim()) : undefined,
+    storeNameContains: parsePartitionStoreNameContains(input.storeNameContains)
+  };
+  const response = await apiJson(input.context, "/v1/structured/partition-manifests", {
     method: "POST",
-    body: {
-      dataset: input.dataset,
-      enterpriseName: input.enterpriseName,
-      startDate: compactDateToIso(input.startDate),
-      endDate: compactDateToIso(input.endDate),
-      storeIds: input.storeIds,
-      storeNameContains: input.storeNameContains
-    }
-  })) as RemoteManifest;
+    body: scope
+  });
+  // apiJson already caps the full metadata body at 8 MiB; validate before any file transfer.
+  const parsed = remoteManifestSchema.safeParse(response);
+  if (!parsed.success) throw new Error("Invalid partition manifest metadata.");
+  const manifest = parsed.data;
+  if (
+    manifest.dataset !== scope.dataset ||
+    manifest.enterpriseName !== scope.enterpriseName ||
+    manifest.startDate !== scope.startDate ||
+    manifest.endDate !== scope.endDate ||
+    manifest.startDate > manifest.endDate
+  )
+    throw new Error("Partition manifest does not match requested scope.");
+  let rows = 0n;
+  for (const partition of manifest.partitions) {
+    if (!partitionFileMatchesScope(partition, scope))
+      throw new Error("Partition manifest file does not match requested scope.");
+    if (
+      !Number.isSafeInteger(Number(partition.byteSize)) ||
+      BigInt(partition.rowCount) > BigInt(partition.byteSize)
+    )
+      throw new Error("Invalid partition manifest file counts.");
+    rows += BigInt(partition.rowCount);
+  }
+  if (
+    manifest.partitionCount !== manifest.partitions.length ||
+    BigInt(manifest.totalRowCount) !== rows
+  )
+    throw new Error("Partition manifest totals do not match its files.");
+  return manifest;
+}
+
+export function partitionFileMatchesScope(
+  file: { businessDate: string; storeId: string | null; storeName: string },
+  scope: { startDate: string; endDate: string; storeIds?: string[]; storeNameContains?: string[] }
+): boolean {
+  return (
+    file.businessDate >= scope.startDate &&
+    file.businessDate <= scope.endDate &&
+    (scope.storeIds === undefined || scope.storeIds.includes(file.storeId ?? "")) &&
+    (scope.storeNameContains === undefined ||
+      scope.storeNameContains.some((name) => file.storeName.includes(name)))
+  );
 }
 
 async function downloadManifest(
@@ -258,23 +332,7 @@ interface UploadSession {
   parts: Array<{ partNumber: number; uploadUrl: string }>;
   nextAfterPartNumber: number | null;
 }
-interface RemoteManifest {
-  dataset: "business" | "dishes" | "settled_orders";
-  enterpriseName: string;
-  startDate: string;
-  endDate: string;
-  partitionCount: number;
-  totalRowCount: number | string;
-  partitions: Array<{
-    businessDate: string;
-    storeId: string | null;
-    storeName: string;
-    rowCount: number | string;
-    byteSize: number | string;
-    checksumSha256: string;
-    presignedDownloadUrl: string;
-  }>;
-}
+type RemoteManifest = z.infer<typeof remoteManifestSchema>;
 
 export async function apiJson(
   context: PartitionTransferContext,

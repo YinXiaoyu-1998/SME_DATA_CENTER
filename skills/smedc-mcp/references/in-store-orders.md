@@ -1,13 +1,14 @@
-# Settled orders: complete store-day snapshots and local CSV
+# In-store orders: complete store-day snapshots and local CSV
 
 ## Release and tenant readiness
 
-`settled_orders` (店内已结账订单明细) is included in published, independently verified launcher `0.14.0`.
-The approved exact installation pin is `0.14.0`; follow the core Skill's installation authority.
-Confirm matching service deployment and current tenant authorization before use. Publication,
-installation, static tools/list, a successful login and service recommendations alone do not
-establish category grants or tenant readiness. If the approved client or target service lacks
-support, report the blocker and retain the original operation for later.
+`in_store_orders` (店内订单明细) is the canonical category in source candidate `0.15.0`,
+which is **not yet published**. It replaces the legacy public name `settled_orders` from released
+launcher `0.14.0`; the approved installation pin remains `0.14.0` until a compatible release is
+published, independently verified and approved. Confirm the matching service migration and
+current tenant authorization before using the new name. Do not install an unpublished candidate
+or assume the approved old launcher supports it. Until ready, report the prerequisite and retain
+the operation. Static tools/list or successful login is not release or tenant readiness.
 
 ## Upload one complete source
 
@@ -18,26 +19,29 @@ authoritative; upload metadata cannot override it. File bytes and internal stora
 inside the launcher. The default source limit is 2 GiB. Do not split or repair the source locally.
 
 The file must contain every order from the selected stores and complete business days in the
-source platform's “店内订单明细—已结账” export. Multiple stores and days are supported.
+source platform's “店内订单明细” export, including all order statuses. Multiple stores and days are supported.
 The uploader is responsible for completeness: validation checks structure, types and the declared
-window, not whether source filters omitted orders. “已结账” names the source report; rows with
-refunds, other states or empty states remain included. `business`, `dishes` and `settled_orders`
+window, not whether source filters omitted orders. `订单状态` independently preserves
+`待制作`, `未结账`, `已结账`, `已撤单` and `已退单`, including unpaid/cancelled/refunded rows.
+Unknown source states and empty states also remain source text/empty; do not infer state from
+payment, settlement or refund timestamps. An unpaid row may have empty/`--` settlement time
+and payment, yielding an empty typed time and JSON null. Do not submit status-filtered subsets. `business`, `dishes` and `in_store_orders`
 are independent uploads, without cross-dataset reconciliation.
 
 `upload_structured_dataset` — synthetic complete two-day original:
 
 ```json
 {
-  "dataset": "settled_orders",
+  "dataset": "in_store_orders",
   "enterpriseName": "合成企业",
   "startDate": "20261001",
   "endDate": "20261002",
-  "idempotencyKey": "settled-orders-synthetic-20261001-02-v1",
+  "idempotencyKey": "in-store-orders-synthetic-20261001-02-v1",
   "file": {
-    "name": "settled-orders.xlsx",
+    "name": "in-store-orders.xlsx",
     "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "encoding": "path",
-    "filePath": "/absolute/path/settled-orders.xlsx"
+    "filePath": "/absolute/path/in-store-orders.xlsx"
   }
 }
 ```
@@ -68,7 +72,7 @@ fallback identity. Never invent `storeIds` from organization codes.
 ## Read authorization and downloads
 
 Call `get_my_permissions` for the current permission card. The independent store-level category
-`settled_orders` needs enabled business authorization, a configured category confidentiality level,
+`in_store_orders` needs enabled business authorization, a configured category confidentiality level,
 sufficient current clearance and a complete enterprise/store/category grant covering all required
 dimensions. Existing business/dishes grants do not include it. New categories start with no level
 and no grants; admins configure them through the existing
@@ -79,7 +83,7 @@ ordinary reads. Legacy/preparing/suspended modes do not provide fallback content
 
 ```json
 {
-  "dataset": "settled_orders",
+  "dataset": "in_store_orders",
   "enterpriseName": "合成企业",
   "storeNameContains": ["合成门店"]
 }
@@ -94,7 +98,7 @@ Range download is the default, following the core Skill's range limits, integrit
 
 ```json
 {
-  "dataset": "settled_orders",
+  "dataset": "in_store_orders",
   "enterpriseName": "合成企业",
   "startDate": "20261001",
   "endDate": "20261002",
@@ -115,12 +119,12 @@ rechecks current access and source revisions. Safe progress alone is not permiss
 
 ```json
 {
-  "dataset": "settled_orders",
+  "dataset": "in_store_orders",
   "enterpriseName": "合成企业",
   "startDate": "20261001",
   "endDate": "20261002",
   "storeNameContains": ["合成门店"],
-  "idempotencyKey": "settled-orders-synthetic-zip-v1"
+  "idempotencyKey": "in-store-orders-synthetic-zip-v1"
 }
 ```
 
@@ -186,8 +190,7 @@ produces:
 
 Preserve repeated methods and identical entries; do not sum them into a method-to-amount object,
 net refunds against sales, infer transaction links or treat array order as event chronology.
-`撤销找零` support requires a matching service release containing the compatibility fix;
-installing launcher `0.14.0` alone does not add server parsing support.
+`撤销找零` support and the new category name require matching service support; installing a client alone does not add server parsing support.
 Use exact decimal parsing for CSV and JSON amounts (for example Python JSON `parse_float=Decimal`,
 `parse_int=Decimal`) rather than binary floating point. An empty/`--` payment cell emits JSON `null`
 while retaining its raw text; nonempty unparseable content or unsupported markers reject the entire
@@ -196,3 +199,14 @@ and retain the original file for resubmission after the service update; do not r
 orders to bypass validation. The service does not validate payment totals against order totals or infer missing amounts.
 Current CSVs are authoritative; temporary source workbooks are cleaned after terminal processing.
 There is no retained original Excel, historical partition or MySQL order-row download path.
+
+## Existing data and retry transition
+
+The service migration renames the dataset/category while preserving category ID, current grants,
+levels, partition IDs, source fields, current CSV bytes and storage references. It does not fill
+missing statuses or prove an earlier export complete. A broader snapshot requires a separately
+authorized complete original upload. New uploads/download preparations use `in_store_orders`.
+Existing completed or pending ZIP requests for the old name expire; check their safe status and
+prepare a fresh download after upgrading. Earlier download links remain governed by their original
+TTL. Request fingerprints are preserved for history, so a new-name operation needs a new
+idempotency key; an old key conflict is not permission to alter the stored original request.

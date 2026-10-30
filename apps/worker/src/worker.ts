@@ -1,3 +1,4 @@
+import type { PartitionDatasetName } from "@smedc/domain";
 import {
   persistStructuredSourceReadRequirements,
   activateEvidenceReadRequirement,
@@ -65,7 +66,7 @@ export interface ClaimedProcessingRun {
   };
   partitionImport?: {
     jobId: string;
-    dataset: "business" | "dishes" | "settled_orders";
+    dataset: PartitionDatasetName;
     enterpriseKey: string;
     enterpriseName: string;
     confidentialityLevel: number;

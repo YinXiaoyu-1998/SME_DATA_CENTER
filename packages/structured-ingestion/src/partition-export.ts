@@ -5,9 +5,11 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   PARTITION_ERROR_CODES,
+  isOrderPartitionDataset,
   getStructuredRegistry,
   partitionStoreIdentity,
   resolveStructuredHeaders,
+  type PartitionDatasetName,
   type StructuredFieldRegistryEntry
 } from "@smedc/domain";
 import { parse as createCsvParser } from "csv-parse";
@@ -88,7 +90,7 @@ export class StructuredPartitionExportError extends Error {
 }
 
 export async function exportStructuredPartitions(input: {
-  dataset: "business" | "dishes" | "settled_orders";
+  dataset: PartitionDatasetName;
   sourcePath: string;
   outputDirectory: string;
   limits: StructuredPartitionLimits;
@@ -106,6 +108,7 @@ export async function exportStructuredPartitions(input: {
   await rm(candidateDirectory, { force: true, recursive: true });
   await mkdir(candidateDirectory, { recursive: true });
 
+  const orderSource = isOrderPartitionDataset(input.dataset);
   const registry = getStructuredRegistry(input.dataset);
   const fields = registry.fields.filter((field) => field.inputSource === "file");
   const fieldByName = new Map(fields.map((field) => [field.canonicalName, field]));
@@ -128,7 +131,7 @@ export async function exportStructuredPartitions(input: {
     }
   ): Promise<void> => {
     if (!row.cells.some((cell) => cell.trim())) return;
-    if (input.dataset === "settled_orders") {
+    if (orderSource) {
       const fieldText = (name: string) => {
         const column = header.mappings.find((mapping) => mapping.canonicalName === name);
         return column ? (row.cells[column.sourceColumnIndex]?.trim() ?? "") : "";
@@ -155,22 +158,17 @@ export async function exportStructuredPartitions(input: {
       if (!field) throw invalidSource("Resolved partition field is not registered.");
       canonical.set(
         mapping.canonicalName,
-        canonicalCell(
-          field,
-          row.cells[mapping.sourceColumnIndex] ?? "",
-          row.rowNumber,
-          input.dataset === "settled_orders"
-        )
+        canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber, orderSource)
       );
     }
-    if (input.dataset === "settled_orders") {
+    if (input.dataset === "in_store_orders") {
       canonical.set(
         "payment_method_json",
         paymentJson(canonical.get("payment_method") ?? "", row.rowNumber)
       );
-      if (canonical.get("store_name") === "--")
-        throw invalidSource(`Row ${row.rowNumber} store_name is required.`);
     }
+    if (orderSource && canonical.get("store_name") === "--")
+      throw invalidSource(`Row ${row.rowNumber} store_name is required.`);
     canonicalizeMs += performance.now() - canonicalStarted;
 
     const identity = partitionStoreIdentity({
@@ -308,11 +306,7 @@ export async function exportStructuredPartitions(input: {
     if (extension === ".csv") {
       const rowScanStarted = performance.now();
       rowConsumerMs = await processSheet(
-        csvRows(
-          input.sourcePath,
-          input.limits.maxStructuredCellChars,
-          input.dataset === "settled_orders"
-        ),
+        csvRows(input.sourcePath, input.limits.maxStructuredCellChars, orderSource),
         "Sheet1",
         false
       );
@@ -326,7 +320,7 @@ export async function exportStructuredPartitions(input: {
           limits: input.limits,
           signal: input.signal,
           command: input.xlsxReaderCommand,
-          preserveCellWhitespace: input.dataset === "settled_orders",
+          preserveCellWhitespace: input.dataset === "in_store_orders",
           consumer: {
             startSheet(sheet) {
               processor = createSheetProcessor(sheet.name, sheet.hidden);

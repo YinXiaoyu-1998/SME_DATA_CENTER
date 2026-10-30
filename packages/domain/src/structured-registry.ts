@@ -1,3 +1,4 @@
+import { isOrderPartitionDataset } from "./structured-partitions.js";
 import { COST_CARD_UPLOAD_SCHEMA } from "./cost-cards.js";
 export const STRUCTURED_DATASETS = [
   "dishes",
@@ -7,7 +8,8 @@ export const STRUCTURED_DATASETS = [
   "delivery_ledger",
   "supplier_catalog",
   "cost_cards",
-  "settled_orders"
+  "in_store_orders",
+  "takeaway_orders"
 ] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
@@ -831,7 +833,7 @@ const FOOD_PURCHASE_LEDGER_PRESENTATION = Object.freeze({
   columns: FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS
 } satisfies StructuredPresentationProfile);
 
-const SETTLED_ORDER_FIELDS = [
+const IN_STORE_ORDER_FIELDS = [
   ["store_name", "门店", "string"],
   ["organization_code", "机构编码", "string"],
   ["business_date", "营业日期", "date"],
@@ -864,6 +866,42 @@ const SETTLED_ORDER_FIELDS = [
   ["order_note", "整单备注", "string"]
 ] satisfies Array<[string, string, StructuredFieldType]>;
 
+const TAKEAWAY_ORDER_FIELDS = [
+  ["store_name", "门店", "string"],
+  ["organization_code", "机构编码", "string"],
+  ["order_source", "订单来源", "string"],
+  ["takeaway_order_id", "外卖订单号", "string"],
+  ["cashier_order_id", "收银订单号", "string"],
+  ["order_status", "订单状态", "string"],
+  ["order_form", "订单形式", "string"],
+  ["refund_flag", "退单标识", "string"],
+  ["pickup_number", "取餐号", "string"],
+  ["omnichannel_transaction_id", "全渠道流水号", "string"],
+  ["business_date", "营业日期", "date"],
+  ["ordered_at", "下单时间", "date_time"],
+  ["accepted_at", "接单时间", "date_time"],
+  ["completed_at", "完成时间", "date_time"],
+  ["cancelled_at", "取消时间", "date_time"],
+  ["refunded_at", "退单时间", "date_time"],
+  ["delivery_method", "配送方式", "string"],
+  ["dish_total", "菜品总价(元)", "decimal"],
+  ["packaging_fee", "餐盒费(元)", "decimal"],
+  ["delivery_fee", "配送费(元)", "decimal"],
+  ["order_amount", "订单金额(元)", "decimal"],
+  ["merchant_delivery_income", "配送费(商家收入)(元)", "decimal"],
+  ["takeaway_turnover", "外卖营业额(元)", "decimal"],
+  ["platform_service_fee", "平台服务费(元)", "decimal"],
+  ["merchant_promotion_expense", "商家活动支出(元)", "decimal"],
+  ["other_expense", "其他支出(元)", "decimal"],
+  ["original_expected_income", "本单预计收入(原)(元)", "decimal"],
+  ["partial_refund", "部分退款(元)", "decimal"],
+  ["business_discount_expense", "营业优惠/支出(元)", "decimal"],
+  ["business_income", "营业收入(元)", "decimal"],
+  ["customer_paid", "顾客实付(元)", "decimal"],
+  ["packaging_discount", "餐盒费优惠(元)", "decimal"],
+  ["packaging_income", "餐盒费收入(元)", "decimal"]
+] satisfies Array<[string, string, StructuredFieldType]>;
+
 export const STRUCTURED_DATASET_REGISTRIES = {
   dishes: createRegistry({
     dataset: "dishes",
@@ -885,14 +923,14 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     canonicalOverrides: BUSINESS_CANONICAL_OVERRIDES,
     explicitTypes: BUSINESS_EXPLICIT_TYPES
   }),
-  settled_orders: {
-    dataset: "settled_orders",
+  in_store_orders: {
+    dataset: "in_store_orders",
     accessMode: "partition_extract",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
     datePolicy: "row_business_date",
     fields: [
-      ...SETTLED_ORDER_FIELDS,
+      ...IN_STORE_ORDER_FIELDS,
       ["payment_method_json", "结账方式JSON", "string"] as const
     ].map(([canonicalName, sourceColumn, type]): StructuredFieldRegistryEntry => ({
       canonicalName,
@@ -909,6 +947,30 @@ export const STRUCTURED_DATASET_REGISTRIES = {
       capabilities: { filter: false, sort: false, group: false, aggregate: false },
       indexStatus: "not_indexed"
     }))
+  },
+  takeaway_orders: {
+    dataset: "takeaway_orders",
+    accessMode: "partition_extract",
+    sheetPolicy: "strict_all_nonempty",
+    metadataPolicy: "window",
+    datePolicy: "row_business_date",
+    fields: TAKEAWAY_ORDER_FIELDS.map(
+      ([canonicalName, sourceColumn, type]): StructuredFieldRegistryEntry => ({
+        canonicalName,
+        sourceColumn,
+        aliases: [],
+        type,
+        nullable: !["store_name", "business_date"].includes(canonicalName),
+        inputSource: "file",
+        sensitivity: "normal",
+        lifecycle: "active",
+        volatility: "stable_export",
+        defaultReturn: true,
+        operators: [],
+        capabilities: { filter: false, sort: false, group: false, aggregate: false },
+        indexStatus: "not_indexed"
+      })
+    )
   },
   vip: createRegistry({
     dataset: "vip",
@@ -1084,7 +1146,9 @@ export function resolveStructuredHeaders(
     errors.push({ code: "UNKNOWN_COLUMN", column: "" });
   }
   if (
-    (dataset === "supplier_catalog" || dataset === "cost_cards" || dataset === "settled_orders") &&
+    (dataset === "supplier_catalog" ||
+      dataset === "cost_cards" ||
+      isOrderPartitionDataset(dataset)) &&
     headers.some((header) => !normalizeHeader(header))
   ) {
     errors.push({ code: "UNKNOWN_COLUMN", column: "" });
@@ -1306,7 +1370,8 @@ function createSourceDocumentIdField(
 
 function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): string[] {
   const aliasesByDataset: Record<StructuredDatasetName, Record<string, string[]>> = {
-    settled_orders: {},
+    in_store_orders: {},
+    takeaway_orders: {},
     dishes: {
       下单时间: ["订单时间"],
       门店: ["门店名称"],

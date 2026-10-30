@@ -1,3 +1,4 @@
+import type { PartitionDatasetName } from "@smedc/domain";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -21,7 +22,7 @@ export interface PartitionDownloadBuildLimits {
 }
 /** Full store-key digest; same-name stores retain distinct identities. Duplicate paths fail closed. */
 export function partitionDownloadFileName(
-  dataset: "business" | "dishes" | "settled_orders",
+  dataset: PartitionDatasetName,
   entry: Pick<PartitionDownloadEntry, "storeKey" | "businessDate">
 ): string {
   const digest = createHash("sha256").update(entry.storeKey, "utf8").digest("hex");

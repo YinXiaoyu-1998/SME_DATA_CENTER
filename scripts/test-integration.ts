@@ -41,7 +41,8 @@ import {
   createCostCardIntegrationFixture,
   createOwnedIntegrationDatabase,
   integrationDatabasePlan,
-  createSettledOrderIntegrationFixture
+  createInStoreOrderIntegrationFixture,
+  createTakeawayOrderIntegrationFixture
 } from "./test-integration-support.js";
 
 const INTEGRATION_EVIDENCE_CATEGORY_ID = "integration-evidence";
@@ -110,7 +111,8 @@ interface McpToolEnvelope {
   };
 }
 
-const settledOrdersOnly = process.argv.includes("--settled-orders-only");
+const takeawayOrdersOnly = process.argv.includes("--takeaway-orders-only");
+const inStoreOrdersOnly = process.argv.includes("--in-store-orders-only");
 const businessAuthorizationOnly = process.argv.includes("--business-authorization-only");
 const structuredReadsOnly = process.argv.includes("--structured-reads-only");
 const ledgerAuthorizationOnly = process.argv.includes("--ledger-authorization-only");
@@ -118,7 +120,8 @@ const partitionDownloadsOnly = process.argv.includes("--partition-downloads-only
 const storeReviewsOnly = process.argv.includes("--store-reviews-only");
 const costCardsOnly = process.argv.includes("--cost-cards-only");
 const focusedAuthorization =
-  settledOrdersOnly ||
+  takeawayOrdersOnly ||
+  inStoreOrdersOnly ||
   businessAuthorizationOnly ||
   structuredReadsOnly ||
   ledgerAuthorizationOnly ||
@@ -185,7 +188,7 @@ integrationRun: try {
       "vitest",
       "run",
       "--no-file-parallelism",
-      ...(settledOrdersOnly
+      ...(inStoreOrdersOnly || takeawayOrdersOnly
         ? [
             "packages/db/src/structured-partitions.prisma.integration.test.ts",
             "packages/db/src/partition-downloads.prisma.integration.test.ts",
@@ -237,7 +240,8 @@ integrationRun: try {
                         "apps/api/src/store-reviews.prisma.integration.test.ts",
                         "scripts/test-integration-support.test.ts"
                       ]),
-      ...(!settledOrdersOnly &&
+      ...(!inStoreOrdersOnly &&
+      !takeawayOrdersOnly &&
       !storeReviewsOnly &&
       !costCardsOnly &&
       !structuredReadsOnly &&
@@ -265,20 +269,20 @@ integrationRun: try {
   );
   process.stdout.write(prismaRegressions.stdout);
   // Exit the scenario through the shared finally cleanup, without starting API/Qdrant.
-  if (focusedAuthorization && !settledOrdersOnly) break integrationRun;
+  if (focusedAuthorization && !inStoreOrdersOnly && !takeawayOrdersOnly) break integrationRun;
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
-  if (settledOrdersOnly) {
+  if (inStoreOrdersOnly || takeawayOrdersOnly) {
     await prepareLocalWorkspace();
     apiProcess = startApi();
     await waitForApiHealth(apiProcess);
-    await assertSettledOrdersWorkflow();
+    await assertOrderPartitionsWorkflow(takeawayOrdersOnly ? "takeaway_orders" : "in_store_orders");
     console.log(
       JSON.stringify({
-        settledOrders: "passed",
+        [takeawayOrdersOnly ? "takeawayOrders" : "inStoreOrders"]: "passed",
         checks: [
           "original_xlsx_launcher_upload",
           "atomic_publish",
-          "authorized_csv_and_json",
+          takeawayOrdersOnly ? "authorized_33_column_csv" : "authorized_csv_and_json",
           "same_bytes_deduplication",
           "partial_store_day_replacement",
           "whole_source_rejection",
@@ -723,13 +727,19 @@ function launcherDependenciesFor(accessToken: string) {
   });
 }
 
-async function assertSettledOrdersWorkflow() {
+async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takeaway_orders") {
+  const takeaway = dataset === "takeaway_orders";
+  const createFixture = takeaway
+    ? createTakeawayOrderIntegrationFixture
+    : createInStoreOrderIntegrationFixture;
+  const initialRowCount = takeaway ? 5 : 7;
+  const incomeColumn = takeaway ? "营业收入(元)" : "订单收入（元）";
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
   const permissions = createBusinessAuthorizationRepository({ prisma });
-  const enterpriseName = "Integration Settled Orders";
+  const enterpriseName = "Integration Order Partitions";
   const enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
   const directories: string[] = [];
-  const fixture = await createSettledOrderIntegrationFixture();
+  const fixture = await createFixture();
   const context = async () => ({
     orgId: "default-org",
     actorId: "emp_admin",
@@ -758,7 +768,7 @@ async function assertSettledOrdersWorkflow() {
     return parseJson<T>(result.content[0]?.text ?? "null");
   };
   const scope = {
-    dataset: "settled_orders",
+    dataset,
     enterpriseName,
     startDate: "2026-10-26",
     endDate: "2026-10-27"
@@ -793,7 +803,7 @@ async function assertSettledOrdersWorkflow() {
     );
     assert(
       result.processed && result.status === expected,
-      `Settled-order worker must be ${expected}, got ${result.status}.`
+      `In-store-order worker must be ${expected}, got ${result.status}.`
     );
   };
   const upload = async (name: string, xlsx: Buffer, key = name) => {
@@ -802,11 +812,11 @@ async function assertSettledOrdersWorkflow() {
     return call<Receipt>(
       "upload_structured_dataset",
       {
-        dataset: "settled_orders",
+        dataset,
         enterpriseName,
         startDate: "20261026",
         endDate: "20261027",
-        idempotencyKey: `settled-${key}`,
+        idempotencyKey: `in-store-${key}`,
         file: {
           name: `${name}.xlsx`,
           mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -830,7 +840,10 @@ async function assertSettledOrdersWorkflow() {
         columns: true
       }) as Array<Record<string, string>>;
       assert(rows.length > 0, "Current partitions must be nonempty.");
-      assertStrict.deepEqual(Object.keys(rows[0]!), [...fixture.headers, "结账方式JSON"]);
+      assertStrict.deepEqual(
+        Object.keys(rows[0]!),
+        takeaway ? fixture.headers : [...fixture.headers, "结账方式JSON"]
+      );
       records.set(`${rows[0]!["门店"]}/${rows[0]!["营业日期"]}`, rows);
     }
     const localManifest = await readFile(path.join(result.localDirectory, "manifest.json"), "utf8");
@@ -847,20 +860,20 @@ async function assertSettledOrdersWorkflow() {
       data: { mode: "enabled", version: { increment: 1 } }
     });
     const initialCategory = await prisma.businessCategory.findUniqueOrThrow({
-      where: { orgId_key: { orgId: "default-org", key: "settled_orders" } }
+      where: { orgId_key: { orgId: "default-org", key: dataset } }
     });
     assert(initialCategory.confidentialityLevel === null, "New category level must be unset.");
     assert(
       (await prisma.businessGrantCategory.count({
         where: { orgId: "default-org", categoryId: initialCategory.id }
       })) === 0,
-      "No settled-order grant is implicit."
+      "No in-store-order grant is implicit."
     );
     await permissions.configureCategory({
       ...(await context()),
       id: initialCategory.id,
-      key: "settled_orders",
-      name: "店内已结账订单明细",
+      key: dataset,
+      name: takeaway ? "平台外卖订单明细" : "店内订单明细",
       kind: "fixed",
       confidentialityLevel: 2,
       ownerships: ["store"],
@@ -874,7 +887,7 @@ async function assertSettledOrdersWorkflow() {
       key = enterpriseKey
     ) => [
       {
-        id: "settled-reader",
+        id: "in-store-reader",
         orgId: "default-org",
         enterpriseKey: key,
         categoryIds,
@@ -892,7 +905,27 @@ async function assertSettledOrdersWorkflow() {
       clearance: 3,
       grants: grant(oldCategories.map((category) => category.id))
     });
-    const first = await upload("settled-original", fixture.xlsx);
+    const deniedUpload = await createLauncherToolHandler(
+      "upload_structured_dataset",
+      reader
+    )({
+      dataset,
+      enterpriseName,
+      startDate: "20261026",
+      endDate: "20261027",
+      idempotencyKey: "denied-order-upload",
+      file: {
+        name: "denied.xlsx",
+        mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        encoding: "path",
+        filePath: path.join(integrationRoot, "denied.xlsx")
+      }
+    });
+    assert(
+      deniedUpload.isError && JSON.stringify(deniedUpload).includes("UPLOAD_ADMIN_REQUIRED"),
+      "Employee cannot upload order sources or read the local source before denial."
+    );
+    const first = await upload("in-store-original", fixture.xlsx);
     assert(first.status === "queued", "Official launcher must complete XLSX multipart upload.");
     await worker("active");
     const published = await waitForPartitionImportStatus(
@@ -901,7 +934,7 @@ async function assertSettledOrdersWorkflow() {
       "published"
     );
     assert(
-      published.partitionCount === 3 && published.totalRowCount === 4,
+      published.partitionCount === 3 && published.totalRowCount === initialRowCount,
       "Two stores and source business days must yield three partitions and four rows."
     );
     await prisma.businessAuthorizationState.update({
@@ -914,7 +947,7 @@ async function assertSettledOrdersWorkflow() {
     );
     const legacyCoverage = await call<{ enterprises: unknown[] }>(
       "describe_structured_dataset_coverage",
-      { dataset: "settled_orders", enterpriseName }
+      { dataset, enterpriseName }
     );
     assert(
       legacyCoverage.enterprises.length === 0,
@@ -984,40 +1017,40 @@ async function assertSettledOrdersWorkflow() {
       grants: grant([initialCategory.id])
     });
     await prisma.organization.create({
-      data: { id: "settled-other-org", name: "Synthetic other organization" }
+      data: { id: "in-store-other-org", name: "Synthetic other organization" }
     });
     await prisma.employee.create({
       data: {
-        id: "settled-other-reader",
-        orgId: "settled-other-org",
-        email: "settled-other@example.invalid",
+        id: "in-store-other-reader",
+        orgId: "in-store-other-org",
+        email: "in-store-other@example.invalid",
         displayName: "Synthetic other reader",
         role: "admin",
         clearance: 3
       }
     });
     await prisma.businessAuthorizationState.create({
-      data: { orgId: "settled-other-org", mode: "enabled", version: 1n }
+      data: { orgId: "in-store-other-org", mode: "enabled", version: 1n }
     });
     await permissions.initializeFixedCategories({
-      orgId: "settled-other-org",
-      actorId: "settled-other-reader",
+      orgId: "in-store-other-org",
+      actorId: "in-store-other-reader",
       expectedVersion: "1"
     });
     const otherContext = async () => ({
-      orgId: "settled-other-org",
-      actorId: "settled-other-reader",
+      orgId: "in-store-other-org",
+      actorId: "in-store-other-reader",
       expectedVersion: (
-        await permissions.loadAuthorizationSnapshot("settled-other-reader", "settled-other-org")
+        await permissions.loadAuthorizationSnapshot("in-store-other-reader", "in-store-other-org")
       ).authorizationVersion
     });
     const otherCategory = await prisma.businessCategory.findUniqueOrThrow({
-      where: { orgId_key: { orgId: "settled-other-org", key: "settled_orders" } }
+      where: { orgId_key: { orgId: "in-store-other-org", key: dataset } }
     });
     await permissions.configureCategory({
       ...(await otherContext()),
       id: otherCategory.id,
-      key: "settled_orders",
+      key: dataset,
       name: "Synthetic other orders",
       kind: "fixed",
       confidentialityLevel: 2,
@@ -1026,12 +1059,12 @@ async function assertSettledOrdersWorkflow() {
     });
     await permissions.configureAccount({
       ...(await otherContext()),
-      employeeId: "settled-other-reader",
+      employeeId: "in-store-other-reader",
       clearance: 3,
       grants: [
         {
-          id: "other-settled-grant",
-          orgId: "settled-other-org",
+          id: "other-in-store-grant",
+          orgId: "in-store-other-org",
           enterpriseKey,
           categoryIds: [otherCategory.id],
           ownership: "store",
@@ -1042,13 +1075,13 @@ async function assertSettledOrdersWorkflow() {
     });
     await prisma.loginIdentity.create({
       data: {
-        orgId: "settled-other-org",
-        employeeId: "settled-other-reader",
-        normalizedEmail: "settled-other@example.invalid",
+        orgId: "in-store-other-org",
+        employeeId: "in-store-other-reader",
+        normalizedEmail: "in-store-other@example.invalid",
         passwordHash: null
       }
     });
-    const otherToken = await createOfficialIntegrationAccessToken("settled-other-reader");
+    const otherToken = await createOfficialIntegrationAccessToken("in-store-other-reader");
     assert(
       (await manifest(otherToken)).partitionCount === 0,
       "A matching complete grant in another organization cannot cross the tenant boundary."
@@ -1060,78 +1093,120 @@ async function assertSettledOrdersWorkflow() {
     );
     const card = await call<Record<string, unknown>>("get_my_permissions", {});
     assert(
-      JSON.stringify(card).includes("settled_orders"),
+      JSON.stringify(card).includes(dataset),
       "Permission card must include the independently granted category."
     );
     const full = await download();
     const repeated = full.records.get("合成甲店/2026-10-27")!;
     assert(
-      repeated.length === 2 && full.result.totalRowCount === 4,
+      repeated.length === (takeaway ? 3 : 5) && full.result.totalRowCount === initialRowCount,
       "Identical source rows must survive publication and download."
     );
     assertStrict.deepEqual(repeated[0], repeated[1]);
     assert(
-      repeated[0]!["订单号"] === "000012" && repeated[0]!["机构编码"] === "0007",
+      repeated[0]![takeaway ? "外卖订单号" : "订单号"] === "000012" &&
+        repeated[0]!["机构编码"] === "0007",
       "String identifiers retain leading zeros."
     );
     assert(
       repeated[0]!["下单时间"] === "2026-10-28 00:03:00",
       "Cross-midnight order remains on the source business date."
     );
-    assert(
-      repeated[0]!["结账方式"] === fixture.rows[0]!["结账方式"] &&
-        repeated[0]!["整单备注"] === fixture.rows[0]!["整单备注"],
-      "Raw payment and quoted multiline text survive standard CSV parsing."
-    );
-    assert(
-      repeated[0]!["退单时间"] === "" &&
-        repeated[0]!["用餐人数"] === "" &&
-        repeated[0]!["取餐号"] === "--",
-      "Only nullable typed placeholders become empty."
-    );
-    assertStrict.deepEqual(JSON.parse(repeated[0]!["结账方式JSON"]!), [
-      { method: "员工 卡", amount: 10, marker: null },
-      { method: "现金", amount: -2.3, marker: "退款" },
-      { method: "现金", amount: -2.3, marker: "退款" },
-      { method: "现金", amount: -0.1, marker: "找零" }
-    ]);
-    assert(
-      full.records.get("合成甲店/2026-10-26")![0]!["结账方式JSON"] === "null",
-      "Missing payment becomes JSON null."
-    );
+    if (takeaway) {
+      assertStrict.deepEqual(
+        repeated.map((row) => row["订单来源"]),
+        ["平台甲", "平台甲", "未来平台乙"]
+      );
+      assert(
+        repeated[0]!["收银订单号"] === "000900719925474099312345",
+        "Long text identifiers retain precision."
+      );
+      assert(
+        repeated[0]!["订单状态"] === "制作中" && repeated[2]!["订单状态"] === "配送中",
+        "Valid uncompleted orders survive."
+      );
+      assert(
+        repeated[0]!["部分退款(元)"] === "-2.3" && repeated[0]!["平台服务费(元)"] === "-0.1",
+        "Signed source amounts are preserved independently."
+      );
+      assert(
+        repeated[0]!["完成时间"] === "" &&
+          repeated[0]!["取餐号"] === "--" &&
+          repeated[0]!["餐盒费(元)"] === "0",
+        "Typed placeholders, text and zero remain distinct."
+      );
+      assert(
+        repeated[0]!["配送方式"] === fixture.rows[0]!["配送方式"],
+        "Quoted multiline source text is preserved."
+      );
+    } else {
+      assertStrict.deepEqual(
+        [...new Set([...full.records.values()].flat().map((row) => row["订单状态"]))].sort(),
+        ["待制作", "未结账", "已结账", "已撤单", "已退单"].sort()
+      );
+      for (const row of repeated.filter((row) =>
+        ["待制作", "未结账", "已撤单"].includes(row["订单状态"]!)
+      )) {
+        assert(
+          row["结账时间"] === "" && row["结账方式JSON"] === "null",
+          "Unpaid and cancelled orders remain visible with absent settlement fields."
+        );
+      }
+      assert(
+        repeated[0]!["结账方式"] === fixture.rows[0]!["结账方式"] &&
+          repeated[0]!["整单备注"] === fixture.rows[0]!["整单备注"],
+        "Raw payment and quoted multiline text survive standard CSV parsing."
+      );
+      assert(
+        repeated[0]!["退单时间"] === "" &&
+          repeated[0]!["用餐人数"] === "" &&
+          repeated[0]!["取餐号"] === "--",
+        "Only nullable typed placeholders become empty."
+      );
+      assertStrict.deepEqual(JSON.parse(repeated[0]!["结账方式JSON"]!), [
+        { method: "员工 卡", amount: 10, marker: null },
+        { method: "现金", amount: -2.3, marker: "退款" },
+        { method: "现金", amount: -2.3, marker: "退款" },
+        { method: "现金", amount: -0.1, marker: "找零" }
+      ]);
+      assert(
+        full.records.get("合成甲店/2026-10-26")![0]!["结账方式JSON"] === "null",
+        "Missing payment becomes JSON null."
+      );
+    }
     const coverage = await call<{
       enterprises: Array<{ partitionCount: number; totalRowCount: number }>;
-    }>("describe_structured_dataset_coverage", { dataset: "settled_orders", enterpriseName });
+    }>("describe_structured_dataset_coverage", { dataset, enterpriseName });
     assert(
       coverage.enterprises[0]?.partitionCount === 3 &&
-        Number(coverage.enterprises[0]?.totalRowCount) === 4,
+        Number(coverage.enterprises[0]?.totalRowCount) === initialRowCount,
       "Coverage must reflect only authorized current partitions."
     );
     const query = await createLauncherToolHandler(
       "query_structured_dataset",
       reader
-    )({ dataset: "settled_orders", select: ["order_id"] });
+    )({ dataset, select: [takeaway ? "takeaway_order_id" : "order_id"] });
     assert(
       query.isError && JSON.stringify(query).includes("DATASET_REQUIRES_PARTITION_EXTRACT"),
       "Orders cannot enter server row queries."
     );
-    const exactReplay = await upload("settled-original", fixture.xlsx);
+    const exactReplay = await upload("in-store-original", fixture.xlsx);
     assert(
       exactReplay.partitionImportJobId === first.partitionImportJobId &&
         exactReplay.status === "published",
       "Request replay reuses the original published job."
     );
-    await upload("settled-same-bytes", fixture.xlsx);
+    await upload("in-store-same-bytes", fixture.xlsx);
     await worker("active");
     assertStrict.deepEqual(
       await manifest(),
       available,
       "Same canonical bytes must not duplicate or replace current data."
     );
-    const replacement = await createSettledOrderIntegrationFixture([
-      { ...fixture.rows[0]!, "订单收入（元）": "20", 结账方式: "现金 20" }
+    const replacement = await createFixture([
+      { ...fixture.rows[0]!, [incomeColumn]: "20", ...(takeaway ? {} : { 结账方式: "现金 20" }) }
     ]);
-    await upload("settled-replacement", replacement.xlsx);
+    await upload("in-store-replacement", replacement.xlsx);
     await worker("active");
     const updated = await download();
     assert(
@@ -1139,7 +1214,7 @@ async function assertSettledOrdersWorkflow() {
       "Partial upload only replaces the appeared store-day."
     );
     assert(
-      updated.records.get("合成甲店/2026-10-27")![0]!["订单收入（元）"] === "20",
+      updated.records.get("合成甲店/2026-10-27")![0]![incomeColumn] === "20",
       "Appeared store-day is replaced."
     );
     for (const untouched of ["合成甲店/2026-10-26", "合成乙店/2026-10-27"])
@@ -1149,11 +1224,14 @@ async function assertSettledOrdersWorkflow() {
         "Absent store-days must remain unchanged."
       );
     const stable = await manifest();
-    const broken = await createSettledOrderIntegrationFixture([
-      { ...fixture.rows[0]!, "订单收入（元）": "30" },
-      { ...fixture.rows[3]!, 结账方式: "现金 1，错误尾部" }
+    const broken = await createFixture([
+      { ...fixture.rows[0]!, [incomeColumn]: "30" },
+      {
+        ...fixture.rows[3]!,
+        ...(takeaway ? { "营业收入(元)": "bad" } : { 结账方式: "现金 1，错误尾部" })
+      }
     ]);
-    const rejected = await upload("settled-invalid-later-row", broken.xlsx);
+    const rejected = await upload("in-store-invalid-later-row", broken.xlsx);
     await worker("rejected");
     await waitForPartitionImportStatus(
       rejected.partitionImportJobId,
@@ -1174,8 +1252,8 @@ async function assertSettledOrdersWorkflow() {
       stable,
       "A later invalid payment must reject the whole source and preserve current data."
     );
-    const empty = await createSettledOrderIntegrationFixture([]);
-    const emptyJob = await upload("settled-empty", empty.xlsx);
+    const empty = await createFixture([]);
+    const emptyJob = await upload("in-store-empty", empty.xlsx);
     await worker("rejected");
     await waitForPartitionImportStatus(
       emptyJob.partitionImportJobId,
@@ -1183,6 +1261,30 @@ async function assertSettledOrdersWorkflow() {
       "rejected"
     );
     assertStrict.deepEqual(await manifest(), stable, "An empty source cannot clear current data.");
+    const outsideWindow = await createFixture([{ ...fixture.rows[0]!, 营业日期: "20261028" }]);
+    const outsideJob = await upload("orders-outside-window", outsideWindow.xlsx);
+    await worker("rejected");
+    const outsideStatus = await call<{ error: { code: string } }>(
+      "get_partition_import_status",
+      { partitionImportJobId: outsideJob.partitionImportJobId },
+      admin
+    );
+    assert(
+      outsideStatus.error.code === "PARTITION_SOURCE_DATE_OUT_OF_RANGE",
+      "Source business dates must fit the declared window."
+    );
+    assertStrict.deepEqual(
+      await manifest(),
+      stable,
+      "Out-of-window source cannot alter current partitions."
+    );
+    await upload("orders-older-complete-export-reuploaded", fixture.xlsx);
+    await worker("active");
+    assertStrict.deepEqual(
+      await manifest(),
+      available,
+      "The last successful complete upload wins, even when it restores older source content."
+    );
     let preparedRequestId = "";
     await comparePartitionDownloads({
       context: {
@@ -1191,9 +1293,13 @@ async function assertSettledOrdersWorkflow() {
         launcherVersion: LAUNCHER_VERSION,
         fetchImplementation: fetch
       },
-      scope: { ...scope, dataset: "settled_orders" },
-      amountColumn: "订单收入（元）",
-      expected: { partitionCount: 3, rowCount: 3, amountCents: 3300 },
+      scope: { ...scope, dataset },
+      amountColumn: incomeColumn,
+      expected: {
+        partitionCount: 3,
+        rowCount: initialRowCount,
+        amountCents: takeaway ? 3960 : 3760
+      },
       build: async (requestId) => {
         preparedRequestId = requestId;
         await worker("active");
@@ -1205,7 +1311,12 @@ async function assertSettledOrdersWorkflow() {
     });
     const legacyPreparation = await call<{ partitionCount: number }>(
       "prepare_structured_partition_download",
-      { ...scope, startDate: "20261026", endDate: "20261027", idempotencyKey: "settled-legacy-zip" }
+      {
+        ...scope,
+        startDate: "20261026",
+        endDate: "20261027",
+        idempotencyKey: "in-store-legacy-zip"
+      }
     );
     assert(
       legacyPreparation.partitionCount === 0,

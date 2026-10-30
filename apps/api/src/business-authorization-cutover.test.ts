@@ -15,7 +15,8 @@ const fixed = [
   "ledger_pdf",
   "store_reviews",
   "cost_cards",
-  "settled_orders"
+  "in_store_orders",
+  "takeaway_orders"
 ];
 function inventory(): CutoverInventory {
   return {

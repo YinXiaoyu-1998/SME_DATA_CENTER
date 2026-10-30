@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { LAUNCHER_VERSION } from "./oauth-client.js";
 import { MCP_LAUNCHER_SERVER_VERSION } from "./server.js";
-import { COST_CARD_LAUNCHER_VERSION, SETTLED_ORDER_LAUNCHER_VERSION } from "@smedc/mcp-contract";
+import {
+  COST_CARD_LAUNCHER_VERSION,
+  IN_STORE_ORDER_LAUNCHER_VERSION,
+  TAKEAWAY_ORDER_LAUNCHER_VERSION
+} from "@smedc/mcp-contract";
 
 describe("launcher CLI entrypoint", () => {
   afterEach(() => {
@@ -25,11 +29,12 @@ describe("launcher CLI entrypoint", () => {
     expect(write).toHaveBeenCalledWith(`${LAUNCHER_VERSION}\n`);
   });
 
-  it("keeps the package, protocol server, and runtime release on 0.14.0", () => {
-    expect(LAUNCHER_VERSION).toBe("0.14.0");
+  it("keeps the package, protocol server, and runtime release on 0.15.0", () => {
+    expect(LAUNCHER_VERSION).toBe("0.15.0");
     expect(MCP_LAUNCHER_SERVER_VERSION).toBe(LAUNCHER_VERSION);
     expect(COST_CARD_LAUNCHER_VERSION).toBe("0.10.0");
-    expect(SETTLED_ORDER_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
+    expect(IN_STORE_ORDER_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
+    expect(TAKEAWAY_ORDER_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
     expect(
       JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version
     ).toBe(LAUNCHER_VERSION);
