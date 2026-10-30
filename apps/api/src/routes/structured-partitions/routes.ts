@@ -424,7 +424,7 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
   if (!isRecord(body) || typeof body.dataset !== "string" || !isPartitionDataset(body.dataset))
     return invalid(
       "INVALID_PARTITION_UPLOAD",
-      "dataset must be business, dishes, settled_orders, or takeaway_orders."
+      "dataset must be business, dishes, in_store_orders, or takeaway_orders."
     );
   const enterpriseName = body.enterpriseName;
   if (typeof enterpriseName !== "string")
@@ -522,7 +522,7 @@ function parseManifestBody(body: unknown) {
   if (!isRecord(body) || typeof body.dataset !== "string" || !isPartitionDataset(body.dataset))
     return invalid(
       "INVALID_PARTITION_MANIFEST",
-      "dataset must be business, dishes, settled_orders, or takeaway_orders."
+      "dataset must be business, dishes, in_store_orders, or takeaway_orders."
     );
   const enterpriseName = body.enterpriseName;
   if (typeof enterpriseName !== "string")

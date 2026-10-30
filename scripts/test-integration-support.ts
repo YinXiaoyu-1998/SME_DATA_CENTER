@@ -123,8 +123,8 @@ export async function createCostCardIntegrationFixture() {
   };
 }
 
-/** A tiny original settled-order export, independent of the runtime field registry. */
-export async function createSettledOrderIntegrationFixture(
+/** A tiny original in-store-order export, independent of the runtime field registry. */
+export async function createInStoreOrderIntegrationFixture(
   overrides?: Array<Record<string, string>>
 ) {
   const headers = [
@@ -171,19 +171,41 @@ export async function createSettledOrderIntegrationFixture(
     "订单金额（元）": "12.30",
     "订单收入（元）": "12.30",
     结账方式: "员工 卡 10.00，现金 -2.30(退款)，现金 -2.30(退款)，现金 -0.10（找零）",
-    订单状态: "来源新状态",
+    订单状态: "已结账",
     会员: "来源文本",
     整单备注: '合成,含"引号"\n第二行'
   };
   const rows: Array<Record<string, string>> = overrides ?? [
     { ...base },
     { ...base },
-    { ...base, 营业日期: "20261026", 结账方式: "--", "订单收入（元）": "5" },
-    { ...base, 门店: "合成乙店", 订单号: "000013", 结账方式: "现金 8", "订单收入（元）": "8" }
+    {
+      ...base,
+      营业日期: "20261026",
+      订单状态: "待制作",
+      结账时间: "--",
+      结账方式: "--",
+      "订单收入（元）": "5"
+    },
+    {
+      ...base,
+      门店: "合成乙店",
+      订单号: "000013",
+      订单状态: "已退单",
+      结账方式: "现金 8",
+      "订单收入（元）": "8"
+    },
+    ...["待制作", "未结账", "已撤单"].map((state, index) => ({
+      ...base,
+      订单号: `00001${index + 4}`,
+      订单状态: state,
+      结账时间: "--",
+      结账方式: "--",
+      "订单收入（元）": "0"
+    }))
   ];
   const book = new ExcelJS.Workbook();
-  const sheet = book.addWorksheet("已结账合成");
-  sheet.addRow(["店内订单明细—已结账（合成）"]);
+  const sheet = book.addWorksheet("店内订单合成");
+  sheet.addRow(["店内订单明细（合成）"]);
   sheet.addRow(headers);
   rows.forEach((row) => sheet.addRow(headers.map((header) => row[header] ?? "")));
   return { headers, rows, xlsx: Buffer.from(await book.xlsx.writeBuffer()) };

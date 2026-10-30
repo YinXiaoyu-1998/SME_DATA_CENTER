@@ -153,7 +153,7 @@ All uploads retain existing file/type/size validation. The common request fields
 | Row-query structured import | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional legacy level; current fixed category is authoritative when enabled |
 | Store-day partition source  | multipart session metadata, then ordered upload-part ETags                 | optional legacy level; current fixed category is authoritative when enabled |
 
-The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`/`settled_orders`/`takeaway_orders`
+The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`/`in_store_orders`/`takeaway_orders`
 paths through multipart storage, with a 2 GiB default source limit. Filenames, titles, idempotency keys, receipt IDs, structured
 metadata, evidence filters, cursors, and structured-query limits retain their existing public
 limits. Label keys and label arrays are not accepted.
@@ -165,7 +165,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.14.0 owns business/dishes/settled_orders upload and partition transfer; takeaway_orders requires the separately gated 0.15.0 source candidate. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.14.0 owns business/dishes and legacy settled_orders transfer. Canonical in_store_orders and takeaway_orders require the separately gated 0.15.0 source candidate. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -215,14 +215,16 @@ optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return 
 partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
 and store configuration never grant content access or set a category level or tenant mode.
 
-### Settled orders (published launcher, tenant authorization required)
+### In-store orders (source candidate 0.15.0, migration and release gated)
 
-`settled_orders` uses the existing partition upload/status/coverage/manifest/range and optional ZIP
-interfaces in published, independently verified launcher `0.14.0`. Upload through MCP rejects
-launchers below `0.14.0` with `LAUNCHER_UPGRADE_REQUIRED`; the global OAuth floor remains `0.12.0`,
-and the source recommendation/approved installation pin is `0.14.0`. Matching service deployment
-and the observed live recommendation are recorded in [staging readiness](staging-readiness.md).
-Use requires enabled current category grants; publication alone does not establish tenant access.
+`in_store_orders` uses the existing partition upload/status/coverage/manifest/range and optional ZIP
+interfaces in source candidate `0.15.0`, which is not yet published. It replaces the legacy
+`settled_orders` name used by published `0.14.0`. MCP upload requires `0.15.0+` and otherwise returns
+`LAUNCHER_UPGRADE_REQUIRED`; current public schemas accept only the canonical new name. The OAuth
+floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version stay `0.14.0`.
+Use requires verified compatible client publication, coordinated service migration and current
+category grants. [The forward migration guide](in-store-order-design.md) covers retained category
+IDs/grants/CSV objects, expired old ZIP requests and unchanged historical request fingerprints.
 
 It is an independent fixed store-level category, initially without level or grants. Existing
 business/dishes grants do not grant orders; ordinary reads require complete enterprise/store/category
@@ -230,12 +232,12 @@ and dimension coverage plus current clearance, including for admins. Legacy/prep
 provide no fallback reads, including coverage and ZIP preparation/signing. Retained ZIP capabilities
 must still satisfy current dataset authorization before reissue.
 
-Original uploads declare the complete selected store-day window. The server validates all 30 source
+Original “店内订单明细” uploads declare complete selected store-days across 待制作/未结账/已结账/已撤单/已退单. `order_status` remains nullable source text, including unknown states; no settlement-only filtering or inferred status. Empty settlement/payment fields on unpaid rows yield empty typed values and JSON null. The server validates all 30 source
 columns, types and dates, then atomically replaces only store-days actually present; omitted days stay
 unchanged and entirely empty sources fail. All source rows and payment items retain order/multiplicity.
 The 31-column current CSV appends `结账方式JSON` to the 30 source fields; it is not a row-query dataset
 or an original Excel archive. Exact schema/semantics live in [the partition contract](structured-partitions.md)
-and [the core Skill order reference](../../skills/smedc-mcp/references/settled-orders.md).
+and [the core Skill order reference](../../skills/smedc-mcp/references/in-store-orders.md).
 
 ### Takeaway orders (source candidate 0.15.0, not yet published)
 
@@ -268,7 +270,7 @@ tools/list alone cannot establish server availability. After ZIP rollback regene
 plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.14.0`. This contract is not
 evidence of service deployment or tenant activation.
 
-For `business`/`dishes`/`settled_orders`/`takeaway_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
+For `business`/`dishes`/`in_store_orders`/`takeaway_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
 inclusive ISO `startDate`/`endDate`, optional `storeIds` and `storeNameContains`. Coverage accepts
 `dataset` plus optional `enterpriseName` and `storeNameContains`. The latter is 1–20 NFC/trim
 literals of 1–255 characters: case-sensitive substring OR, AND with IDs, scope and backend

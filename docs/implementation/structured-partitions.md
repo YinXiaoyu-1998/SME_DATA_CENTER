@@ -1,8 +1,8 @@
 # 经营、菜品销售与订单当前分区契约
 
-`business`、`dishes` 和 `settled_orders` 使用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。Launcher `0.14.0` 已公开发布并独立核验，匹配服务部署已核实，批准安装 pin 为 `0.14.0`；使用仍需当前独立类别授权。当前部署和线上推荐值证据见 [staging 状态](staging-readiness.md)。历史迁移清单不再作为操作入口。
+`business`、`dishes`、`in_store_orders` 和 `takeaway_orders` 共用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。当前两个订单类别属于尚未发布的 `0.15.0` 源码候选；历史 `0.14.0` 使用 `settled_orders` 旧名称，批准安装 pin 和推荐仍保持 `0.14.0`。现有已验证部署证据见 [staging 状态](staging-readiness.md)。
 
-`takeaway_orders`（平台外卖订单明细）已接入同一源码管线，launcher 候选为 `0.15.0`，尚未发布。上述 `0.14.0` 安装 pin 和推荐值保持不变；外卖使用须先独立核验兼容客户端发布、匹配服务部署、前向枚举迁移 `20261030010000_takeaway_orders` 及当前类别授权。无新增环境变量、明细表或对象存储设施。
+使用新订单类别前须独立核验兼容客户端发布、匹配服务及 `20261030010000_takeaway_orders` / `20261030020000_in_store_orders` 前向迁移与当前授权。店内订单命名迁移保留类别/授权/当前 CSV，旧 ZIP 失效后重新准备；协调停写和 worker 升级要求见[命名迁移](in-store-order-design.md)。无新增环境变量、明细表或对象存储设施。
 
 ## 身份与权威数据
 
@@ -10,21 +10,21 @@
 
 物理 storeKey 与当前授权门店名是不同概念。业务授权仍按企业内精确门店名称及完整类别/维度匹配，不能用物理键形成第二套放行规则。只为来源实际出现的门店/日期生成分区；没有出现不表示删除其他已有分区。
 
-OSS canonical CSV 是权威业务数据，MySQL 保存当前指针、行数、字节数、SHA-256、业务身份/权限及发布元数据。不保留分区历史版本、MySQL business/dishes/settled_orders/takeaway_orders 明细表或原始 Excel 下载入口。
+OSS canonical CSV 是权威业务数据，MySQL 保存当前指针、行数、字节数、SHA-256、业务身份/权限及发布元数据。不保留分区历史版本、MySQL business/dishes/in_store_orders/takeaway_orders 明细表或原始 Excel 下载入口。
 
 ## Canonical CSV
 
 - UTF-8 无 BOM，逗号分隔，RFC 4180 引号，LF 换行及末尾换行。
-- 使用注册表中 inputSource=file 的固定中文字段和顺序；`settled_orders` 末尾追加派生“结账方式JSON”，合计 31 列。一个表头，至少一行有效数据；不加入 source_document_id 等不存在于 canonical schema 的字段。
+- 使用注册表中 inputSource=file 的固定中文字段和顺序；`in_store_orders` 末尾追加派生“结账方式JSON”，合计 31 列。一个表头，至少一行有效数据；不加入 source_document_id 等不存在于 canonical schema 的字段。
 - 保留来源 sheet/行顺序；按解析规则排除标题/筛选/汇总行；空 nullable 字段输出空字段。
 - 使用确定性的已验证值：日期 YYYY-MM-DD、日期时间 YYYY-MM-DD HH:mm:ss、布尔 true/false、非指数十进制数，身份字段保持字符串语义。
 - SHA-256 覆盖确切字节；输出不依赖机器 locale/timezone 或文件名。语义相同但顺序不同的来源可以产生不同 hash。
 
 ## 订单来源边界
 
-`settled_orders` 上传必须是所选门店完整单日或多日来源快照；上传方保证业务完整性，服务不能从文件名、标题或筛选说明证明完整。仅替换文件中实际出现的门店日，整份空数据拒绝；重复行/订单号不去重。按来源营业日分区，跨午夜不调整；本来源无商户号，机构编码不代替 merchantId。
+`in_store_orders` 使用“店内订单明细”完整单日或多日来源快照，包含待制作、未结账、已结账、已撤单、已退单全部状态，不能按结账状态筛掉记录；未知与空状态按来源文本保留，不从时间或支付信息推导。上传方保证业务完整性，服务不能从文件名、标题或筛选说明证明完整。仅替换文件中实际出现的门店日，整份空数据拒绝；重复行/订单号不去重。按来源营业日分区，跨午夜不调整；本来源无商户号，机构编码不代替 merchantId。
 
-全部 30 个输入列必需，允许重排；仅门店和营业日期必填。可空日期/时间/数值中的 `--` 转空，普通文本/编号保留。结账方式保留原文及有序 `{method, amount, marker}` JSON 数组，重复项不合并，退款/找零/撤销找零保留符号与标记，兼容半角和全角括号；空白/`--` 派生 JSON null。非空解析失败或出现不支持的标记时整份拒绝，错误指出源行、从 1 开始的支付项序号和失败原因。金额不补零、不推净额或跨字段对账。字段及员工操作见[订单 reference](../../skills/smedc-mcp/references/settled-orders.md)。
+全部 30 个输入列必需，允许重排；仅门店和营业日期必填。未结账/撤单等行可以没有结账时间及支付信息，仍是有效来源记录。可空日期/时间/数值中的 `--` 转空，普通文本/编号保留。结账方式保留原文及有序 `{method, amount, marker}` JSON 数组，重复项不合并，退款/找零/撤销找零保留符号与标记，兼容半角和全角括号；空白/`--` 派生 JSON null。非空解析失败或出现不支持的标记时整份拒绝，错误指出源行、从 1 开始的支付项序号和失败原因。金额不补零、不推净额或跨字段对账。字段及员工操作见[订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)。
 
 ### 平台外卖有效订单
 
@@ -65,13 +65,13 @@ Launcher 消费内部链接、核验下载文件/清单的身份、checksum、�
 
 - 解析/协议：`npm test -- packages/structured-ingestion/src`；真实 reader 验证见该目录 AGENTS.md。
 - 事务/租约/清理：`packages/db/src/structured-partitions*`、`apps/worker/src/partition-import.test.ts` 及相关真实数据库集成测试。
-- 上传/下载公共路径：API 结构化分区测试、launcher multipart/partition-bundle 测试和 MCP smoke。订单合成 XLSX 主链路复用 `npm run test:integration -- --settled-orders-only` / `--takeaway-orders-only`，需现有 loopback MySQL、匹配 `MYSQL_PORT`/`DATABASE_URL` 与真实 `SMEDC_CALAMINE_READER_PATH`；runner 使用独立临时 schema 并清理。
+- 上传/下载公共路径：API 结构化分区测试、launcher multipart/partition-bundle 测试和 MCP smoke。订单合成 XLSX 主链路复用 `npm run test:integration -- --in-store-orders-only` / `--takeaway-orders-only`，需现有 loopback MySQL、匹配 `MYSQL_PORT`/`DATABASE_URL` 与真实 `SMEDC_CALAMINE_READER_PATH`；runner 使用独立临时 schema 并清理。
 - 性能比较使用同一 fixture/workload；[历史基准](dishes-business-partition-benchmark-2026-09-15.md) 只作为当时测量证据。
 - 真实数据清理、回填或存储迁移需独立授权；过去 QA 数据删除批准不能用于新环境或真实客户资料。
 
 ## Independent cost-card storage boundary
 
-This document covers business/dishes/settled_orders/takeaway_orders store-date partitions. Cost cards use an
+This document covers business/dishes/in_store_orders/takeaway_orders store-date partitions. Cost cards use an
 independent directory and one complete CSV per card; they do not enter these partition/date APIs.
 See the [cost-card contract](api-contract.md#cost-cards-published-launcher-separate-service-gate) and
 [employee workflow](../../skills/smedc-mcp/references/cost-cards.md).

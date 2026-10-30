@@ -219,11 +219,13 @@ partition metadata. Clients poll `get_partition_import_status`, inspect coverage
 launcher and callers must clean the returned scratch directory. Generic
 `query_structured_dataset` intentionally rejects these two datasets.
 
-Published, independently verified launcher `0.14.0` extends this partition path to independent
-`settled_orders` complete store-day snapshots, preserving all 30 source fields plus ordered payment
-JSON. The approved installation pin/source recommendation is `0.14.0`; matching service deployment
-and observed live policy are recorded in staging readiness. Current category grants remain required.
-See [settled-order usage and authorization](skills/smedc-mcp/references/settled-orders.md) before use.
+Source candidate `0.15.0` introduces canonical `in_store_orders` alongside `takeaway_orders`.
+In-store order status independently retains 待制作/未结账/已结账/已撤单/已退单, with all 30 source
+fields plus ordered payment JSON; unpaid/cancelled rows remain included. The candidate is not yet
+published. Approved installation pin/recommendation remain `0.14.0`, whose legacy dataset name was
+`settled_orders`. New-name use requires compatible publication and coordinated service migration,
+preserving current CSVs/grants and expiring old ZIP requests. See [in-store usage](skills/smedc-mcp/references/in-store-orders.md)
+and [migration prerequisites](docs/implementation/in-store-order-design.md).
 
 ## Dish catalog snapshots
 

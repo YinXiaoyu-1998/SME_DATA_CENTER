@@ -249,7 +249,7 @@ describe("published launcher artifact", () => {
         expect(tools.tools.find((tool) => tool.name === name)?.inputSchema, name).toMatchObject({
           type: "object",
           properties: {
-            dataset: { enum: expect.arrayContaining(["settled_orders", "takeaway_orders"]) }
+            dataset: { enum: expect.arrayContaining(["in_store_orders", "takeaway_orders"]) }
           }
         });
       }

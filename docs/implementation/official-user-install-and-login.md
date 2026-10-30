@@ -16,14 +16,15 @@ management status and versioned preparation/activation. Use these transport fiel
 0.14.0 and the matching service rollout. A Skill-only refresh does not upgrade an older installed
 launcher. Publication does not authorize tenant activation or establish live tenant readiness.
 
-## Settled-order release boundary
+## In-store order naming transition
 
-Launcher `0.14.0` is published and independently verified, including `settled_orders`. The approved
-install pin, source recommendation and manual-acceptance runner use `0.14.0`; the global OAuth
-minimum stays `0.12.0`. Order service deployment and the observed live recommendation are recorded
-in [staging readiness](staging-readiness.md). Use still requires current independent category grants;
-publication does not configure tenants or upgrade installed clients. See
-[the order workflow](../../skills/smedc-mcp/references/settled-orders.md).
+Published launcher `0.14.0` used the legacy `settled_orders` name. Source candidate `0.15.0`
+uses canonical `in_store_orders` for all in-store order states; it is not yet published. The approved
+installation pin, recommendation and official manual-acceptance runner remain `0.14.0`; the OAuth
+minimum remains `0.12.0`. Use the new name only after independently verified client publication,
+matching coordinated service migration and current category authorization. Existing category IDs,
+grants and CSVs survive migration; old-name ZIP requests expire and need fresh preparation.
+See [the in-store order workflow](../../skills/smedc-mcp/references/in-store-orders.md).
 
 ## Enterprise Onboarding Prerequisite
 

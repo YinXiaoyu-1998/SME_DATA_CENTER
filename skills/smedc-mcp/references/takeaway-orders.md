@@ -65,7 +65,7 @@ Use `get_my_permissions`. This independent store-level category starts with no l
 An admin configures it through the existing [authorization flow](business-authorization.md).
 Reads require enabled authorization, current category level, sufficient clearance and a complete
 enterprise/store/category grant with every applicable dimension. Grants for business, dishes or
-settled_orders do not include takeaway_orders. Admin upload rights do not bypass read permissions.
+in_store_orders do not include takeaway_orders. Admin upload rights do not bypass read permissions.
 
 `describe_structured_dataset_coverage` — authorized availability:
 

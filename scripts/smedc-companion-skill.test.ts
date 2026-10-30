@@ -190,10 +190,10 @@ it("applies published feedback examples without merging same-minute platform rec
   ).toMatchObject({ feedbackId: "feedback-test-a" });
 });
 
-it.each(["settled_orders", "takeaway_orders"])(
+it.each(["in_store_orders", "takeaway_orders"])(
   "validates %s Skill examples against the public upload and extract contracts",
   async (dataset) => {
-    const reference = dataset === "settled_orders" ? "settled-orders" : "takeaway-orders";
+    const reference = dataset === "in_store_orders" ? "in-store-orders" : "takeaway-orders";
     const skill = await readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8");
     expect(skill).toContain(`references/${reference}.md`);
     const guide = await readFile(

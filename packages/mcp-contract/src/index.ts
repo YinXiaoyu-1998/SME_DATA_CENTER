@@ -24,14 +24,14 @@ export const MCP_UPLOAD_MAX_BYTES = PHASE3_RUNTIME_LIMIT_DEFAULTS.maxUploadBytes
 export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 export const COST_CARD_LAUNCHER_VERSION = "0.10.0";
-export const SETTLED_ORDER_LAUNCHER_VERSION = "0.14.0";
+export const IN_STORE_ORDER_LAUNCHER_VERSION = "0.15.0";
 export const TAKEAWAY_ORDER_LAUNCHER_VERSION = "0.15.0";
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
   .enum(STRUCTURED_DATASETS)
   .describe(
-    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, settled_orders, takeaway_orders."
+    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
   );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -444,14 +444,14 @@ const uploadStructuredDatasetInputSchema = z
       .regex(/^\d{8}$/)
       .optional()
       .describe(
-        "YYYYMMDD business window start for dishes, business, settled_orders, takeaway_orders, or vip."
+        "YYYYMMDD business window start for dishes, business, in_store_orders, takeaway_orders, or vip."
       ),
     endDate: z
       .string()
       .regex(/^\d{8}$/)
       .optional()
       .describe(
-        "YYYYMMDD business window end for dishes, business, settled_orders, takeaway_orders, or vip."
+        "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, or vip."
       ),
     snapshotDate: z
       .string()
@@ -1098,7 +1098,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `settled_orders`, or `takeaway_orders`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, or `takeaway_orders`."
       },
       {
         name: "select",
@@ -1150,19 +1150,19 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `settled_orders`, or `takeaway_orders`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, or `takeaway_orders`."
       },
       {
         name: "enterpriseName",
         required: false,
         description:
-          "Optional enterprise/source scope for business/dishes/settled_orders/takeaway_orders or cost-card coverage."
+          "Optional enterprise/source scope for business/dishes/in_store_orders/takeaway_orders or cost-card coverage."
       },
       {
         name: "storeNameContains",
         required: false,
         description:
-          "Optional business/dishes/settled_orders/takeaway_orders scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
+          "Optional business/dishes/in_store_orders/takeaway_orders scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
       }
     ],
     resultShape: [
@@ -1176,7 +1176,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.14.0+ streams settled_orders and 0.15.0+ streams takeaway_orders through partition upload sessions; the remaining datasets use the row-import service. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions; the remaining datasets use the row-import service. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: Object.entries(uploadStructuredDatasetInputSchema.shape).map(([name, schema]) => ({
       name,
@@ -1184,7 +1184,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       description: schema.description ?? name
     })),
     resultShape: [
-      "business/dishes/settled_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, error",
+      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, error",
       "other datasets: document, processing, importBatch"
     ]
   }),
@@ -1192,7 +1192,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_partition_import_status",
     title: "Get partition import status",
     description:
-      "Return the current status of one business/dishes/settled_orders/takeaway_orders partition import job.",
+      "Return the current status of one business/dishes/in_store_orders/takeaway_orders partition import job.",
     inputSchema: partitionImportStatusInputSchema,
     inputFields: [
       { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
@@ -1203,7 +1203,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "download_structured_partitions",
     title: "Download structured partitions",
     description:
-      "Download authorized business/dishes/settled_orders/takeaway_orders daily store partitions into a launcher-managed local directory.",
+      "Download authorized business/dishes/in_store_orders/takeaway_orders daily store partitions into a launcher-managed local directory.",
     inputSchema: downloadStructuredPartitionsInputSchema,
     inputFields: [
       {
@@ -1215,7 +1215,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       {
         name: "dataset",
         required: false,
-        description: "business, dishes, settled_orders, or takeaway_orders."
+        description: "business, dishes, in_store_orders, or takeaway_orders."
       },
       { name: "enterpriseName", required: false, description: "Enterprise/source name." },
       { name: "startDate", required: false, description: "Inclusive YYYYMMDD start." },
@@ -1264,13 +1264,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "prepare_structured_partition_download",
     title: "Prepare structured partition download",
     description:
-      "Queue an authorized business/dishes/settled_orders/takeaway_orders partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
+      "Queue an authorized business/dishes/in_store_orders/takeaway_orders partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
     inputSchema: preparePartitionDownloadInputSchema,
     inputFields: [
       {
         name: "dataset",
         required: true,
-        description: "business, dishes, settled_orders, or takeaway_orders."
+        description: "business, dishes, in_store_orders, or takeaway_orders."
       },
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
       { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },

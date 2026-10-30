@@ -161,7 +161,7 @@ export async function exportStructuredPartitions(input: {
         canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber, orderSource)
       );
     }
-    if (input.dataset === "settled_orders") {
+    if (input.dataset === "in_store_orders") {
       canonical.set(
         "payment_method_json",
         paymentJson(canonical.get("payment_method") ?? "", row.rowNumber)
@@ -320,7 +320,7 @@ export async function exportStructuredPartitions(input: {
           limits: input.limits,
           signal: input.signal,
           command: input.xlsxReaderCommand,
-          preserveCellWhitespace: input.dataset === "settled_orders",
+          preserveCellWhitespace: input.dataset === "in_store_orders",
           consumer: {
             startSheet(sheet) {
               processor = createSheetProcessor(sheet.name, sheet.hidden);

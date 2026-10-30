@@ -249,7 +249,7 @@ describe("launcher partition transfer", () => {
 
   it.each([
     { name: "partition count", manifest: { partitionCount: 2 } },
-    { name: "dataset", manifest: { dataset: "settled_orders" } },
+    { name: "dataset", manifest: { dataset: "in_store_orders" } },
     { name: "enterprise", manifest: { enterpriseName: "Other Enterprise" } },
     { name: "declared date range", manifest: { endDate: "2026-10-28" } },
     { name: "partition date", partition: { businessDate: "2026-10-28" } },

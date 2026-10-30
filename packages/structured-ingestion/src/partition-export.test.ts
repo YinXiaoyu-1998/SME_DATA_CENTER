@@ -216,9 +216,9 @@ describe("exportStructuredPartitions", () => {
     }
   );
 
-  test("preserves complete settled-order rows and ordered exact payment JSON", async () => {
+  test("preserves complete in-store order rows and ordered exact payment JSON", async () => {
     const root = await temporaryRoot();
-    const fields = getStructuredRegistry("settled_orders").fields.filter(
+    const fields = getStructuredRegistry("in_store_orders").fields.filter(
       (f) => f.inputSource === "file"
     );
     expect(fields).toHaveLength(30);
@@ -245,7 +245,7 @@ describe("exportStructuredPartitions", () => {
       [csv(fields.map((f) => f.sourceColumn)), csv(row), csv(row)].join("\n")
     );
     const result = await exportStructuredPartitions({
-      dataset: "settled_orders",
+      dataset: "in_store_orders",
       sourcePath,
       outputDirectory: root,
       limits
@@ -279,7 +279,7 @@ describe("exportStructuredPartitions", () => {
 
   test.each(["", "--", "   "])("keeps absent payment %j as JSON null", async (payment) => {
     const root = await temporaryRoot();
-    const fields = getStructuredRegistry("settled_orders").fields.filter(
+    const fields = getStructuredRegistry("in_store_orders").fields.filter(
       (f) => f.inputSource === "file"
     );
     const sourcePath = path.join(root, "source.csv");
@@ -301,7 +301,7 @@ describe("exportStructuredPartitions", () => {
           .join(",")
     );
     const result = await exportStructuredPartitions({
-      dataset: "settled_orders",
+      dataset: "in_store_orders",
       sourcePath,
       outputDirectory: root,
       limits
@@ -320,7 +320,7 @@ describe("exportStructuredPartitions", () => {
     "locates invalid payment items and cleans the whole source: $payment",
     async ({ payment, reason }) => {
       const root = await temporaryRoot();
-      const fields = getStructuredRegistry("settled_orders").fields.filter(
+      const fields = getStructuredRegistry("in_store_orders").fields.filter(
         (field) => field.inputSource === "file"
       );
       const values: Record<string, string> = {
@@ -345,7 +345,7 @@ describe("exportStructuredPartitions", () => {
       );
       await expect(
         exportStructuredPartitions({
-          dataset: "settled_orders",
+          dataset: "in_store_orders",
           sourcePath,
           outputDirectory: root,
           limits
@@ -366,7 +366,7 @@ describe("exportStructuredPartitions", () => {
     { field: "diner_count", value: "unknown" }
   ])("rejects the complete source for invalid $field", async ({ field, value }) => {
     const root = await temporaryRoot();
-    const fields = getStructuredRegistry("settled_orders").fields.filter(
+    const fields = getStructuredRegistry("in_store_orders").fields.filter(
       (f) => f.inputSource === "file"
     );
     const values: Record<string, string> = { store_name: "合成门店", business_date: "20261027" };
@@ -383,7 +383,7 @@ describe("exportStructuredPartitions", () => {
     );
     await expect(
       exportStructuredPartitions({
-        dataset: "settled_orders",
+        dataset: "in_store_orders",
         sourcePath,
         outputDirectory: root,
         limits
@@ -396,10 +396,10 @@ describe("exportStructuredPartitions", () => {
     { label: "合计", reordered: false },
     { label: "总计", reordered: true }
   ])(
-    "excludes settled-order $label footer with placeholder business date",
+    "excludes in-store-order $label footer with placeholder business date",
     async ({ label, reordered }) => {
       const root = await temporaryRoot();
-      const fields = getStructuredRegistry("settled_orders").fields.filter(
+      const fields = getStructuredRegistry("in_store_orders").fields.filter(
         (field) => field.inputSource === "file"
       );
       if (reordered) fields.reverse();
@@ -419,7 +419,7 @@ describe("exportStructuredPartitions", () => {
         ].join("\n")
       );
       const result = await exportStructuredPartitions({
-        dataset: "settled_orders",
+        dataset: "in_store_orders",
         sourcePath,
         outputDirectory: root,
         limits
@@ -434,28 +434,28 @@ describe("exportStructuredPartitions", () => {
     }
   );
 
-  test("accepts reordered settled-order source headers but rejects missing, unknown, duplicate and derived input columns", async () => {
-    const fields = getStructuredRegistry("settled_orders").fields.filter(
+  test("accepts reordered in-store-order source headers but rejects missing, unknown, duplicate and derived input columns", async () => {
+    const fields = getStructuredRegistry("in_store_orders").fields.filter(
       (f) => f.inputSource === "file"
     );
     const headers = fields.map((f) => f.sourceColumn).reverse();
     const { resolveStructuredHeaders } = await import("@smedc/domain");
-    expect(resolveStructuredHeaders("settled_orders", headers).ok).toBe(true);
+    expect(resolveStructuredHeaders("in_store_orders", headers).ok).toBe(true);
     for (const invalid of [
       headers.slice(1),
       [...headers, "未知列"],
       [...headers, headers[0]!],
       [...headers, "结账方式JSON"]
     ]) {
-      expect(resolveStructuredHeaders("settled_orders", invalid).ok).toBe(false);
+      expect(resolveStructuredHeaders("in_store_orders", invalid).ok).toBe(false);
     }
   });
 
   test.each(["order_note", "order_status"] as const)(
-    "preserves summary labels in reordered settled-order %s text and excludes footers",
+    "preserves summary labels in reordered in-store-order %s text and excludes footers",
     async (firstField) => {
       const root = await temporaryRoot();
-      const fields = getStructuredRegistry("settled_orders").fields.filter(
+      const fields = getStructuredRegistry("in_store_orders").fields.filter(
         (field) => field.inputSource === "file"
       );
       const reordered = [
@@ -481,7 +481,7 @@ describe("exportStructuredPartitions", () => {
         ].join("\n")
       );
       const result = await exportStructuredPartitions({
-        dataset: "settled_orders",
+        dataset: "in_store_orders",
         sourcePath,
         outputDirectory: root,
         limits
@@ -510,7 +510,7 @@ describe("exportStructuredPartitions", () => {
     "validates $field when a reordered order starts with a summary label",
     async ({ field, value }) => {
       const root = await temporaryRoot();
-      const fields = getStructuredRegistry("settled_orders")
+      const fields = getStructuredRegistry("in_store_orders")
         .fields.filter((entry) => entry.inputSource === "file")
         .reverse();
       const values: Record<string, string> = {
@@ -529,7 +529,7 @@ describe("exportStructuredPartitions", () => {
       );
       await expect(
         exportStructuredPartitions({
-          dataset: "settled_orders",
+          dataset: "in_store_orders",
           sourcePath,
           outputDirectory: root,
           limits
@@ -539,16 +539,16 @@ describe("exportStructuredPartitions", () => {
   );
 
   calamineIntegrationTest(
-    "reads original settled-order XLSX with raw payments and source business dates",
+    "reads original in-store-order XLSX with raw payments and source business dates",
     async () => {
       const root = await temporaryRoot();
       const { default: ExcelJS } = await import("exceljs");
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet("已结账合成");
-      const fields = getStructuredRegistry("settled_orders").fields.filter(
+      const fields = getStructuredRegistry("in_store_orders").fields.filter(
         (f) => f.inputSource === "file"
       );
-      sheet.addRow(["已结账订单明细"]);
+      sheet.addRow(["店内订单明细"]);
       sheet.addRow(fields.map((f) => f.sourceColumn));
       const values: Record<string, string> = {
         store_name: "合成店",
@@ -566,7 +566,7 @@ describe("exportStructuredPartitions", () => {
       const sourcePath = path.join(root, "original.xlsx");
       await workbook.xlsx.writeFile(sourcePath);
       const result = await exportStructuredPartitions({
-        dataset: "settled_orders",
+        dataset: "in_store_orders",
         sourcePath,
         outputDirectory: root,
         limits
@@ -609,7 +609,7 @@ describe("exportStructuredPartitions", () => {
       outputDirectory: root,
       limits
     });
-    // Recorded from the unchanged exporter at 291d6e5, before settled_orders support.
+    // Recorded from the unchanged exporter at 291d6e5, before in_store_orders support.
     expect(result.partitions[0]!.checksumSha256).toBe(checksum);
   });
 

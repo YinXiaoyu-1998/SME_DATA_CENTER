@@ -84,7 +84,7 @@ suite("fixed category bootstrap through supported administration", () => {
       Object.entries(ownership)
         .filter(
           ([key]) =>
-            !["cost_cards", "store_reviews", "settled_orders", "takeaway_orders"].includes(key)
+            !["cost_cards", "store_reviews", "in_store_orders", "takeaway_orders"].includes(key)
         )
         .sort()
     );
@@ -105,7 +105,7 @@ suite("fixed category bootstrap through supported administration", () => {
     expect(
       initialized.find((category) => category.key === "cost_cards")?.confidentialityLevel
     ).toBeNull();
-    expect(initialized.find((category) => category.key === "settled_orders")).toMatchObject({
+    expect(initialized.find((category) => category.key === "in_store_orders")).toMatchObject({
       confidentialityLevel: null,
       allowGroup: false,
       allowStore: true

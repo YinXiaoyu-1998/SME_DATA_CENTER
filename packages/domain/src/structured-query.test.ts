@@ -12,7 +12,7 @@ function compile(query: unknown) {
 }
 
 describe("structured query compiler", () => {
-  it.each(["business", "dishes", "settled_orders", "takeaway_orders"])(
+  it.each(["business", "dishes", "in_store_orders", "takeaway_orders"])(
     "rejects %s before producing row-table SQL",
     (dataset) => {
       expect(() => compile({ dataset })).toThrowError(

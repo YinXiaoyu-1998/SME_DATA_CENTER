@@ -361,8 +361,8 @@ describe("upload MCP tool handlers", () => {
   });
 
   it.each([
-    ["settled_orders", null],
-    ["settled_orders", "0.13.1"],
+    ["in_store_orders", null],
+    ["in_store_orders", "0.14.0"],
     ["takeaway_orders", null],
     ["takeaway_orders", "0.14.0"]
   ])(

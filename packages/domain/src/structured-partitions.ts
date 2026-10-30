@@ -1,7 +1,7 @@
 export const PARTITION_DATASETS = [
   "business",
   "dishes",
-  "settled_orders",
+  "in_store_orders",
   "takeaway_orders"
 ] as const;
 
@@ -120,5 +120,5 @@ function asciiLowercase(value: string): string {
 
 /** Order reports were introduced after business authorization; no legacy read entitlement. */
 export function isOrderPartitionDataset(value: string): boolean {
-  return value === "settled_orders" || value === "takeaway_orders";
+  return value === "in_store_orders" || value === "takeaway_orders";
 }

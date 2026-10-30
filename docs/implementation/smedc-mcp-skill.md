@@ -23,7 +23,7 @@
 - 退出、移除单宿主集成和完全卸载分别处理，不删除服务账号、业务数据、Node/npm 或其他 MCP 配置。
 - Skill 目录只发现元数据，不在 SMEDC 服务内执行 Skill 或生成答案。
 
-订单上传/范围下载/可选 ZIP、完整快照及支付 JSON 语义由[订单 reference](../../skills/smedc-mcp/references/settled-orders.md)维护。Launcher `0.14.0` 已发行并独立验证，批准安装 pin、源码推荐与人工验收运行器同步为 `0.14.0`；全局最低保持 `0.12.0`。实际使用仍需匹配服务及当前授权，线上策略以 [staging 状态](staging-readiness.md)的观测为准。
+订单上传/范围下载/可选 ZIP、完整快照及支付 JSON 由[店内订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)维护。当前源码 `in_store_orders` 与 `takeaway_orders` 要求尚未发布的 `0.15.0` 候选，店内订单包括全部来源状态；历史 `0.14.0` 使用旧名 `settled_orders`。批准安装 pin、推荐与正式验收版本仍是已验证 `0.14.0`，最低保持 `0.12.0`。新名称须等待兼容客户端发布和匹配服务迁移，不能从源码或 Skill 同步推断上线。
 
 ## 变更和验证
 

@@ -8,7 +8,7 @@ export const STRUCTURED_DATASETS = [
   "delivery_ledger",
   "supplier_catalog",
   "cost_cards",
-  "settled_orders",
+  "in_store_orders",
   "takeaway_orders"
 ] as const;
 
@@ -833,7 +833,7 @@ const FOOD_PURCHASE_LEDGER_PRESENTATION = Object.freeze({
   columns: FOOD_PURCHASE_LEDGER_PRESENTATION_COLUMNS
 } satisfies StructuredPresentationProfile);
 
-const SETTLED_ORDER_FIELDS = [
+const IN_STORE_ORDER_FIELDS = [
   ["store_name", "门店", "string"],
   ["organization_code", "机构编码", "string"],
   ["business_date", "营业日期", "date"],
@@ -923,14 +923,14 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     canonicalOverrides: BUSINESS_CANONICAL_OVERRIDES,
     explicitTypes: BUSINESS_EXPLICIT_TYPES
   }),
-  settled_orders: {
-    dataset: "settled_orders",
+  in_store_orders: {
+    dataset: "in_store_orders",
     accessMode: "partition_extract",
     sheetPolicy: "strict_all_nonempty",
     metadataPolicy: "window",
     datePolicy: "row_business_date",
     fields: [
-      ...SETTLED_ORDER_FIELDS,
+      ...IN_STORE_ORDER_FIELDS,
       ["payment_method_json", "结账方式JSON", "string"] as const
     ].map(([canonicalName, sourceColumn, type]): StructuredFieldRegistryEntry => ({
       canonicalName,
@@ -1370,7 +1370,7 @@ function createSourceDocumentIdField(
 
 function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): string[] {
   const aliasesByDataset: Record<StructuredDatasetName, Record<string, string[]>> = {
-    settled_orders: {},
+    in_store_orders: {},
     takeaway_orders: {},
     dishes: {
       下单时间: ["订单时间"],

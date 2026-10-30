@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
   COST_CARD_LAUNCHER_VERSION,
-  SETTLED_ORDER_LAUNCHER_VERSION,
+  IN_STORE_ORDER_LAUNCHER_VERSION,
   TAKEAWAY_ORDER_LAUNCHER_VERSION,
   apiErrorToolResult,
   errorToolResult,
@@ -155,12 +155,12 @@ async function uploadStructuredDataset(
       { requestId: context.audit.requestId }
     );
   if (
-    requestedDataset === "settled_orders" &&
-    !launcherVersionAtLeast(context.audit.launcherVersion, SETTLED_ORDER_LAUNCHER_VERSION)
+    requestedDataset === "in_store_orders" &&
+    !launcherVersionAtLeast(context.audit.launcherVersion, IN_STORE_ORDER_LAUNCHER_VERSION)
   )
     return errorToolResult(
       "LAUNCHER_UPGRADE_REQUIRED",
-      "Update the SMEDC launcher before using settled orders.",
+      "Update the SMEDC launcher before using in-store orders.",
       undefined,
       { requestId: context.audit.requestId }
     );

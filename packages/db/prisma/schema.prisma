@@ -85,7 +85,7 @@ enum ImportDataset {
   delivery_ledger
   supplier_catalog
   cost_cards
-  settled_orders
+  in_store_orders
   takeaway_orders
 }
 
@@ -102,7 +102,7 @@ enum ImportBatchStatus {
 enum PartitionDataset {
   dishes
   business
-  settled_orders
+  in_store_orders
   takeaway_orders
 }
 

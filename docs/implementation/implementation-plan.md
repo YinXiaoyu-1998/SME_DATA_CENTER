@@ -21,9 +21,9 @@
 | 企业管理入口 | 企业专属 UI、共享浏览器身份、默认中文/English、内部代办 CLI | [入驻流程](tenant-onboarding.md) |
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
 
-这些能力已存在于当前源码。`settled_orders` 已随 launcher `0.14.0` 公开发布并独立核验，匹配服务部署也已核实；批准安装 pin 和源码推荐为 `0.14.0`，使用仍需当前类别授权。代码合并、launcher 发布、服务部署、某租户的配置/激活和正式业务验收分别取证，不互相替代。最近已验证的部署、公开版本与线上推荐值见 [staging 状态](staging-readiness.md)。
+这些能力已存在于当前源码。历史 `settled_orders` 已随 launcher `0.14.0` 发布并核验，匹配服务部署已核实。当前源码改为 `in_store_orders`，按店内订单业务类型保留全部状态，并接入 `takeaway_orders`；它们同属尚未发布的 launcher `0.15.0` 候选。批准安装 pin/推荐与正式人工验收版本保持 `0.14.0`。代码、客户端发布、服务迁移部署和真实企业授权分别取证；最近已验证环境见 [staging 状态](staging-readiness.md)。
 
-`takeaway_orders` 已在源码接入同一分区链路；launcher 候选 `0.15.0` 尚未发布，安装 pin/推荐仍为 `0.14.0`。前向枚举迁移、匹配服务部署及真实企业授权须分别核验，源码交付不执行发布、部署或真实数据回填。
+店内订单前向命名迁移保留类别/授权/当前 CSV，旧 ZIP 请求失效后重新准备，需停止 API 写入与 worker 并协调升级；具体步骤见[店内订单入口](in-store-order-design.md)。源码交付不执行发布、远端迁移、部署或真实数据回填。
 
 ## 阶段边界
 
