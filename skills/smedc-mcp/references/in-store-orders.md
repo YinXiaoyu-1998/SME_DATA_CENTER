@@ -2,13 +2,10 @@
 
 ## Release and tenant readiness
 
-`in_store_orders` (店内订单明细) is the canonical category in source candidate `0.15.0`,
-which is **not yet published**. It replaces the legacy public name `settled_orders` from released
-launcher `0.14.0`; the approved installation pin remains `0.14.0` until a compatible release is
-published, independently verified and approved. Confirm the matching service migration and
-current tenant authorization before using the new name. Do not install an unpublished candidate
-or assume the approved old launcher supports it. Until ready, report the prerequisite and retain
-the operation. Static tools/list or successful login is not release or tenant readiness.
+`in_store_orders` (店内订单明细) is supported by published, independently verified launcher `0.15.0`.
+The approved installation pin is `0.15.0`. Historical launcher `0.14.0` used the legacy
+`settled_orders` name. Confirm matching service migration and current tenant authorization;
+static tools/list or successful login alone does not establish service or tenant readiness.
 
 ## Upload one complete source
 

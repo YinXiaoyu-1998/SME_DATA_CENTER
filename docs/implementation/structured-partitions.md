@@ -1,6 +1,6 @@
 # 经营、菜品销售与订单当前分区契约
 
-`business`、`dishes`、`in_store_orders` 和 `takeaway_orders` 共用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。当前两个订单类别属于尚未发布的 `0.15.0` 源码候选；历史 `0.14.0` 使用 `settled_orders` 旧名称，批准安装 pin 和推荐仍保持 `0.14.0`。现有已验证部署证据见 [staging 状态](staging-readiness.md)。
+`business`、`dishes`、`in_store_orders` 和 `takeaway_orders` 共用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。当前两个订单类别属于已发布并独立核验的 `0.15.0`；历史 `0.14.0` 使用 `settled_orders` 旧名称，批准安装 pin 和源码推荐为 `0.15.0`。现有已验证部署证据见 [staging 状态](staging-readiness.md)。
 
 使用新订单类别前须独立核验兼容客户端发布、匹配服务及 `20261030010000_takeaway_orders` / `20261030020000_in_store_orders` 前向迁移与当前授权。店内订单命名迁移保留类别/授权/当前 CSV，旧 ZIP 失效后重新准备；协调停写和 worker 升级要求见[命名迁移](in-store-order-design.md)。无新增环境变量、明细表或对象存储设施。
 

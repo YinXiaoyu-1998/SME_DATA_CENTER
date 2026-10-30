@@ -23,14 +23,14 @@ current-user installation and recovery runbook for an employee-owned agent; it i
 service-operations runbook.
 
 The approved service origin is `https://api.smedatacenter.xyz`. The approved launcher is
-the exact npm package `smedc-mcp-launcher@0.14.0`. Do not substitute another
+the exact npm package `smedc-mcp-launcher@0.15.0`. Do not substitute another
 origin, package, tag, or version. In particular, never install npm `latest` and never let
 the launcher update itself. This pin governs launcher installation, not fetching a newer official
 copy of this skill; after a skill refresh, read the newly verified copy for its current pin.
 
 ## Business Permission Tools And Release Boundary
 
-Launcher `0.14.0` is published, independently verified, and approved for installation. The
+Launcher `0.15.0` is published, independently verified, and approved for installation. The
 following current business-permission contract requires the matching service rollout and explicit
 tenant activation; package installation alone does not activate a live tenant. Follow
 [business permissions and controlled management](references/business-authorization.md) when
@@ -41,18 +41,18 @@ not a permission card and does not authorize content.
 
 For cost-card original uploads, directory lookup, same-name disambiguation, local CSV
 analysis, archive/restore and cleanup, read [cost cards](references/cost-cards.md).
-Launcher `0.14.0` is published and independently verified, including cost-card tools.
+Launcher `0.15.0` is published and independently verified, including cost-card tools.
 Verify the matching service rollout and explicit tenant category configuration before use;
 package installation or tool discovery alone does not establish readiness.
 
 ## Store Reviews (Published Launcher, Service Gated)
 
 For structured platform review synchronization and authorized history queries, read
-[store reviews](references/store-reviews.md). Launcher `0.14.0` is published, independently
+[store reviews](references/store-reviews.md). Launcher `0.15.0` is published, independently
 verified and approved for installation. Confirm the matching service release and explicit tenant
 configuration before use. The reference owns enterprise selection, atomic batches,
 null/omission, pure ratings and verified published reply semantics; it does not authorize platform
-reply publication or change companion approval rules. Published launcher `0.14.0` includes the
+reply publication or change companion approval rules. Published launcher `0.15.0` includes the
 platform reply-status extension (`replyStatus` / `replyStatuses`) and optional platform identity
 (`feedbackId`); use them only after confirming the
 matching service rollout and tenant configuration. Local draft/approval labels are not service states.
@@ -187,7 +187,7 @@ tools remain visible and are marked admin-only. Do not dynamically hide or remov
 
 Before handling an upload, resolve an unknown role with `smedc_get_current_user`. For a known
 `employee` role, do not read or transform the local file, encode bytes, or call an upload tool.
-Explain that an admin must upload the original file. Launcher 0.14.0 also preflights its authenticated
+Explain that an admin must upload the original file. Launcher 0.15.0 also preflights its authenticated
 profile before local file access. Its cached profile contains exactly `displayName`, `email`,
 `role`, `clearance`, and `organizationName`; current-user questions still use the live tool.
 
@@ -209,7 +209,7 @@ Upload original files and report service validation errors. This skill does not 
 dataset-specific transformations. Future service identities require a separate design; they must
 not impersonate an admin Employee Account.
 
-The evidence/photo transport fields are bundled in approved launcher 0.14.0 and require the
+The evidence/photo transport fields are bundled in approved launcher 0.15.0 and require the
 matching service rollout. A Skill-only update does not upgrade an older installed launcher.
 If the connected tools lack the fields, follow the approved launcher update procedure; do not
 switch to direct HTTP or strip required attributes.
@@ -287,22 +287,20 @@ checks. For a source file at or below 50 MiB, use the ordinary polling schedule 
 `processing` response is not complete. Exact-repeat uploads may return the existing published job;
 same-key requests with different bytes or metadata are conflicts, not retries.
 
-## In-Store Orders (Source Implemented, Release Gated)
+## In-Store Orders (Published, Service Gated)
 
 For 店内订单明细 (`in_store_orders`) complete store-day uploads across all order statuses,
 independent permissions, payment JSON and local CSV downloads, read
 [in-store orders](references/in-store-orders.md) before any operation. `订单状态` retains
 待制作、未结账、已结账、已撤单、已退单 and other source text; settlement is not the dataset identity.
-Source candidate `0.15.0` is not yet published and replaces the legacy `settled_orders` name.
-Keep approved installation pin `0.14.0`; use the new name only after a compatible published client,
-matching service migration and current tenant authorization are confirmed.
+Launcher `0.15.0` is published, independently verified and approved for installation.
+Confirm the matching service migration and current tenant authorization before using the new name.
 
-## Takeaway Orders (Source Implemented, Not Yet Published)
+## Takeaway Orders (Published, Service Gated)
 
 For 平台外卖订单明细 (`takeaway_orders`), read [takeaway orders](references/takeaway-orders.md)
-before upload, status, coverage or download. Source candidate `0.15.0` is not yet published;
-the approved installation pin remains `0.14.0`. Wait for a published, independently verified
-compatible client, matching service deployment and current independent category grants.
+before upload, status, coverage or download. Launcher `0.15.0` is published and independently
+verified; confirm matching service deployment and current independent category grants.
 The source report must include all platforms and all valid orders for each submitted store-day.
 
 ## Business And Dishes Partition Uploads
@@ -334,7 +332,7 @@ to split, rewrite, convert, or Base64-encode it.
 
 ## Filtered Partition Range Downloads (Release Gated)
 
-The approved exact pin is Launcher `0.14.0`, published and independently verified. Filtered
+The approved exact pin is Launcher `0.15.0`, published and independently verified. Filtered
 coverage and range downloads require Launcher `0.8.0` or newer and matching filtered range
 service deployment. Verify the connected service and the official exact pin before use; branch
 code and recommended-version metadata alone do not establish availability. Discover the
@@ -371,7 +369,7 @@ Range download is the default. Select bundle mode explicitly only when its match
 deployment is known available. Tools/list alone cannot establish that availability because
 launcher contracts are statically registered. If ZIP support is removed, regenerate a saved
 plan in range mode; never silently bypass authentication, integrity or source-scope failures.
-Launcher `0.14.0` is published and independently verified and is the approved exact pin. The
+Launcher `0.15.0` is published and independently verified and is the approved exact pin. The
 prepare/status/requestId flow below also requires matching server endpoints to be deployed.
 Branch code or server recommended-version metadata alone does not establish that deployment.
 If the matching deployment is unavailable, use only the range contract supported by the
@@ -537,15 +535,15 @@ official skill first; use only its approved exact version.
 
    | Platform | Launcher directory                                                     |
    | -------- | ---------------------------------------------------------------------- |
-   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.14.0/`        |
-   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.14.0\\`                  |
-   | Linux    | `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.14.0/` |
+   | macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.15.0/`        |
+   | Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.15.0\\`                  |
+   | Linux    | `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.15.0/` |
 
 3. Install or repair the exact package idempotently. Substitute only the platform directory
    above; do not add credentials or a global install:
 
    ```sh
-   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.14.0
+   npm install --prefix "<launcher-directory>" --save-exact smedc-mcp-launcher@0.15.0
    ```
 
 4. Preserve the existing installation if the same pinned package is already present. For an
@@ -559,17 +557,17 @@ official skill first; use only its approved exact version.
 
    ```sh
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher" self-check
+     "$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
 
    ```powershell
    $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
-   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.14.0\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
+   & "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.15.0\node_modules\.bin\smedc-mcp-launcher.cmd" self-check
    ```
 
    ```sh
    # Linux
-   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.14.0"
+   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.15.0"
    SMEDC_BASE_URL=https://api.smedatacenter.xyz \
      "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" self-check
    ```
@@ -579,7 +577,7 @@ official skill first; use only its approved exact version.
    ```json
    {
      "ok": true,
-     "launcherVersion": "0.14.0",
+     "launcherVersion": "0.15.0",
      "serviceOrigin": "https://api.smedatacenter.xyz",
      "platform": "<safe platform>",
      "secureStore": {
@@ -610,9 +608,9 @@ launcher environment variable; do not add another environment value or any crede
 
 | Platform | Command                                                                                             | Arguments | Environment                                    |
 | -------- | --------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------- |
-| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
-| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.14.0\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
-| Linux    | `<resolved-linux-data-home>/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher`    | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| macOS    | `~/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher` | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Windows  | `%LOCALAPPDATA%\\SMEDC\\launcher\\versions\\0.15.0\\node_modules\\.bin\\smedc-mcp-launcher.cmd`     | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
+| Linux    | `<resolved-linux-data-home>/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher`    | `serve`   | `SMEDC_BASE_URL=https://api.smedatacenter.xyz` |
 
 The command, its single `serve` argument, and the one URL-only environment value are the complete
 stdio configuration. It must never contain a password, token, header, client secret, or OAuth
@@ -620,7 +618,7 @@ setting.
 
 ## Device-Code Login Flow
 
-With the pinned package `smedc-mcp-launcher@0.14.0`, every login uses the OAuth Device Authorization Grant: the launcher
+With the pinned package `smedc-mcp-launcher@0.15.0`, every login uses the OAuth Device Authorization Grant: the launcher
 obtains a first-party SMEDC verification link, opens it automatically when a system
 browser is available (desktop agents), or returns it for the agent to surface through the employee
 channel (phone-remote-controlled and headless agents). The employee confirms the agent instance
@@ -639,7 +637,7 @@ name shown on the page, enters email/password, and the launcher completes sign-i
   link and retry the original request once; if it reports `authentication_required`, run
   `smedc_login` to obtain a new link.
 
-This is the only supported login flow in launcher 0.14.0.
+This is the only supported login flow in launcher 0.15.0.
 
 ## Configure The Invoking Agent
 
@@ -708,7 +706,7 @@ command:
 "$CODEX_BIN" mcp add \
   --env SMEDC_BASE_URL=https://api.smedatacenter.xyz \
   smedc -- \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher" serve
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher" serve
 "$CODEX_BIN" mcp get smedc --json
 ```
 
@@ -722,7 +720,7 @@ CODEX_CONFIG="$HOME/.codex/config.toml"
 if [ -f "$CODEX_CONFIG" ]; then
   cp -p "$CODEX_CONFIG" "$CODEX_CONFIG.smedc.bak.$(date +%Y%m%d%H%M%S)"
 fi
-SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.14.0"
+SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.15.0"
 SMEDC_LAUNCHER_BIN="$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher"
 "$CODEX_BIN" mcp list --json
 "$CODEX_BIN" mcp get smedc --json
@@ -749,7 +747,7 @@ $CodexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
 if (Test-Path $CodexConfig) {
   Copy-Item $CodexConfig "$CodexConfig.smedc.bak.$(Get-Date -Format yyyyMMddHHmmss)"
 }
-$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.14.0\node_modules\.bin\smedc-mcp-launcher.cmd"
+$LauncherBin = "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.15.0\node_modules\.bin\smedc-mcp-launcher.cmd"
 & $CodexBin mcp list --json
 & $CodexBin mcp get smedc --json
 ```
@@ -791,7 +789,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
 
    ```sh
    openclaw mcp add smedc \
-     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher" \
+     --command "$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher" \
      --arg serve \
      --env SMEDC_BASE_URL=https://api.smedatacenter.xyz
    ```
@@ -799,7 +797,7 @@ OAuth store, `openclaw mcp login`, or `openclaw mcp logout` for SMEDC.
    On Linux, resolve the XDG path before storing it, then use the same stdio form:
 
    ```sh
-   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.14.0"
+   SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.15.0"
    openclaw mcp add smedc \
      --command "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" \
      --arg serve \
@@ -1000,17 +998,17 @@ logout affects only the current launcher process:
 
 ```sh
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
-  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher" logout
+  "$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher" logout
 ```
 
 ```powershell
 $env:SMEDC_BASE_URL = "https://api.smedatacenter.xyz"
-& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.14.0\node_modules\.bin\smedc-mcp-launcher.cmd" logout
+& "$env:LOCALAPPDATA\SMEDC\launcher\versions\0.15.0\node_modules\.bin\smedc-mcp-launcher.cmd" logout
 ```
 
 ```sh
 # Linux
-SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.14.0"
+SMEDC_LAUNCHER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/0.15.0"
 SMEDC_BASE_URL=https://api.smedatacenter.xyz \
   "$SMEDC_LAUNCHER_DIR/node_modules/.bin/smedc-mcp-launcher" logout
 ```
@@ -1031,7 +1029,7 @@ Never remove Node.js/npm, the Employee Account, server-side business data, or un
 
 ## Live Service Status
 
-The pinned launcher 0.14.0 is published and independently verified. Verify the target service
+The pinned launcher 0.15.0 is published and independently verified. Verify the target service
 rollout and current tenant authorization separately; package publication does not prove deployment
 or business acceptance. This skill contains no repository development-only authentication behavior. A successful installation or self-check proves only that the configured client can reach
 the live service; it does not replace employee browser-login or authorization acceptance.
