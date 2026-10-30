@@ -14,6 +14,8 @@ import {
   boundedInvocation,
   cleanupStaleExtractDirectories,
   downloadVerified,
+  partitionFileMetadataSchema,
+  partitionFileMatchesScope,
   type PartitionTransferContext
 } from "./partition-transfer.js";
 
@@ -57,15 +59,11 @@ const scopeSchema = z
     ...filterShape
   })
   .strict();
-const fileSchema = z
-  .object({
+const fileSchema = partitionFileMetadataSchema
+  .extend({
     fileName: z.string(),
-    businessDate: z.iso.date(),
-    storeId: z.string().nullable(),
-    storeName: z.string(),
     rowCount: decimal,
-    byteSize: decimal,
-    checksumSha256: sha
+    byteSize: decimal
   })
   .strict();
 const manifestSchema = z
@@ -378,11 +376,7 @@ function validateManifest(manifest: Manifest, metadata: Metadata, entries: Map<s
       !new RegExp(
         `^${scope.dataset}_${file.businessDate.replaceAll("-", "")}_[a-f0-9]{64}\\.csv$`
       ).test(file.fileName) ||
-      file.businessDate < scope.startDate ||
-      file.businessDate > scope.endDate ||
-      (scope.storeIds && !scope.storeIds.includes(file.storeId ?? "")) ||
-      (scope.storeNameContains &&
-        !scope.storeNameContains.some((name) => file.storeName.includes(name))) ||
+      !partitionFileMatchesScope(file, scope) ||
       BigInt(file.rowCount) > BigInt(file.byteSize) ||
       BigInt(file.byteSize) !== BigInt(entry.uncompressedSize)
     )
