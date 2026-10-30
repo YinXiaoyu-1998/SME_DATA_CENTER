@@ -52,17 +52,17 @@ Evidence 的每个片段继承整件完整权限；更改文件属性后按当�
 
 照片内容、有效性或门店关联改变会使相关 PDF 失效并等待计划重生成；单纯读取权限/密级变化不会使 PDF 失效或改变 PDF 权限。供应商普通更新不自动重做历史 PDF。
 
-## 店内订单 — 源码候选 0.15.0，待发布迁移
+## 店内订单 — 0.15.0 已发布，待服务迁移
 
 `in_store_orders`（店内订单明细）按订单业务类型分类，与 `takeaway_orders` 配对；结账只属于来源 `order_status`／“订单状态”字段。标准“店内订单明细”来源覆盖提交门店营业日的全部状态，包含待制作、未结账、已结账、已撤单、已退单；未知状态与空值也按原文保留，不从金额、支付方式或时间推导状态。
 
 30 个来源字段加“结账方式JSON”保持不变，重复行/订单号、退款/找零与精确金额仍按原序保留。未结账、撤单等记录允许空结账时间及支付方式，派生 JSON 为 null；它们不能被已结账条件过滤。按来源营业日整分区替换，未出现的门店日不变，整份空数据拒绝。共享字段里的 `settled_at`／“结账时间”和经营汇总结账指标保留其真实结账含义。
 
-历史 launcher `0.14.0` 以 `settled_orders` 名称发布。当前源码统一为 `in_store_orders`，launcher 候选 `0.15.0` 尚未发布；批准安装 pin/推荐仍为 `0.14.0`。前向迁移保留类别 ID、授权/密级、分区 ID、CSV 对象键与字节，旧 ZIP 请求失效后重新准备；迁移不补造订单或证明旧快照覆盖全部状态。升级与迁移边界见[店内订单入口](docs/implementation/in-store-order-design.md)，字段及操作见[订单 reference](skills/smedc-mcp/references/in-store-orders.md)。
+历史 launcher `0.14.0` 以 `settled_orders` 名称发布。当前源码统一为 `in_store_orders`，launcher `0.15.0` 已公开发布并独立核验；批准安装 pin/源码推荐为 `0.15.0`。前向迁移保留类别 ID、授权/密级、分区 ID、CSV 对象键与字节，旧 ZIP 请求失效后重新准备；迁移不补造订单或证明旧快照覆盖全部状态。升级与迁移边界见[店内订单入口](docs/implementation/in-store-order-design.md)，字段及操作见[订单 reference](skills/smedc-mcp/references/in-store-orders.md)。
 
 ## 平台外卖订单 — 源码已实现，待发布部署
 
-本节记录源码已实现的业务边界；launcher 候选 `0.15.0` 尚未发布，批准安装 pin/推荐值保持 `0.14.0`。使用前须独立核验兼容客户端发布、匹配服务与枚举迁移、当前类别授权。权威实施规格见 [Issue #293](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/293)，数据集标识为 `takeaway_orders`。
+本节记录源码已实现的业务边界；launcher `0.15.0` 已公开发布并独立核验，批准安装 pin/推荐值保持 `0.15.0`。使用前须独立核验兼容客户端发布、匹配服务与枚举迁移、当前类别授权。权威实施规格见 [Issue #293](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/293)，数据集标识为 `takeaway_orders`。
 
 **平台外卖订单明细**：来源“平台外卖订单明细—有效订单”报表中的订单记录，包含报表列出的全部平台、订单状态和退款记录。它是独立业务类别，不要求先与营业数据、菜品销售或店内订单匹配；数据间的比较和关联由员工 agent 在下载后完成。
 

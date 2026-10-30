@@ -34,7 +34,7 @@ cordis profile, and the user-editable layer of that profile is `cordis.patch.yml
 `command` must be an absolute path resolved for the current user, for example on macOS:
 
 ```
-$HOME/Library/Application Support/SMEDC/launcher/versions/0.14.0/node_modules/.bin/smedc-mcp-launcher
+$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher
 ```
 
 Use the same versioned launcher directory that `SKILL.md` installs into. Do not point
@@ -68,7 +68,7 @@ If dsh reports `Invalid schema for function` with `is not a "regex"` for an SMED
 tool, the provider rejected its tool definition before model execution. Repeating the request or
 logging in again will not repair it. Report the installed launcher version and affected tool;
 the employee may switch to PTC mode as a temporary workaround. A source fix alone does not
-update the installed launcher. Published launcher 0.14.0 fixes this MIME pattern incompatibility.
+update the installed launcher. Published launcher 0.15.0 fixes this MIME pattern incompatibility.
 Use the approved exact pin in `SKILL.md`, then reconnect the owning host and verify its loaded tools.
 
 ## Verify the connection

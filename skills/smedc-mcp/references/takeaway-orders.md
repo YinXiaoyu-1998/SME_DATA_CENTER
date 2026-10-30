@@ -2,13 +2,10 @@
 
 ## Release prerequisite
 
-`takeaway_orders` (平台外卖订单明细) is implemented in launcher source candidate `0.15.0`,
-which is **not yet published**. The approved exact installation pin remains `0.14.0`.
-Use this workflow only after a compatible launcher is published and independently verified,
-the approved installation authority is updated, the matching service is deployed, and the tenant
-has current independent category grants. A source change, static tools/list or successful login
-is not release or tenant readiness. Until then, report the prerequisite and retain the requested
-operation; do not install the unpublished candidate or relabel the source as another dataset.
+`takeaway_orders` (平台外卖订单明细) is supported by published, independently verified
+launcher `0.15.0`, the approved exact installation pin. Confirm matching service deployment and
+current independent category grants. Package publication, static tools/list or successful login
+alone does not establish service or tenant readiness.
 
 ## Upload and status
 
