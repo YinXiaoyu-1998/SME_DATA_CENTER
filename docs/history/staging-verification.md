@@ -6,6 +6,18 @@
 
 [部署 40698985223](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40698985223) 和 [质量门禁 40697665741](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40697665741) 对应订单首次实现提交 `3f4eeff`。当时只读发现线上推荐仍为 `0.13.1`、最低为 `0.12.0`；尚未执行本次订单线上认证端到端验收。此前直接主机/schema 核验停留在 2026-10-19 的 `9484dcb6e9a9`。这是更新前的历史快照，后续部署、当前策略及已完成范围见 [当前就绪状态](../implementation/staging-readiness.md)。
 
+## 2026-10-26：官网与智能体接入章节上线验收
+
+以下整理自原 PR #276 的当时现场记录，仅保存历史证据；当前服务状态见 [staging-readiness](../implementation/staging-readiness.md)，官网当前配置与发布流程由 [SMEDC_LANDING_PAGE](https://github.com/YinXiaoyu-1998/SMEDC_LANDING_PAGE) 维护。本文不表示重新执行了部署、在线探测或续期验证。
+
+- [main 门禁 40211415870](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40211415870) 与 [部署 40216360209](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40216360209) 当时成功，对应 `b20e0183b88f8527673ee053a05620f8e2e6edae`；API、worker、release-ops 运行镜像一致，loopback readiness 的 MySQL、Qdrant、storage、workerLease 和 provider 配置检查通过。
+- 官网当时 revision `6630f3921669b46b` 对应已合并 PR #274/#275/#277；页尾为北京殷实麦家管理咨询有限责任公司、京ICP备2026043481号-1。HTTPS、HTTP/www 跳转（含查询串）、13 项静态资源、未知路由 404、桌面/手机页面、预约锚点/复制/FAQ 与既有业务入口检查通过；新增接入章节及五个应用标识摘要与源码一致。
+- 当时公开 OAuth discovery 推荐 `0.13.1`、最低 `0.12.0`；公开 health 200、readyz 404、未认证 MCP 401。此版本策略已被后续发布取代，不能用作当前安装指导或真实租户验收结论。
+- 当时独立官网证书覆盖主域/www，有效期至 2027-01-23，Certbot timer 与 nginx deploy hook 已配置。2026-10-25 的 `certbot renew --dry-run` 因 Let’s Encrypt staging CA HTTPS 读取超时未完成，不能记为续期模拟通过；nginx 平滑重载后的首次 TLS 探测曾需短暂、有限重试且保留证书校验。
+- 自动发布 [40211882578](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40211882578) 当时因缓存 worker 镜像的 Brotli 漏洞在 rollout 前被阻断；上述成功部署改用既有 main 手动入口重新构建并通过镜像风险门禁，worker 的 libbrotli1 为 `1.0.9-2+deb12u1`。此处只记录当时的阻断及恢复；当前缓存策略以后续已合并实现为准。
+
+此次官网验收不覆盖五个客户端的完整业务接入、真实租户回填或 scheduler 迁移。拆仓后服务发布不再读写官网发布目录，也不再以旧 `marketing-enabled` 标记承担官网检查；现行边界见 [部署手册](../implementation/staging-deploy-runbook.md#企业智脑官网独立发布)。
+
 ## 2026-10-24：此前公开版本与部署快照
 
 以下是 2026-10-28 本次核验前的旧状态快照，供追溯；当前状态仍以 staging-readiness 为准。
