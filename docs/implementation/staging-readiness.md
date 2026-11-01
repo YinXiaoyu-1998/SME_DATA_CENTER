@@ -1,43 +1,39 @@
 # Staging 当前状态与交付前提
 
-更新：2026-10-26。本文保留最新已核实状态、已批准目标和未完成门槛；它不是实时监控，也不授权部署、回填或企业激活。历次验证记录见 [历史记录](../history/staging-verification.md)。
+更新：2026-10-30。本文保留最新已核实状态、已批准目标和未完成门槛；它不是实时监控，也不授权部署、回填或企业激活。历次验证记录见 [历史记录](../history/staging-verification.md)。
 
 ## 最新核实状态
 
-| 项目                  | 最新证据                                                                                                                                                                                                                                                         | 可得结论                                                                                                                  |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Canonical 部署        | [部署 run 40216360209](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40216360209) 成功，提交 `b20e0183b88f8527673ee053a05620f8e2e6edae`；对应 [main 质量门禁](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40211415870) 成功  | 三个运行镜像风险门禁、迁移检查及合成 smoke 通过；未增加漏洞豁免                                                           |
-| 公开客户端策略        | 2026-10-26 部署后只读核对官方 OAuth discovery：包名 `smedc-mcp-launcher`、推荐 `0.13.1`、最低 `0.12.0`；`/healthz` 200、公开 `/readyz` 404、未认证 MCP 401                                                                                                       | 线上客户端策略不变；不替代真实租户或客户端验收                                                                            |
-| npm 发行物            | 2026-10-24 官方 registry 的 `0.13.1` 与 `latest` 已公开，shasum `631cd4c10e89f546b636e066e8206a5582db7458`，源码 `775034f`；[发布 run 40064001340](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40064001340) 三平台检查成功，含 npm provenance | 独立空目录安装、CLI、48 个工具发现及六处上传 MIME schema 验证通过；生产依赖审计零漏洞；不替代客户端登录或真实租户验收     |
-| 最近主机 runtime 核验 | 2026-10-26 API/worker/release-ops 为 `b20e0183b88f`；loopback readiness 的 MySQL、Qdrant、storage、workerLease 和 provider 配置检查通过；runtime 文件为 root:root 0600；worker 的 libbrotli1 为 `1.0.9-2+deb12u1`                                                | 当前运行镜像与受控发布一致；不代表真实租户验收                                                                            |
-| 企业智脑官网          | 2026-10-26 已核对 [官网](https://smedatacenter.xyz/)；页面 revision `6630f3921669b46b` 对应已合并 PR #274/#275/#277，页尾为北京殷实麦家管理咨询有限责任公司、京ICP备2026043481号-1                                                                               | HTTPS、HTTP/www 301、13 项静态资源及新增智能体接入章节、未知路由 404、桌面/手机、预约锚点/复制/FAQ 及既有业务入口检查通过 |
-| 业务与客户端验收      | 2026-10-17 门店评价合成验收 172 项、企业接入修复 174 项及清理记录见 [progress](progress.md)                                                                                                                                                                      | 不替代当前真实租户授权、回填、Device Authorization 浏览器验收或完整官方人工验收                                           |
+| 项目             | 最新证据                                                                                                                                                                                                                                                                                | 可得结论                                                                                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical 部署   | [部署 run 40993979645](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40993979645) 成功；提交 `d3a417653327d6df280ed664808eda0524cce6a8`；[main 门禁 40992550171](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40992550171) 成功并复用同 SHA 已验镜像 | API/worker 实际镜像 `d3a417653327`，loopback health/readiness 200，公开 health 200、readyz 404，未认证订单 manifest 401；正式 fixture smoke 成功                          |
+| npm 发行物       | [发布 run 40990181519](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40990181519) 三平台通过，用户安全密钥批准后公开 `0.15.0`；来源 `b9f6916a`，shasum `868ee234dcc49ff98c1f64b5d0e7abfc1f154ca4`                                                                      | 官方 registry 全新精确安装 CLI 0.15.0、48 工具及四处订单契约通过；五个文件与审阅源码构建逐字节一致；生产 audit 零漏洞                                                     |
+| 版本策略与 Skill | 主仓发布同步 PR #295/#296、核心 Skill PR #92 已合并；公开 OAuth 推荐 0.15.0、最低 0.12.0；临时独立安装 self-check reachable/metadataCompatible、secure store available、MCP handshake ok                                                                                                | 0.15.0 支持 in_store_orders/takeaway_orders；没有修改员工本机既有安装或登录配置；安装和服务部署不授予新类别权限                                                           |
+| 线上迁移与保留   | `20261030010000_takeaway_orders` 于北京时间 10:53:53、`20261030020000_in_store_orders` 于 10:53:56 完成，无 rollback；冻结前后原始行逐项比较通过                                                                                                                                        | 原分区 ID、对象键、字节数/checksum、导入/文档、类别 ID/配置、grant/范围、账号角色/密级/停用状态均保留；业务授权版本按迁移 +1，QA smoke 额外递增技术版本，未改变原权限内容 |
+| 下载及恢复边界   | 旧活动 ZIP 请求 0，当前 CSV 被列入 ZIP 过期清理队列 0；冻结前完整逻辑备份与行快照保存在服务器 root 受限目录                                                                                                                                                                             | 旧名 ZIP 需重新准备；不重写原 CSV 或回填真实数据。临时数据库连接配置交付前清除；不逆转已应用迁移或直接恢复不兼容旧镜像                                                    |
+
+Registry integrity：`sha512-q4LaJx92muuB/3d1MAPqXRXpMxYoeJJXJi71h3tcrvkHNNCqbIgp8weuIRoubcvk1zdDuxgcmBASm+gL7XTsIg==`。
 
 当前安装 pin 由[核心 Skill](../../skills/smedc-mcp/SKILL.md)维护；companion 的版本归属见
 [三仓维护契约](smedc-mcp-skill.md)。仓库同步不等于更新员工本机安装。
 公开包内 README 是发行时快照；历史发布、部署和清理证据保留在 progress 及
 [历史记录](../history/staging-verification.md)，不得当作新的执行授权。
 
-证书续期 timer 与 deploy hook 已配置；2026-10-25 的 `certbot renew --dry-run` 因 Let’s Encrypt staging CA HTTPS 读取超时未完成，不能记作续期模拟通过。正式证书与生产续期端点保持有效配置。
-
-自动发布 [run 40211882578](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40211882578) 因缓存 worker 镜像中的 Brotli 漏洞在 rollout 前被阻断；上述成功部署通过既有 main 手动入口重新构建并扫描。当前 CI 系统包缓存仍可能需要同样恢复，不能靠重跑相同旧产物或跳过风险门禁放行。
-
 ## 已批准的部署目标
 
 以下为现行运维配置入口；主机变更前按 [部署手册](staging-deploy-runbook.md) 核对目标，不能把记录值当作新的在线探测结果。
 
-| 范围         | 配置                                                                                                                                                                                    |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 官网域名     | https://smedatacenter.xyz；HTTP 与 www 301 到主域名；独立证书覆盖主域/www，有效期至 2027-01-23；Certbot timer 与 nginx deploy hook 已配置，`marketing-enabled` 后续发布检查已启用并验证 |
-| 服务域名     | https://api.smedatacenter.xyz；公开 /healthz，/readyz 仅主机 loopback                                                                                                                   |
-| 应用主机     | 北京轻量应用服务器 Ubuntu-yyht，实例 98872443e05742f2b64223c7462b268c，公网 39.96.66.185                                                                                                |
-| 运行形态     | nginx/TLS → API；独立 worker；on-demand release-ops；本地卷 Qdrant；外部 RDS MySQL                                                                                                      |
-| ACR          | cn-beijing，crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com，namespace smedc；API/worker 以不可变 SHA 标记，release-ops 使用 API 仓库的 ops-SHA tag                           |
-| 数据库       | RDS rm-2ze2m5q387ydb9724；数据库 smedc，应用账号 smedc_app；凭据通过受控 runtime 提供                                                                                                   |
-| 对象存储     | OSS oss-cn-beijing，bucket yxy-test-sme-data-center，服务前缀 smedc/；验证使用隔离测试前缀                                                                                              |
-| Runtime 文件 | /opt/smedc/runtime.env，root:root 0600；当前/前一镜像记录由发布程序维护                                                                                                                 |
-| 发布入口     | main 质量门禁 + GitHub staging Environment + smedc-staging 并发组；不用 PR 或未经批准的本地发布                                                                                         |
-| PDF 定时     | 默认 03:00 Asia/Shanghai，可由 LEDGER_PDF_RECONCILE_TIME 配置；实际生效时刻读取目标 runtime，不沿用旧测试记录推断                                                                       |
+| 范围         | 配置                                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 服务域名     | https://api.smedatacenter.xyz；公开 /healthz，/readyz 仅主机 loopback                                                                                         |
+| 应用主机     | 北京轻量应用服务器 Ubuntu-yyht，实例 98872443e05742f2b64223c7462b268c，公网 39.96.66.185                                                                      |
+| 运行形态     | nginx/TLS → API；独立 worker；on-demand release-ops；本地卷 Qdrant；外部 RDS MySQL                                                                            |
+| ACR          | cn-beijing，crpi-yyglilct3xi9outz.cn-beijing.personal.cr.aliyuncs.com，namespace smedc；API/worker 以不可变 SHA 标记，release-ops 使用 API 仓库的 ops-SHA tag |
+| 数据库       | RDS rm-2ze2m5q387ydb9724；数据库 smedc，应用账号 smedc_app；凭据通过受控 runtime 提供                                                                         |
+| 对象存储     | OSS oss-cn-beijing，bucket yxy-test-sme-data-center，服务前缀 smedc/；验证使用隔离测试前缀                                                                    |
+| Runtime 文件 | /opt/smedc/runtime.env，root:root 0600；当前/前一镜像记录由发布程序维护                                                                                       |
+| 发布入口     | main 质量门禁 + GitHub staging Environment + smedc-staging 并发组；不用 PR 或未经批准的本地发布                                                               |
+| PDF 定时     | 默认 03:00 Asia/Shanghai，可由 LEDGER_PDF_RECONCILE_TIME 配置；实际生效时刻读取目标 runtime，不沿用旧测试记录推断                                             |
 
 ## 仍需独立确认的交付门槛
 

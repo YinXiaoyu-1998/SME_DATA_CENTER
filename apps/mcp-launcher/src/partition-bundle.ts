@@ -7,12 +7,15 @@ import path from "node:path";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
+import { PARTITION_DATASETS, isPartitionDataset } from "@smedc/domain";
 import {
   abortable,
   apiJson,
   boundedInvocation,
   cleanupStaleExtractDirectories,
   downloadVerified,
+  partitionFileMetadataSchema,
+  partitionFileMatchesScope,
   type PartitionTransferContext
 } from "./partition-transfer.js";
 
@@ -49,28 +52,24 @@ const filterShape = {
 };
 const scopeSchema = z
   .object({
-    dataset: z.enum(["business", "dishes"]),
+    dataset: z.enum(PARTITION_DATASETS),
     enterpriseName: z.string(),
     startDate: z.iso.date(),
     endDate: z.iso.date(),
     ...filterShape
   })
   .strict();
-const fileSchema = z
-  .object({
+const fileSchema = partitionFileMetadataSchema
+  .extend({
     fileName: z.string(),
-    businessDate: z.iso.date(),
-    storeId: z.string().nullable(),
-    storeName: z.string(),
     rowCount: decimal,
-    byteSize: decimal,
-    checksumSha256: sha
+    byteSize: decimal
   })
   .strict();
 const manifestSchema = z
   .object({
     version: z.literal(1),
-    dataset: z.enum(["business", "dishes"]),
+    dataset: z.enum(PARTITION_DATASETS),
     enterpriseName: z.string(),
     startDate: z.iso.date(),
     endDate: z.iso.date(),
@@ -262,9 +261,10 @@ async function extractArchive(
           try {
             const mode = (entry.externalFileAttributes >>> 16) & 0xf000;
             if (
-              !/^(manifest\.json|(?:business|dishes)_[0-9]{8}_[a-f0-9]{64}\.csv)$/.test(
-                entry.fileName
-              ) ||
+              (entry.fileName !== "manifest.json" &&
+                !isPartitionDataset(
+                  /^([a-z_]+)_[0-9]{8}_[a-f0-9]{64}\.csv$/.exec(entry.fileName)?.[1] ?? ""
+                )) ||
               entries.has(entry.fileName) ||
               (mode !== 0 && mode !== 0x8000) ||
               (entry.externalFileAttributes & 0x10) !== 0 ||
@@ -376,11 +376,7 @@ function validateManifest(manifest: Manifest, metadata: Metadata, entries: Map<s
       !new RegExp(
         `^${scope.dataset}_${file.businessDate.replaceAll("-", "")}_[a-f0-9]{64}\\.csv$`
       ).test(file.fileName) ||
-      file.businessDate < scope.startDate ||
-      file.businessDate > scope.endDate ||
-      (scope.storeIds && !scope.storeIds.includes(file.storeId ?? "")) ||
-      (scope.storeNameContains &&
-        !scope.storeNameContains.some((name) => file.storeName.includes(name))) ||
+      !partitionFileMatchesScope(file, scope) ||
       BigInt(file.rowCount) > BigInt(file.byteSize) ||
       BigInt(file.byteSize) !== BigInt(entry.uncompressedSize)
     )

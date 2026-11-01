@@ -209,4 +209,4 @@ launcher 运行时/工具契约变更同批升版本与对齐测试，先发布�
 
 `store_reviews` 是独立固定门店级类别，初始密级 null、无默认 grant，不自动变更租户模式或旧类别授权。当前有效同组织 admin 可以写结构化评价；每条资源为一个明确企业和一家精确门店。读取必须由单条完整 grant 覆盖类别、企业、门店及必需维度，并满足当前类别密级；admin 没有普通读取旁路，不拼接多条 grant。
 企业候选只来自明确登记的 `BusinessEnterpriseIdentity`，在同一实时权限事务生成完整 write/read 清单并放入权限名片。write 体现当前管理资格和写入配置，read 体现完整授权与密级；不能从评价内容或历史 key 猜显示名。同名门店跨企业分离，评价身份按精确门店/用户及规范化北京时间识别。
-launcher `0.13.1` 已发布并独立验证，是当前批准安装 pin；服务发布、类别配置和企业激活仍分别确认。详见 [API 契约](api-contract.md#store-reviews-launcher-0110)。
+launcher `0.14.0` 已发布并独立验证，是当前批准安装 pin；服务发布、类别配置和企业激活仍分别确认。详见 [API 契约](api-contract.md#store-reviews-launcher-0110)。

@@ -5,9 +5,11 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import {
   PARTITION_ERROR_CODES,
+  isOrderPartitionDataset,
   getStructuredRegistry,
   partitionStoreIdentity,
   resolveStructuredHeaders,
+  type PartitionDatasetName,
   type StructuredFieldRegistryEntry
 } from "@smedc/domain";
 import { parse as createCsvParser } from "csv-parse";
@@ -88,7 +90,7 @@ export class StructuredPartitionExportError extends Error {
 }
 
 export async function exportStructuredPartitions(input: {
-  dataset: "business" | "dishes";
+  dataset: PartitionDatasetName;
   sourcePath: string;
   outputDirectory: string;
   limits: StructuredPartitionLimits;
@@ -106,10 +108,12 @@ export async function exportStructuredPartitions(input: {
   await rm(candidateDirectory, { force: true, recursive: true });
   await mkdir(candidateDirectory, { recursive: true });
 
+  const orderSource = isOrderPartitionDataset(input.dataset);
   const registry = getStructuredRegistry(input.dataset);
   const fields = registry.fields.filter((field) => field.inputSource === "file");
   const fieldByName = new Map(fields.map((field) => [field.canonicalName, field]));
-  const headerBytes = `${fields.map((field) => csvCell(field.sourceColumn)).join(",")}\n`;
+  const outputFields = registry.fields;
+  const headerBytes = `${outputFields.map((field) => csvCell(field.sourceColumn)).join(",")}\n`;
   const partitions = new Map<string, PartitionState>();
   const writers = new BoundedFileWriterPool(
     input.limits.maxOpenFiles,
@@ -126,7 +130,21 @@ export async function exportStructuredPartitions(input: {
       mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>;
     }
   ): Promise<void> => {
-    if (!row.cells.some((cell) => cell.trim()) || isSummary(row.cells)) return;
+    if (!row.cells.some((cell) => cell.trim())) return;
+    if (orderSource) {
+      const fieldText = (name: string) => {
+        const column = header.mappings.find((mapping) => mapping.canonicalName === name);
+        return column ? (row.cells[column.sourceColumnIndex]?.trim() ?? "") : "";
+      };
+      const absent = (value: string) => value === "" || value === "--";
+      const storeName = fieldText("store_name");
+      // Export footers use -- for dates; real stores still require full row validation.
+      if (
+        absent(fieldText("business_date")) &&
+        (isSummary([storeName]) || (absent(storeName) && isSummary(row.cells)))
+      )
+        return;
+    } else if (isSummary(row.cells)) return;
     if (
       row.cells.length > header.width &&
       row.cells.slice(header.width).some((cell) => cell.trim())
@@ -140,9 +158,17 @@ export async function exportStructuredPartitions(input: {
       if (!field) throw invalidSource("Resolved partition field is not registered.");
       canonical.set(
         mapping.canonicalName,
-        canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber)
+        canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber, orderSource)
       );
     }
+    if (input.dataset === "in_store_orders") {
+      canonical.set(
+        "payment_method_json",
+        paymentJson(canonical.get("payment_method") ?? "", row.rowNumber)
+      );
+    }
+    if (orderSource && canonical.get("store_name") === "--")
+      throw invalidSource(`Row ${row.rowNumber} store_name is required.`);
     canonicalizeMs += performance.now() - canonicalStarted;
 
     const identity = partitionStoreIdentity({
@@ -193,7 +219,7 @@ export async function exportStructuredPartitions(input: {
       partition.initialized = true;
     }
 
-    const line = `${fields.map((field) => csvCell(canonical.get(field.canonicalName) ?? "")).join(",")}\n`;
+    const line = `${outputFields.map((field) => csvCell(canonical.get(field.canonicalName) ?? "")).join(",")}\n`;
     await writers.write(partition.filePath, line);
     partition.hash.update(line);
     const lineBytes = BigInt(Buffer.byteLength(line));
@@ -280,7 +306,7 @@ export async function exportStructuredPartitions(input: {
     if (extension === ".csv") {
       const rowScanStarted = performance.now();
       rowConsumerMs = await processSheet(
-        csvRows(input.sourcePath, input.limits.maxStructuredCellChars),
+        csvRows(input.sourcePath, input.limits.maxStructuredCellChars, orderSource),
         "Sheet1",
         false
       );
@@ -294,6 +320,7 @@ export async function exportStructuredPartitions(input: {
           limits: input.limits,
           signal: input.signal,
           command: input.xlsxReaderCommand,
+          preserveCellWhitespace: input.dataset === "in_store_orders",
           consumer: {
             startSheet(sheet) {
               processor = createSheetProcessor(sheet.name, sheet.hidden);
@@ -368,23 +395,34 @@ export async function exportStructuredPartitions(input: {
   }
 }
 
-async function* csvRows(filePath: string, maxCellChars: number): AsyncGenerator<SourceRow> {
+async function* csvRows(
+  filePath: string,
+  maxCellChars: number,
+  preserveWhitespace = false
+): AsyncGenerator<SourceRow> {
   const parser = createReadStream(filePath).pipe(
     createCsvParser({ bom: true, relax_column_count: true, skip_empty_lines: false })
   );
   let rowNumber = 0;
   for await (const record of parser as AsyncIterable<unknown[]>) {
     rowNumber += 1;
-    yield { rowNumber, cells: record.map((value) => checkedText(String(value), maxCellChars)) };
+    yield {
+      rowNumber,
+      cells: record.map((value) => checkedText(String(value), maxCellChars, preserveWhitespace))
+    };
   }
 }
 
 function canonicalCell(
   field: StructuredFieldRegistryEntry,
   value: string,
-  rowNumber: number
+  rowNumber: number,
+  orderPlaceholders = false
 ): string {
-  const text = value.trim();
+  if (orderPlaceholders && field.canonicalName === "payment_method") return value;
+  const typed = ["date", "date_time", "integer", "decimal", "percent"].includes(field.type);
+  const text =
+    orderPlaceholders && field.nullable && typed && value.trim() === "--" ? "" : value.trim();
   if (!text) {
     if (!field.nullable)
       throw invalidSource(`Row ${rowNumber} ${field.canonicalName} is required.`);
@@ -410,6 +448,27 @@ function canonicalCell(
     return parsed;
   }
   return text;
+}
+
+function paymentJson(value: string, rowNumber: number): string {
+  if (!value.trim() || value.trim() === "--") return "null";
+  const items = value.split("，").map((item, index) => {
+    const location = `Row ${rowNumber} payment_method item ${index + 1}`;
+    const match =
+      /^(.*?)\s+([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*(?:\(([^()（）]*)\)|（([^()（）]*)）)?\s*$/u.exec(
+        item.trim()
+      );
+    if (!match || !match[1]?.trim())
+      throw invalidSource(`${location} cannot be parsed completely.`);
+    const marker = match[3] ?? match[4] ?? null;
+    if (marker !== null && !["退款", "找零", "撤销找零"].includes(marker))
+      throw invalidSource(
+        `${location} has an unsupported marker; supported markers: 退款, 找零, 撤销找零.`
+      );
+    // Emit the canonical decimal token directly: JSON numbers must not pass through IEEE-754.
+    return `{"method":${JSON.stringify(match[1].trim())},"amount":${canonicalDecimal(match[2]!)},"marker":${JSON.stringify(marker)}}`;
+  });
+  return `[${items.join(",")}]`;
 }
 
 function parseDateText(text: string, requireTime: boolean): string | null {
@@ -452,9 +511,9 @@ export function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
-function checkedText(value: string, maximum: number): string {
+function checkedText(value: string, maximum: number, preserveWhitespace: boolean): string {
   if (value.length > maximum) throw invalidSource("Structured cell length limit exceeded.");
-  return value.trim();
+  return preserveWhitespace ? value : value.trim();
 }
 
 function trimTail(row: string[]): string[] {

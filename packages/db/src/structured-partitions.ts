@@ -1,4 +1,8 @@
-import type { AuthorizationSnapshot } from "@smedc/domain";
+import {
+  isOrderPartitionDataset,
+  type PartitionDatasetName,
+  type AuthorizationSnapshot
+} from "@smedc/domain";
 import { compileStructuredReadScope } from "./business-authorization-sql.js";
 import {
   bindHistoricalSupplementIntent,
@@ -42,7 +46,7 @@ export interface CurrentPartitionState {
 export interface PartitionCandidate extends CurrentPartitionState {
   orgId: string;
   enterpriseKey: string;
-  dataset: "business" | "dishes";
+  dataset: PartitionDatasetName;
   storeKey: string;
   businessDate: string;
 }
@@ -93,7 +97,7 @@ export interface PartitionImportJobRecord {
   id: string;
   orgId: string;
   uploaderId: string;
-  dataset: "business" | "dishes";
+  dataset: PartitionDatasetName;
   enterpriseKey: string;
   enterpriseName: string;
   confidentialityLevel: number;
@@ -130,7 +134,7 @@ export interface StructuredPartitionRepository {
     id?: string;
     orgId: string;
     uploaderId: string;
-    dataset: "business" | "dishes";
+    dataset: PartitionDatasetName;
     enterpriseKey: string;
     enterpriseName: string;
     confidentialityLevel: number;
@@ -173,7 +177,7 @@ export interface StructuredPartitionRepository {
     orgId: string;
     clearance: number;
     authorization?: AuthorizationSnapshot;
-    dataset: "business" | "dishes";
+    dataset: PartitionDatasetName;
     enterpriseKey: string;
     startDate: string;
     endDate: string;
@@ -185,7 +189,7 @@ export interface StructuredPartitionRepository {
     orgId: string;
     clearance: number;
     authorization?: AuthorizationSnapshot;
-    dataset: "business" | "dishes";
+    dataset: PartitionDatasetName;
     enterpriseKey?: string;
     storeNameContains?: string[];
   }): Promise<PartitionDatasetCoverage>;
@@ -207,7 +211,7 @@ export interface ExpiredPartitionUpload {
 }
 
 export interface PartitionDatasetCoverage {
-  dataset: "business" | "dishes";
+  dataset: PartitionDatasetName;
   enterprises: Array<{
     enterpriseKey: string;
     enterpriseName: string;
@@ -223,7 +227,7 @@ export interface StructuredPartitionRecord extends CurrentPartitionState {
   orgId: string;
   enterpriseKey: string;
   enterpriseName: string;
-  dataset: "business" | "dishes";
+  dataset: PartitionDatasetName;
   storeKey: string;
   businessDate: Date;
   publishedByJobId: string;
@@ -578,6 +582,7 @@ export function createPrismaStructuredPartitionRepository(
 
     async listReadableManifestRows(input) {
       if (
+        isOrderPartitionDataset(input.dataset) ||
         input.storeNameContains !== undefined ||
         input.authorization?.mode === "enabled" ||
         input.authorization?.mode === "suspended"
@@ -622,6 +627,7 @@ export function createPrismaStructuredPartitionRepository(
 
     async listCoverage(input) {
       if (
+        isOrderPartitionDataset(input.dataset) ||
         input.storeNameContains !== undefined ||
         input.authorization?.mode === "enabled" ||
         input.authorization?.mode === "suspended"
@@ -865,17 +871,23 @@ export function readablePartitionScope(input: {
   orgId: string;
   clearance: number;
   authorization?: AuthorizationSnapshot;
-  dataset: "business" | "dishes";
+  dataset: PartitionDatasetName;
   enterpriseKey?: string;
 }): Prisma.Sql {
+  // New categories have no legacy entitlement, even when an older tenant is still preparing.
   const authorization = input.authorization;
   const permission =
-    authorization && (authorization.mode === "enabled" || authorization.mode === "suspended")
+    authorization &&
+    (isOrderPartitionDataset(input.dataset) ||
+      authorization.mode === "enabled" ||
+      authorization.mode === "suspended")
       ? compileStructuredReadScope(authorization, "partition", input.dataset)
       : null;
   const scope = permission
     ? Prisma.sql(permission.sql.split("?"), ...permission.params)
-    : Prisma.sql`confidentiality_level <= ${input.clearance}`;
+    : isOrderPartitionDataset(input.dataset)
+      ? Prisma.sql`0 = 1`
+      : Prisma.sql`confidentiality_level <= ${input.clearance}`;
   return Prisma.sql`org_id = ${input.orgId} AND ${scope} AND dataset = ${input.dataset}
     ${input.enterpriseKey !== undefined ? Prisma.sql`AND enterprise_key = ${input.enterpriseKey}` : Prisma.empty}`;
 }

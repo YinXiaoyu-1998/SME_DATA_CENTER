@@ -34,7 +34,7 @@ cordis profile, and the user-editable layer of that profile is `cordis.patch.yml
 `command` must be an absolute path resolved for the current user, for example on macOS:
 
 ```
-$HOME/Library/Application Support/SMEDC/launcher/versions/0.13.1/node_modules/.bin/smedc-mcp-launcher
+$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher
 ```
 
 Use the same versioned launcher directory that `SKILL.md` installs into. Do not point
@@ -68,7 +68,7 @@ If dsh reports `Invalid schema for function` with `is not a "regex"` for an SMED
 tool, the provider rejected its tool definition before model execution. Repeating the request or
 logging in again will not repair it. Report the installed launcher version and affected tool;
 the employee may switch to PTC mode as a temporary workaround. A source fix alone does not
-update the installed launcher. Published launcher 0.13.1 fixes this MIME pattern incompatibility.
+update the installed launcher. Published launcher 0.15.0 fixes this MIME pattern incompatibility.
 Use the approved exact pin in `SKILL.md`, then reconnect the owning host and verify its loaded tools.
 
 ## Verify the connection
@@ -91,15 +91,20 @@ One launcher child process per connected host is normal. Several hosts — inclu
 session, Codex, or another MCP client — can legitimately run their own copy of the same launcher
 at the same time, from the same versioned directory.
 
-- **Never kill or remove launcher processes or configuration entries you did not create.** An idle
-  or seemingly redundant launcher may belong to another host that is still using it. Leaving a
-  foreign entry in place is always safer than cleaning it up.
+- **During an approved upgrade, migrate all discovered current-user SMEDC integrations.** An old
+  process belonging to dsh, Codex or an earlier session must be updated or stopped even when this
+  agent did not create it. Another host using the old version is not a reason to preserve it.
 - Identify a process by its resolved executable path and parent process, not by its argv shape
   alone, and never print secret arguments.
-- To refresh this host, disconnect or restart only dsh's own connection. Do not stop the shared
-  daemon, do not remove other hosts' entries, and do not uninstall the launcher to "reset".
-- `self-check` is credential-free and safe to run repeatedly; prefer it over restarting anything.
-- Do not delete files under the versioned launcher directory as part of troubleshooting.
+- Repoint the affected profiles and other hosts to the approved launcher, then use supported
+  connection reloads or stop each revalidated obsolete SMEDC child PID. Preserve unrelated plugins
+  and shared runtimes; never use a broad node/process kill. Check for respawn and fix its owning
+  SMEDC configuration before retrying.
+- `self-check` checks the new package; complete an upgrade with native host reconnection and
+  removal of superseded SMEDC entries and files under the shared upgrade procedure. A required
+  manual host restart is a pending verification step, not a reason to retain the old installation
+  after all references and old processes have been retired.
+- Routine troubleshooting does not authorize uninstalling clients or changing unrelated hosts.
 
 ## Scope reminder
 

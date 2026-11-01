@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-10-13
+Last updated: 2026-10-28
 
 ## Authorization model
 
@@ -71,7 +71,7 @@ clearance cannot grant upload permission.
 | `POST /v1/documents/evidence`                           | `upload_evidence_document`                                                 | `evidence_document`          |
 | `POST /v1/structured/imports`                           | `upload_structured_dataset`, including Delivery Ledger (`delivery_ledger`) | `structured_dataset`         |
 | `POST /v1/documents/quarantine-certificates`            | `upload_quarantine_certificate`                                            | `quarantine_certificate`     |
-| `POST /v1/structured/partition-uploads`                 | `business`/`dishes` create                                                 | `structured_dataset`         |
+| `POST /v1/structured/partition-uploads`                 | Partition datasets, including `takeaway_orders`, create                    | `structured_dataset`         |
 | `GET /v1/structured/partition-uploads/:jobId/parts`     | partition part URLs                                                        | `structured_dataset`         |
 | `POST /v1/structured/partition-uploads/:jobId/complete` | partition complete                                                         | `structured_dataset`         |
 
@@ -88,8 +88,8 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and source recommendation are 0.13.1; source minimum
-compatibility remains 0.12.0. Launcher 0.13.1 bundles this authorization contract; matching service
+The published, independently verified Skill pin and source recommendation are 0.15.0; source minimum
+compatibility remains 0.12.0. Launcher 0.15.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
 resource attributes, invalidate existing OSS URLs, or add mid-transfer downgrade handling. Future scheduled/connector/service identities need a separate design,
@@ -98,36 +98,36 @@ employee-callable upload boundary.
 
 ## Public HTTP surface
 
-| Method         | Path                                                | Purpose                                                                           |
-| -------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `GET`          | `/healthz`                                          | Liveness                                                                          |
-| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                               |
-| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                    |
-| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                           |
-| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                 |
-| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                                |
-| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                 |
-| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                       |
-| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                       |
-| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                   |
-| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                               |
-| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                        |
-| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                  |
-| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                         |
-| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects `business`/`dishes` |
-| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                     |
-| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart `business`/`dishes` upload session                             |
-| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                         |
-| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                        |
-| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                 |
-| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                      |
-| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                         |
-| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                       |
-| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                  |
-| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                           |
-| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                          |
-| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                             |
-| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                          |
+| Method         | Path                                                | Purpose                                                                          |
+| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `GET`          | `/healthz`                                          | Liveness                                                                         |
+| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                              |
+| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                   |
+| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                          |
+| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                |
+| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                               |
+| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                |
+| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                      |
+| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                      |
+| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                  |
+| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                              |
+| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                       |
+| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                 |
+| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                        |
+| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects partition datasets |
+| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                    |
+| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart partition-dataset upload session                              |
+| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                        |
+| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                       |
+| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                |
+| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                     |
+| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                        |
+| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                      |
+| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                 |
+| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                          |
+| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                         |
+| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                            |
+| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                         |
 
 `GET /labels` and `GET /audit` are not registered. `GET /readyz` accepts loopback only.
 
@@ -146,14 +146,14 @@ unavailable. `legacy`/`preparing` explicitly retain the existing upload-clearanc
 
 All uploads retain existing file/type/size validation. The common request fields are:
 
-| Route                            | Required business fields                                                   | Confidentiality field                                                       |
-| -------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Evidence                         | `file`, `title`, `categoryId`, complete `scopes`; optional `sourceSystem`  | required explicit `confidentialityLevel` 0–3                                |
-| Quarantine certificate           | `file`, `receiptId`, `idempotencyKey`, `enterpriseName`, exact `storeName` | optional legacy level; current fixed category is authoritative when enabled |
-| Row-query structured import      | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional legacy level; current fixed category is authoritative when enabled |
-| Business/dishes partition source | multipart session metadata, then ordered upload-part ETags                 | optional legacy level; current fixed category is authoritative when enabled |
+| Route                       | Required business fields                                                   | Confidentiality field                                                       |
+| --------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Evidence                    | `file`, `title`, `categoryId`, complete `scopes`; optional `sourceSystem`  | required explicit `confidentialityLevel` 0–3                                |
+| Quarantine certificate      | `file`, `receiptId`, `idempotencyKey`, `enterpriseName`, exact `storeName` | optional legacy level; current fixed category is authoritative when enabled |
+| Row-query structured import | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional legacy level; current fixed category is authoritative when enabled |
+| Store-day partition source  | multipart session metadata, then ordered upload-part ETags                 | optional legacy level; current fixed category is authoritative when enabled |
 
-The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`
+The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`/`in_store_orders`/`takeaway_orders`
 paths through multipart storage, with a 2 GiB default source limit. Filenames, titles, idempotency keys, receipt IDs, structured
 metadata, evidence filters, cursors, and structured-query limits retain their existing public
 limits. Label keys and label arrays are not accepted.
@@ -165,7 +165,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.13.1 owns business/dishes upload and partition transfer. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.15.0 owns business/dishes/in_store_orders/takeaway_orders transfer. Historical 0.14.0 used legacy settled_orders; matching service migration is required. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -173,7 +173,7 @@ authorization mode/version, query shape, filters, limit, and retrieval configura
 
 <a id="current-permission-and-management-tools-launcher-0110"></a>
 
-### Current permission and management tools (Launcher 0.13.1)
+### Current permission and management tools (Launcher 0.15.0)
 
 All calls use the existing authenticated HTTP delegation. Every write requires the current
 `expectedVersion`; conflicts return `AUTHORIZATION_VERSION_CONFLICT` without partial changes.
@@ -215,14 +215,62 @@ optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return 
 partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
 and store configuration never grant content access or set a category level or tenant mode.
 
+### In-store orders (published 0.15.0, service migration gated)
+
+`in_store_orders` uses the existing partition upload/status/coverage/manifest/range and optional ZIP
+interfaces in published, independently verified launcher `0.15.0`. It replaces the legacy
+`settled_orders` name used by published `0.15.0`. MCP upload requires `0.15.0+` and otherwise returns
+`LAUNCHER_UPGRADE_REQUIRED`; current public schemas accept only the canonical new name. The OAuth
+floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version stay `0.15.0`.
+Use requires verified compatible client publication, coordinated service migration and current
+category grants. [The forward migration guide](in-store-order-design.md) covers retained category
+IDs/grants/CSV objects, expired old ZIP requests and unchanged historical request fingerprints.
+
+It is an independent fixed store-level category, initially without level or grants. Existing
+business/dishes grants do not grant orders; ordinary reads require complete enterprise/store/category
+and dimension coverage plus current clearance, including for admins. Legacy/preparing/suspended modes
+provide no fallback reads, including coverage and ZIP preparation/signing. Retained ZIP capabilities
+must still satisfy current dataset authorization before reissue.
+
+Original “店内订单明细” uploads declare complete selected store-days across 待制作/未结账/已结账/已撤单/已退单. `order_status` remains nullable source text, including unknown states; no settlement-only filtering or inferred status. Empty settlement/payment fields on unpaid rows yield empty typed values and JSON null. The server validates all 30 source
+columns, types and dates, then atomically replaces only store-days actually present; omitted days stay
+unchanged and entirely empty sources fail. All source rows and payment items retain order/multiplicity.
+The 31-column current CSV appends `结账方式JSON` to the 30 source fields; it is not a row-query dataset
+or an original Excel archive. Exact schema/semantics live in [the partition contract](structured-partitions.md)
+and [the core Skill order reference](../../skills/smedc-mcp/references/in-store-orders.md).
+
+### Takeaway orders (published 0.15.0, service gated)
+
+`takeaway_orders` is a fixed store-level `partition_extract` category implemented through the
+existing upload/status/coverage/manifest/range and optional ZIP interfaces. Launcher
+`0.15.0` is published and independently verified; installation pin and source recommendation are `0.15.0`, and the OAuth
+floor remains `0.12.0`. MCP uploads from older launchers return `LAUNCHER_UPGRADE_REQUIRED`.
+Employee use requires independent compatible-client publication verification, matching service
+rollout including `20261030010000_takeaway_orders`, and explicit current tenant category grants.
+No additional environment variables or row tables are introduced.
+
+Upload standard “平台外卖订单明细—有效订单” XLSX/CSV with all platforms and all source valid orders
+for each submitted store-day, including today's complete snapshot at export time. All 33 source
+columns are mandatory and emitted in fixed order without derived fields. Source business date
+controls routing; identifiers remain strings; nullable typed `--` becomes empty while ordinary
+text retains it. States, signed amounts, duplicate rows and order remain unchanged in meaning.
+The complete source validates before atomic replacement of appeared store-days; absent days
+remain, empty sources fail, and later invalid rows cannot partially publish.
+
+The category starts with null level and no grants; initialization uses the existing versioned
+admin write path. Current complete organization/category/enterprise/store/dimension/clearance
+rules apply to all ordinary reads; admin upload rights and legacy mode do not grant reads.
+`query_structured_dataset` returns `DATASET_REQUIRES_PARTITION_EXTRACT`.
+See [partition semantics](structured-partitions.md) and the [takeaway workflow](../../skills/smedc-mcp/references/takeaway-orders.md).
+
 ### Filtered partition extracts and asynchronous bundles
 
-The approved launcher 0.13.1 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
+The approved launcher 0.15.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.13.1`. This contract is not
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.15.0`. This contract is not
 evidence of service deployment or tenant activation.
 
-For `business`/`dishes`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
+For `business`/`dishes`/`in_store_orders`/`takeaway_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
 inclusive ISO `startDate`/`endDate`, optional `storeIds` and `storeNameContains`. Coverage accepts
 `dataset` plus optional `enterpriseName` and `storeNameContains`. The latter is 1–20 NFC/trim
 literals of 1–255 characters: case-sensitive substring OR, AND with IDs, scope and backend
@@ -344,7 +392,7 @@ timeout and signed-link TTL apply; read operations never generate PDFs.
 
 ## Cost Cards (Published Launcher, Separate Service Gate)
 
-Launcher `0.13.1` is published and independently verified and is the approved install pin
+Launcher `0.15.0` is published and independently verified and is the approved install pin
 and source recommendation. Cost-card service rollout and explicit tenant configuration remain
 separate gates; publication does not prove live deployment or acceptance. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
 
@@ -414,7 +462,7 @@ publication success; a later directory cannot recreate an earlier summary.
 
 ### Cost-card endpoints and rollout boundary
 
-These interfaces are included in published launcher 0.13.1 and have focused route coverage.
+These interfaces are included in published launcher 0.15.0 and have focused route coverage.
 Verify actual service rollout and tenant configuration separately; package verification alone
 does not establish live acceptance.
 
@@ -458,14 +506,14 @@ and idempotencyKey, without dates/snapshot/confidentiality override. Follow `get
 applied currently readable batches receive publicationSummary verbatim. Failed/rejected current
 readers can receive validation locations and ignored/source-summary arrays; owner-only access
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
-read permission is exposed. Launcher 0.13.1 is published and independently verified; service rollout and tenant authorization remain separate.
+read permission is exposed. Launcher 0.15.0 is published and independently verified; service rollout and tenant authorization remain separate.
 
 <a id="store-reviews-launcher-0110"></a>
 
 ## Store reviews (published 0.13.0)
 
-Launcher `0.13.1` is published and independently verified, and is the approved installation pin.
-The service source recommends `0.13.1` and requires at least `0.12.0` for OAuth issuance and refresh.
+Launcher `0.15.0` is published and independently verified, and is the approved installation pin.
+The service source recommends `0.15.0` and requires at least `0.12.0` for OAuth issuance and refresh.
 See [staging readiness](staging-readiness.md) for verified live policy and deployment evidence; publication and installation do not
 configure categories/grants or activate a tenant.
 

@@ -7,14 +7,15 @@ passing a standalone self-check is not completion.
 
 ## Scope And Target
 
-- A request to update SMEDC includes refreshing this skill, updating the launcher, reconnecting
-  the invoking host, and cleaning its superseded SMEDC components. A skill-only request follows
+- A request to upgrade SMEDC or its launcher includes refreshing this skill, migrating all safely
+  discoverable current-user SMEDC integrations to the approved pin, reconnecting their hosts and
+  removing superseded SMEDC processes, installations and entries. A skill-only request follows
   [update-skill.md](update-skill.md) and does not change launcher installations or MCP sessions.
-- A request to remove all old SMEDC versions or keep only the latest also covers safely
-  discoverable SMEDC integrations belonging to the current OS user. Migrate their existing
-  entries to the approved launcher; remove duplicate entries and disable verified obsolete
-  autostarts. Do not install new hosts or companion skills. A request naming only one host stays
-  limited to that host; an old version used elsewhere is a reported cleanup blocker.
+- Another host using an old version is part of the upgrade, regardless of which host or earlier
+  agent created its process or configuration. Naming Codex or dsh does not by itself exclude the
+  other discovered integrations; honor an explicit user exclusion. Migrate existing entries,
+  remove duplicates and update or disable verified obsolete SMEDC-only autostarts. Do not install
+  new hosts or companion skills, or alter another OS user's processes.
 - First fetch and verify the official default-branch skill revision. Its exact launcher pin is
   the target. “Latest” never means npm `latest` or a version inferred from server metadata. If
   the official source is unavailable, or its pin conflicts with a known newer official install
@@ -74,7 +75,9 @@ The launcher itself has no `stop` or `restart` CLI command; use the owning host 
 Disable or update an obsolete SMEDC-only supervisor/autostart before terminating its child;
 never disable an entire shared agent runtime just to remove a launcher autostart.
 
-Reinspect the inventory. For a remaining old launcher, verify the current user, exact package
+Reinspect the inventory across hosts and retire every verified old SMEDC launcher, including
+processes started before this task. Host ownership alone is not a reason to leave one running.
+For each remaining old launcher, verify the current user, exact package
 path, PID, parent, and start time again immediately before termination to avoid PID reuse. Prefer
 the owning runtime's stop operation; otherwise send SIGTERM to that individual PID on macOS/Linux
 and wait a bounded interval (for example, 10 seconds). If it still remains, revalidate identity
@@ -132,10 +135,13 @@ browser observations for this check.
 
 ## 5. Remove Superseded Files
 
-After the new connection is verified, remove each superseded launcher installation only after
-confirming no configuration, process, wrapper, or autostart still references it. If another host
-references it, migrate/reconnect that host when in scope; otherwise report the blocking host and
-do not delete its files. Do not leave an old active integration as a successful upgrade outcome.
+Once the new package is healthy, migrate every discovered reference and stop the revalidated old
+processes, then remove superseded launcher installations. Do this across hosts rather than keeping
+an old version because another host uses it. If a host still needs a manual restart, its migrated
+configuration and the healthy new package allow obsolete files to be retired now; native-connection
+verification remains pending. If a specific reference cannot be migrated with available access,
+report that exact remaining action and leave the upgrade incomplete instead of silently excluding
+the host or deleting a still-required path.
 
 Delete exact verified old version directories, duplicate skill installations, obsolete SMEDC-only
 wrappers, and isolated legacy launcher caches. For a verified current-user global installation,

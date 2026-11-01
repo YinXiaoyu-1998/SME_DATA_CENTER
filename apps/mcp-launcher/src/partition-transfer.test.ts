@@ -247,6 +247,95 @@ describe("launcher partition transfer", () => {
     );
   });
 
+  it.each([
+    { name: "partition count", manifest: { partitionCount: 2 } },
+    { name: "dataset", manifest: { dataset: "in_store_orders" } },
+    { name: "enterprise", manifest: { enterpriseName: "Other Enterprise" } },
+    { name: "declared date range", manifest: { endDate: "2026-10-28" } },
+    { name: "partition date", partition: { businessDate: "2026-10-28" } },
+    { name: "store ID", partition: { storeId: "002" } },
+    { name: "store name", partition: { storeName: "Other Store" } },
+    { name: "total row count", manifest: { totalRowCount: "2" } },
+    { name: "invalid numeric metadata", partition: { rowCount: -1 } }
+  ])("rejects mismatched range $name before transferring bytes", async (change) => {
+    const bytes = Buffer.from("header\nvalue\n");
+    const fetcher = vi.fn<typeof fetch>(async (request) => {
+      if (!String(request).endsWith("partition-manifests")) return new Response(bytes);
+      return Response.json({
+        dataset: "takeaway_orders",
+        enterpriseName: "Synthetic",
+        startDate: "2026-10-27",
+        endDate: "2026-10-27",
+        partitionCount: 1,
+        totalRowCount: "1",
+        ...change.manifest,
+        partitions: [
+          {
+            businessDate: "2026-10-27",
+            storeId: "001",
+            storeName: "Store A",
+            rowCount: "1",
+            byteSize: String(bytes.length),
+            checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+            presignedDownloadUrl: "https://storage.example/partition",
+            ...change.partition
+          }
+        ]
+      });
+    });
+    const download = downloadPartitionDataset({
+      context: context(fetcher),
+      dataset: "takeaway_orders",
+      enterpriseName: "Synthetic",
+      startDate: "20261027",
+      endDate: "20261027",
+      storeIds: ["001"],
+      storeNameContains: ["Store A"]
+    }).then((result) => {
+      root = (result as { localDirectory: string }).localDirectory;
+      return result;
+    });
+    await expect(download).rejects.toThrow("manifest");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a valid empty range extract with normalized requested scope", async () => {
+    const fetcher = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        dataset: "takeaway_orders",
+        enterpriseName: "Synthetic Group",
+        startDate: "2026-10-27",
+        endDate: "2026-10-27",
+        partitionCount: 0,
+        totalRowCount: "0",
+        partitions: []
+      })
+    );
+    const result = (await downloadPartitionDataset({
+      context: context(fetcher),
+      dataset: "takeaway_orders",
+      enterpriseName: " Synthetic   Group ",
+      startDate: "20261027",
+      endDate: "20261027",
+      storeIds: [],
+      storeNameContains: [" Store A "]
+    })) as { localDirectory: string };
+    root = result.localDirectory;
+    expect(result).toMatchObject({
+      dataset: "takeaway_orders",
+      enterpriseName: "Synthetic Group",
+      partitionCount: 0,
+      totalRowCount: "0",
+      files: []
+    });
+    expect(JSON.parse(await readFile(path.join(root, "manifest.json"), "utf8"))).toMatchObject({
+      partitionCount: 0,
+      totalRowCount: "0",
+      files: []
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("downloads and verifies a sanitized local extract manifest", async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
     const bytes = Buffer.from("header\nvalue\n");
@@ -265,7 +354,7 @@ describe("launcher partition transfer", () => {
           {
             businessDate: "2026-09-07",
             storeId: "001",
-            storeName: "Store A",
+            storeName: "麦家小馆A店",
             rowCount: 1,
             byteSize: bytes.length,
             checksumSha256: createHash("sha256").update(bytes).digest("hex"),
@@ -277,10 +366,11 @@ describe("launcher partition transfer", () => {
     const result = (await downloadPartitionDataset({
       context: context(fetchImplementation),
       dataset: "dishes",
-      enterpriseName: "Synthetic",
+      enterpriseName: " Synthetic ",
       startDate: "20260907",
       endDate: "20260913",
-      storeNameContains: ["麦家小馆"]
+      storeIds: [" 001 "],
+      storeNameContains: [" 麦家小馆 "]
     })) as { localDirectory: string; files: string[] };
     expect(JSON.parse(String(fetchImplementation.mock.calls[0]![1]?.body))).toMatchObject({
       storeNameContains: ["麦家小馆"]
@@ -292,7 +382,7 @@ describe("launcher partition transfer", () => {
     await rm(result.localDirectory, { recursive: true, force: true });
   });
 
-  it("refreshes an expired manifest once before completing the extract", async () => {
+  it.each(["valid", "wrong scope"])("validates a %s manifest after link expiry", async (kind) => {
     root = await mkdtemp(path.join(os.tmpdir(), "launcher-partition-"));
     const bytes = Buffer.from("header\nvalue\n");
     let manifestRequests = 0;
@@ -302,7 +392,8 @@ describe("launcher partition transfer", () => {
         manifestRequests += 1;
         return Response.json({
           dataset: "business",
-          enterpriseName: "Synthetic",
+          enterpriseName:
+            manifestRequests === 2 && kind === "wrong scope" ? "Other Enterprise" : "Synthetic",
           startDate: "2026-09-07",
           endDate: "2026-09-07",
           partitionCount: 1,
@@ -328,14 +419,20 @@ describe("launcher partition transfer", () => {
       throw new Error(`Unexpected request ${url}`);
     }) as unknown as typeof fetch;
 
-    const result = (await downloadPartitionDataset({
+    const operation = downloadPartitionDataset({
       context: context(fetchImplementation),
       dataset: "business",
       enterpriseName: "Synthetic",
       startDate: "20260907",
       endDate: "20260907"
-    })) as { localDirectory: string; files: string[] };
-
+    });
+    if (kind === "wrong scope") {
+      await expect(operation).rejects.toThrow("manifest does not match requested scope");
+      expect(manifestRequests).toBe(2);
+      expect(vi.mocked(fetchImplementation)).toHaveBeenCalledTimes(3);
+      return;
+    }
+    const result = (await operation) as { localDirectory: string; files: string[] };
     expect(manifestRequests).toBe(2);
     expect(result.files).toHaveLength(1);
     await rm(result.localDirectory, { recursive: true, force: true });

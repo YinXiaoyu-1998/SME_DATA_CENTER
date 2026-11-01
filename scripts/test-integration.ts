@@ -40,7 +40,9 @@ import {
   comparePartitionDownloads,
   createCostCardIntegrationFixture,
   createOwnedIntegrationDatabase,
-  integrationDatabasePlan
+  integrationDatabasePlan,
+  createInStoreOrderIntegrationFixture,
+  createTakeawayOrderIntegrationFixture
 } from "./test-integration-support.js";
 
 const INTEGRATION_EVIDENCE_CATEGORY_ID = "integration-evidence";
@@ -109,6 +111,8 @@ interface McpToolEnvelope {
   };
 }
 
+const takeawayOrdersOnly = process.argv.includes("--takeaway-orders-only");
+const inStoreOrdersOnly = process.argv.includes("--in-store-orders-only");
 const businessAuthorizationOnly = process.argv.includes("--business-authorization-only");
 const structuredReadsOnly = process.argv.includes("--structured-reads-only");
 const ledgerAuthorizationOnly = process.argv.includes("--ledger-authorization-only");
@@ -116,6 +120,8 @@ const partitionDownloadsOnly = process.argv.includes("--partition-downloads-only
 const storeReviewsOnly = process.argv.includes("--store-reviews-only");
 const costCardsOnly = process.argv.includes("--cost-cards-only");
 const focusedAuthorization =
+  takeawayOrdersOnly ||
+  inStoreOrdersOnly ||
   businessAuthorizationOnly ||
   structuredReadsOnly ||
   ledgerAuthorizationOnly ||
@@ -182,53 +188,61 @@ integrationRun: try {
       "vitest",
       "run",
       "--no-file-parallelism",
-      ...(storeReviewsOnly
+      ...(inStoreOrdersOnly || takeawayOrdersOnly
         ? [
-            "packages/db/src/store-reviews.prisma.integration.test.ts",
-            "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
-            "apps/api/src/store-reviews.prisma.integration.test.ts",
-            "packages/db/src/business-authorization.prisma.integration.test.ts",
+            "packages/db/src/structured-partitions.prisma.integration.test.ts",
+            "packages/db/src/partition-downloads.prisma.integration.test.ts",
             "apps/api/src/business-authorization-cutover.prisma.integration.test.ts"
           ]
-        : costCardsOnly
+        : storeReviewsOnly
           ? [
-              "packages/db/src/cost-cards.prisma.integration.test.ts",
-              "apps/worker/src/cost-card-import.prisma.integration.test.ts",
-              "apps/api/src/cost-cards.prisma.integration.test.ts"
+              "packages/db/src/store-reviews.prisma.integration.test.ts",
+              "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
+              "apps/api/src/store-reviews.prisma.integration.test.ts",
+              "packages/db/src/business-authorization.prisma.integration.test.ts",
+              "apps/api/src/business-authorization-cutover.prisma.integration.test.ts"
             ]
-          : partitionDownloadsOnly
-            ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
-            : ledgerAuthorizationOnly
-              ? [
-                  "packages/ledger-archive/src/publication.prisma.integration.test.ts",
-                  "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
-                  "apps/api/src/ledger-web/download.prisma.integration.test.ts",
-                  "apps/api/src/auth/browser-session.prisma.integration.test.ts",
-                  "apps/api/src/auth/prisma-auth-repository.integration.test.ts"
-                ]
-              : structuredReadsOnly
-                ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
-                : businessAuthorizationOnly
-                  ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
-                  : [
-                      "apps/api/src/auth/browser-session.prisma.integration.test.ts",
-                      "apps/api/src/auth/prisma-auth-repository.integration.test.ts",
-                      "apps/api/src/ledger-web/download.prisma.integration.test.ts",
-                      "apps/api/src/structured-query.prisma.integration.test.ts",
-                      "packages/ledger-archive/src/publication.prisma.integration.test.ts",
-                      "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
-                      "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
-                      "packages/db/src/structured-partitions.prisma.integration.test.ts",
-                      "packages/db/src/partition-downloads.prisma.integration.test.ts",
-                      "packages/db/src/cost-cards.prisma.integration.test.ts",
-                      "apps/worker/src/cost-card-import.prisma.integration.test.ts",
-                      "apps/api/src/cost-cards.prisma.integration.test.ts",
-                      "packages/db/src/store-reviews.prisma.integration.test.ts",
-                      "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
-                      "apps/api/src/store-reviews.prisma.integration.test.ts",
-                      "scripts/test-integration-support.test.ts"
-                    ]),
-      ...(!storeReviewsOnly &&
+          : costCardsOnly
+            ? [
+                "packages/db/src/cost-cards.prisma.integration.test.ts",
+                "apps/worker/src/cost-card-import.prisma.integration.test.ts",
+                "apps/api/src/cost-cards.prisma.integration.test.ts"
+              ]
+            : partitionDownloadsOnly
+              ? ["packages/db/src/partition-downloads.prisma.integration.test.ts"]
+              : ledgerAuthorizationOnly
+                ? [
+                    "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                    "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
+                    "apps/api/src/ledger-web/download.prisma.integration.test.ts",
+                    "apps/api/src/auth/browser-session.prisma.integration.test.ts",
+                    "apps/api/src/auth/prisma-auth-repository.integration.test.ts"
+                  ]
+                : structuredReadsOnly
+                  ? ["apps/api/src/structured-query.prisma.integration.test.ts"]
+                  : businessAuthorizationOnly
+                    ? ["apps/api/src/business-authorization-cutover.prisma.integration.test.ts"]
+                    : [
+                        "apps/api/src/auth/browser-session.prisma.integration.test.ts",
+                        "apps/api/src/auth/prisma-auth-repository.integration.test.ts",
+                        "apps/api/src/ledger-web/download.prisma.integration.test.ts",
+                        "apps/api/src/structured-query.prisma.integration.test.ts",
+                        "packages/ledger-archive/src/publication.prisma.integration.test.ts",
+                        "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
+                        "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
+                        "packages/db/src/structured-partitions.prisma.integration.test.ts",
+                        "packages/db/src/partition-downloads.prisma.integration.test.ts",
+                        "packages/db/src/cost-cards.prisma.integration.test.ts",
+                        "apps/worker/src/cost-card-import.prisma.integration.test.ts",
+                        "apps/api/src/cost-cards.prisma.integration.test.ts",
+                        "packages/db/src/store-reviews.prisma.integration.test.ts",
+                        "packages/db/src/store-review-enterprises.prisma.integration.test.ts",
+                        "apps/api/src/store-reviews.prisma.integration.test.ts",
+                        "scripts/test-integration-support.test.ts"
+                      ]),
+      ...(!inStoreOrdersOnly &&
+      !takeawayOrdersOnly &&
+      !storeReviewsOnly &&
       !costCardsOnly &&
       !structuredReadsOnly &&
       !ledgerAuthorizationOnly &&
@@ -255,8 +269,32 @@ integrationRun: try {
   );
   process.stdout.write(prismaRegressions.stdout);
   // Exit the scenario through the shared finally cleanup, without starting API/Qdrant.
-  if (focusedAuthorization) break integrationRun;
+  if (focusedAuthorization && !inStoreOrdersOnly && !takeawayOrdersOnly) break integrationRun;
   await run("npm", ["run", "db:seed"], { env: integrationEnv });
+  if (inStoreOrdersOnly || takeawayOrdersOnly) {
+    await prepareLocalWorkspace();
+    apiProcess = startApi();
+    await waitForApiHealth(apiProcess);
+    await assertOrderPartitionsWorkflow(takeawayOrdersOnly ? "takeaway_orders" : "in_store_orders");
+    console.log(
+      JSON.stringify({
+        [takeawayOrdersOnly ? "takeawayOrders" : "inStoreOrders"]: "passed",
+        checks: [
+          "original_xlsx_launcher_upload",
+          "atomic_publish",
+          takeawayOrdersOnly ? "authorized_33_column_csv" : "authorized_csv_and_json",
+          "same_bytes_deduplication",
+          "partial_store_day_replacement",
+          "whole_source_rejection",
+          "no_implicit_grant",
+          "scope_and_clearance",
+          "no_legacy_order_entitlement",
+          "zip_delivery"
+        ]
+      })
+    );
+    break integrationRun;
+  }
   const identitySetup = new PrismaClient({
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
   });
@@ -338,36 +376,6 @@ integrationRun: try {
     "business and dishes must be rejected by the removed row-import endpoint."
   );
 
-  const launcherDependenciesFor = (accessToken: string) =>
-    createLauncherToolDependencies({
-      config: { serviceUrl: apiUrl, transport: "stdio" },
-      auth: {
-        login: async () => ({
-          authenticated: false,
-          flow: "device",
-          verificationUri: `${apiUrl}/oauth/device/verify`,
-          verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
-          userCode: "INTEGR8",
-          instanceName: "integration-agent",
-          instanceHostname: "integration-host",
-          openedBrowser: false
-        }),
-        logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
-        status: async () => ({ authenticated: true }),
-        accessToken: async () => accessToken,
-        profile: async () => {
-          const response = await fetch(`${apiUrl}/me`, {
-            headers: authorizationHeader(accessToken)
-          });
-          assert(response.ok, "Launcher account profile lookup must succeed.");
-          return parseCurrentUserProfileResponse(await response.json());
-        },
-        invalidate: async () => undefined,
-        selfCheck: async () => {
-          throw new Error("not used");
-        }
-      }
-    });
   const launcherDependencies = launcherDependenciesFor(adminAccessToken);
   const employeeLauncherDependencies = launcherDependenciesFor(employeeAccessToken);
   for (const fixture of [
@@ -684,6 +692,649 @@ integrationRun: try {
       );
       if (!integrationFailed) process.exitCode = 1;
     }
+  }
+}
+
+function launcherDependenciesFor(accessToken: string) {
+  return createLauncherToolDependencies({
+    config: { serviceUrl: apiUrl, transport: "stdio" },
+    auth: {
+      login: async () => ({
+        authenticated: false,
+        flow: "device",
+        verificationUri: `${apiUrl}/oauth/device/verify`,
+        verificationUriComplete: `${apiUrl}/oauth/device/verify?user_code=INTEGR8`,
+        userCode: "INTEGR8",
+        instanceName: "integration-agent",
+        instanceHostname: "integration-host",
+        openedBrowser: false
+      }),
+      logout: async () => ({ remoteRevocationConfirmed: true, localCredentialRemoved: true }),
+      status: async () => ({ authenticated: true }),
+      accessToken: async () => accessToken,
+      profile: async () => {
+        const response = await fetch(`${apiUrl}/me`, {
+          headers: authorizationHeader(accessToken)
+        });
+        assert(response.ok, "Launcher account profile lookup must succeed.");
+        return parseCurrentUserProfileResponse(await response.json());
+      },
+      invalidate: async () => undefined,
+      selfCheck: async () => {
+        throw new Error("not used");
+      }
+    }
+  });
+}
+
+async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takeaway_orders") {
+  const takeaway = dataset === "takeaway_orders";
+  const createFixture = takeaway
+    ? createTakeawayOrderIntegrationFixture
+    : createInStoreOrderIntegrationFixture;
+  const initialRowCount = takeaway ? 5 : 7;
+  const incomeColumn = takeaway ? "营业收入(元)" : "订单收入（元）";
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
+  const permissions = createBusinessAuthorizationRepository({ prisma });
+  const enterpriseName = "Integration Order Partitions";
+  const enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
+  const directories: string[] = [];
+  const fixture = await createFixture();
+  const context = async () => ({
+    orgId: "default-org",
+    actorId: "emp_admin",
+    expectedVersion: (await permissions.loadAuthorizationSnapshot("emp_admin", "default-org"))
+      .authorizationVersion
+  });
+  type Receipt = {
+    partitionImportJobId: string;
+    status: string;
+    partitionCount: number;
+    totalRowCount: number;
+  };
+  type Extract = {
+    localDirectory: string;
+    files: string[];
+    partitionCount: number;
+    totalRowCount: number;
+  };
+  const adminToken = await createOfficialIntegrationAccessToken("emp_admin");
+  const readerToken = await createOfficialIntegrationAccessToken("emp_suzhou_employee");
+  const admin = launcherDependenciesFor(adminToken);
+  const reader = launcherDependenciesFor(readerToken);
+  const call = async <T>(name: string, args: unknown, dependencies = reader): Promise<T> => {
+    const result = await createLauncherToolHandler(name, dependencies)(args);
+    assert(!result.isError, `${name} must succeed: ${JSON.stringify(result)}`);
+    return parseJson<T>(result.content[0]?.text ?? "null");
+  };
+  const scope = {
+    dataset,
+    enterpriseName,
+    startDate: "2026-10-26",
+    endDate: "2026-10-27"
+  };
+  const manifest = (token = readerToken, extra: Record<string, unknown> = {}) =>
+    apiJson<{
+      partitionCount: number;
+      totalRowCount: number;
+      partitions: Array<{
+        checksumSha256: string;
+        businessDate: string;
+        storeName: string;
+        storeId: string | null;
+      }>;
+    }>("/v1/structured/partition-manifests", {
+      method: "POST",
+      headers: { ...authorizationHeader(token), "content-type": "application/json" },
+      body: JSON.stringify({ ...scope, ...extra })
+    }).then(({ partitionCount, totalRowCount, partitions }) => ({
+      partitionCount,
+      totalRowCount,
+      partitions: partitions.map(({ checksumSha256, businessDate, storeName, storeId }) => ({
+        checksumSha256,
+        businessDate,
+        storeName,
+        storeId
+      }))
+    }));
+  const worker = async (expected: string) => {
+    const result = parseJson<WorkerResponse>(
+      (await run("npm", ["--silent", "run", "worker:once"], { env: integrationEnv })).stdout
+    );
+    assert(
+      result.processed && result.status === expected,
+      `In-store-order worker must be ${expected}, got ${result.status}.`
+    );
+  };
+  const upload = async (name: string, xlsx: Buffer, key = name) => {
+    const filePath = path.join(integrationRoot, `${name}.xlsx`);
+    await writeFile(filePath, xlsx);
+    return call<Receipt>(
+      "upload_structured_dataset",
+      {
+        dataset,
+        enterpriseName,
+        startDate: "20261026",
+        endDate: "20261027",
+        idempotencyKey: `in-store-${key}`,
+        file: {
+          name: `${name}.xlsx`,
+          mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          encoding: "path",
+          filePath
+        }
+      },
+      admin
+    );
+  };
+  const download = async () => {
+    const result = await call<Extract>("download_structured_partitions", {
+      ...scope,
+      startDate: "20261026",
+      endDate: "20261027"
+    });
+    directories.push(result.localDirectory);
+    const records = new Map<string, Array<Record<string, string>>>();
+    for (const file of result.files) {
+      const rows = parseCsv(await readFile(path.join(result.localDirectory, file)), {
+        columns: true
+      }) as Array<Record<string, string>>;
+      assert(rows.length > 0, "Current partitions must be nonempty.");
+      assertStrict.deepEqual(
+        Object.keys(rows[0]!),
+        takeaway ? fixture.headers : [...fixture.headers, "结账方式JSON"]
+      );
+      records.set(`${rows[0]!["门店"]}/${rows[0]!["营业日期"]}`, rows);
+    }
+    const localManifest = await readFile(path.join(result.localDirectory, "manifest.json"), "utf8");
+    assert(
+      !/presignedDownloadUrl|objectKey|file:\/\//.test(localManifest),
+      "Launcher local metadata must be safe."
+    );
+    return { result, records };
+  };
+  try {
+    // Existing enabled tenants add the category explicitly; initialization grants no access.
+    await prisma.businessAuthorizationState.update({
+      where: { orgId: "default-org" },
+      data: { mode: "enabled", version: { increment: 1 } }
+    });
+    const initialCategory = await prisma.businessCategory.findUniqueOrThrow({
+      where: { orgId_key: { orgId: "default-org", key: dataset } }
+    });
+    assert(initialCategory.confidentialityLevel === null, "New category level must be unset.");
+    assert(
+      (await prisma.businessGrantCategory.count({
+        where: { orgId: "default-org", categoryId: initialCategory.id }
+      })) === 0,
+      "No in-store-order grant is implicit."
+    );
+    await permissions.configureCategory({
+      ...(await context()),
+      id: initialCategory.id,
+      key: dataset,
+      name: takeaway ? "平台外卖订单明细" : "店内订单明细",
+      kind: "fixed",
+      confidentialityLevel: 2,
+      ownerships: ["store"],
+      requiredDimensionIds: []
+    });
+    for (const name of ["合成甲店", "合成乙店"])
+      await permissions.putStore({ ...(await context()), enterpriseName, name });
+    const grant = (
+      categoryIds: string[],
+      stores = ["合成甲店", "合成乙店"],
+      key = enterpriseKey
+    ) => [
+      {
+        id: "in-store-reader",
+        orgId: "default-org",
+        enterpriseKey: key,
+        categoryIds,
+        ownership: "store" as const,
+        stores: { kind: "fixed" as const, values: stores },
+        dimensions: {}
+      }
+    ];
+    const oldCategories = await prisma.businessCategory.findMany({
+      where: { orgId: "default-org", key: { in: ["business", "dishes"] } }
+    });
+    await permissions.configureAccount({
+      ...(await context()),
+      employeeId: "emp_suzhou_employee",
+      clearance: 3,
+      grants: grant(oldCategories.map((category) => category.id))
+    });
+    const deniedUpload = await createLauncherToolHandler(
+      "upload_structured_dataset",
+      reader
+    )({
+      dataset,
+      enterpriseName,
+      startDate: "20261026",
+      endDate: "20261027",
+      idempotencyKey: "denied-order-upload",
+      file: {
+        name: "denied.xlsx",
+        mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        encoding: "path",
+        filePath: path.join(integrationRoot, "denied.xlsx")
+      }
+    });
+    assert(
+      deniedUpload.isError && JSON.stringify(deniedUpload).includes("UPLOAD_ADMIN_REQUIRED"),
+      "Employee cannot upload order sources or read the local source before denial."
+    );
+    const first = await upload("in-store-original", fixture.xlsx);
+    assert(first.status === "queued", "Official launcher must complete XLSX multipart upload.");
+    await worker("active");
+    const published = await waitForPartitionImportStatus(
+      first.partitionImportJobId,
+      authorizationHeader(adminToken),
+      "published"
+    );
+    assert(
+      published.partitionCount === 3 && published.totalRowCount === initialRowCount,
+      "Two stores and source business days must yield three partitions and four rows."
+    );
+    await prisma.businessAuthorizationState.update({
+      where: { orgId: "default-org" },
+      data: { mode: "legacy", version: { increment: 1 } }
+    });
+    assert(
+      (await manifest()).partitionCount === 0,
+      "New orders must never fall back to clearance-only legacy reads."
+    );
+    const legacyCoverage = await call<{ enterprises: unknown[] }>(
+      "describe_structured_dataset_coverage",
+      { dataset, enterpriseName }
+    );
+    assert(
+      legacyCoverage.enterprises.length === 0,
+      "New order coverage must also require complete business authorization."
+    );
+    await prisma.businessAuthorizationState.update({
+      where: { orgId: "default-org" },
+      data: { mode: "enabled", version: { increment: 1 } }
+    });
+    assert(
+      (await manifest()).partitionCount === 0,
+      "Existing business/dishes grants must not authorize orders."
+    );
+    assert(
+      (await manifest(adminToken)).partitionCount === 0,
+      "Admin must not bypass ordinary read grants."
+    );
+    await permissions.configureAccount({
+      ...(await context()),
+      employeeId: "emp_suzhou_employee",
+      clearance: 1,
+      grants: grant([initialCategory.id])
+    });
+    assert(
+      (await manifest()).partitionCount === 0,
+      "Insufficient clearance must hide order partitions."
+    );
+    await permissions.configureAccount({
+      ...(await context()),
+      employeeId: "emp_suzhou_employee",
+      clearance: 3,
+      grants: grant([initialCategory.id], ["合成甲店"])
+    });
+    assert(
+      (await manifest()).partitionCount === 2,
+      "A complete grant covers only its exact store."
+    );
+    assert(
+      (await manifest(readerToken, { storeNameContains: ["合成乙店"] })).partitionCount === 0,
+      "Other stores remain denied."
+    );
+    assert(
+      (await manifest(readerToken, { enterpriseName: "Different Enterprise" })).partitionCount ===
+        0,
+      "Other enterprises remain denied."
+    );
+    for (const name of ["合成甲店", "合成乙店"])
+      await permissions.putStore({
+        ...(await context()),
+        enterpriseName: "Other-enterprise",
+        name
+      });
+    await permissions.configureAccount({
+      ...(await context()),
+      employeeId: "emp_suzhou_employee",
+      clearance: 3,
+      grants: grant([initialCategory.id], ["合成甲店", "合成乙店"], "other-enterprise")
+    });
+    assert(
+      (await manifest()).partitionCount === 0,
+      "A grant for another enterprise cannot be combined with this category."
+    );
+    await permissions.configureAccount({
+      ...(await context()),
+      employeeId: "emp_suzhou_employee",
+      clearance: 3,
+      grants: grant([initialCategory.id])
+    });
+    await prisma.organization.create({
+      data: { id: "in-store-other-org", name: "Synthetic other organization" }
+    });
+    await prisma.employee.create({
+      data: {
+        id: "in-store-other-reader",
+        orgId: "in-store-other-org",
+        email: "in-store-other@example.invalid",
+        displayName: "Synthetic other reader",
+        role: "admin",
+        clearance: 3
+      }
+    });
+    await prisma.businessAuthorizationState.create({
+      data: { orgId: "in-store-other-org", mode: "enabled", version: 1n }
+    });
+    await permissions.initializeFixedCategories({
+      orgId: "in-store-other-org",
+      actorId: "in-store-other-reader",
+      expectedVersion: "1"
+    });
+    const otherContext = async () => ({
+      orgId: "in-store-other-org",
+      actorId: "in-store-other-reader",
+      expectedVersion: (
+        await permissions.loadAuthorizationSnapshot("in-store-other-reader", "in-store-other-org")
+      ).authorizationVersion
+    });
+    const otherCategory = await prisma.businessCategory.findUniqueOrThrow({
+      where: { orgId_key: { orgId: "in-store-other-org", key: dataset } }
+    });
+    await permissions.configureCategory({
+      ...(await otherContext()),
+      id: otherCategory.id,
+      key: dataset,
+      name: "Synthetic other orders",
+      kind: "fixed",
+      confidentialityLevel: 2,
+      ownerships: ["store"],
+      requiredDimensionIds: []
+    });
+    await permissions.configureAccount({
+      ...(await otherContext()),
+      employeeId: "in-store-other-reader",
+      clearance: 3,
+      grants: [
+        {
+          id: "other-in-store-grant",
+          orgId: "in-store-other-org",
+          enterpriseKey,
+          categoryIds: [otherCategory.id],
+          ownership: "store",
+          stores: { kind: "all" },
+          dimensions: {}
+        }
+      ]
+    });
+    await prisma.loginIdentity.create({
+      data: {
+        orgId: "in-store-other-org",
+        employeeId: "in-store-other-reader",
+        normalizedEmail: "in-store-other@example.invalid",
+        passwordHash: null
+      }
+    });
+    const otherToken = await createOfficialIntegrationAccessToken("in-store-other-reader");
+    assert(
+      (await manifest(otherToken)).partitionCount === 0,
+      "A matching complete grant in another organization cannot cross the tenant boundary."
+    );
+    const available = await manifest();
+    assert(
+      available.partitionCount === 3 && available.partitions.every((row) => row.storeId === null),
+      "Organization code is not merchant identity."
+    );
+    const card = await call<Record<string, unknown>>("get_my_permissions", {});
+    assert(
+      JSON.stringify(card).includes(dataset),
+      "Permission card must include the independently granted category."
+    );
+    const full = await download();
+    const repeated = full.records.get("合成甲店/2026-10-27")!;
+    assert(
+      repeated.length === (takeaway ? 3 : 5) && full.result.totalRowCount === initialRowCount,
+      "Identical source rows must survive publication and download."
+    );
+    assertStrict.deepEqual(repeated[0], repeated[1]);
+    assert(
+      repeated[0]![takeaway ? "外卖订单号" : "订单号"] === "000012" &&
+        repeated[0]!["机构编码"] === "0007",
+      "String identifiers retain leading zeros."
+    );
+    assert(
+      repeated[0]!["下单时间"] === "2026-10-28 00:03:00",
+      "Cross-midnight order remains on the source business date."
+    );
+    if (takeaway) {
+      assertStrict.deepEqual(
+        repeated.map((row) => row["订单来源"]),
+        ["平台甲", "平台甲", "未来平台乙"]
+      );
+      assert(
+        repeated[0]!["收银订单号"] === "000900719925474099312345",
+        "Long text identifiers retain precision."
+      );
+      assert(
+        repeated[0]!["订单状态"] === "制作中" && repeated[2]!["订单状态"] === "配送中",
+        "Valid uncompleted orders survive."
+      );
+      assert(
+        repeated[0]!["部分退款(元)"] === "-2.3" && repeated[0]!["平台服务费(元)"] === "-0.1",
+        "Signed source amounts are preserved independently."
+      );
+      assert(
+        repeated[0]!["完成时间"] === "" &&
+          repeated[0]!["取餐号"] === "--" &&
+          repeated[0]!["餐盒费(元)"] === "0",
+        "Typed placeholders, text and zero remain distinct."
+      );
+      assert(
+        repeated[0]!["配送方式"] === fixture.rows[0]!["配送方式"],
+        "Quoted multiline source text is preserved."
+      );
+    } else {
+      assertStrict.deepEqual(
+        [...new Set([...full.records.values()].flat().map((row) => row["订单状态"]))].sort(),
+        ["待制作", "未结账", "已结账", "已撤单", "已退单"].sort()
+      );
+      for (const row of repeated.filter((row) =>
+        ["待制作", "未结账", "已撤单"].includes(row["订单状态"]!)
+      )) {
+        assert(
+          row["结账时间"] === "" && row["结账方式JSON"] === "null",
+          "Unpaid and cancelled orders remain visible with absent settlement fields."
+        );
+      }
+      assert(
+        repeated[0]!["结账方式"] === fixture.rows[0]!["结账方式"] &&
+          repeated[0]!["整单备注"] === fixture.rows[0]!["整单备注"],
+        "Raw payment and quoted multiline text survive standard CSV parsing."
+      );
+      assert(
+        repeated[0]!["退单时间"] === "" &&
+          repeated[0]!["用餐人数"] === "" &&
+          repeated[0]!["取餐号"] === "--",
+        "Only nullable typed placeholders become empty."
+      );
+      assertStrict.deepEqual(JSON.parse(repeated[0]!["结账方式JSON"]!), [
+        { method: "员工 卡", amount: 10, marker: null },
+        { method: "现金", amount: -2.3, marker: "退款" },
+        { method: "现金", amount: -2.3, marker: "退款" },
+        { method: "现金", amount: -0.1, marker: "找零" }
+      ]);
+      assert(
+        full.records.get("合成甲店/2026-10-26")![0]!["结账方式JSON"] === "null",
+        "Missing payment becomes JSON null."
+      );
+    }
+    const coverage = await call<{
+      enterprises: Array<{ partitionCount: number; totalRowCount: number }>;
+    }>("describe_structured_dataset_coverage", { dataset, enterpriseName });
+    assert(
+      coverage.enterprises[0]?.partitionCount === 3 &&
+        Number(coverage.enterprises[0]?.totalRowCount) === initialRowCount,
+      "Coverage must reflect only authorized current partitions."
+    );
+    const query = await createLauncherToolHandler(
+      "query_structured_dataset",
+      reader
+    )({ dataset, select: [takeaway ? "takeaway_order_id" : "order_id"] });
+    assert(
+      query.isError && JSON.stringify(query).includes("DATASET_REQUIRES_PARTITION_EXTRACT"),
+      "Orders cannot enter server row queries."
+    );
+    const exactReplay = await upload("in-store-original", fixture.xlsx);
+    assert(
+      exactReplay.partitionImportJobId === first.partitionImportJobId &&
+        exactReplay.status === "published",
+      "Request replay reuses the original published job."
+    );
+    await upload("in-store-same-bytes", fixture.xlsx);
+    await worker("active");
+    assertStrict.deepEqual(
+      await manifest(),
+      available,
+      "Same canonical bytes must not duplicate or replace current data."
+    );
+    const replacement = await createFixture([
+      { ...fixture.rows[0]!, [incomeColumn]: "20", ...(takeaway ? {} : { 结账方式: "现金 20" }) }
+    ]);
+    await upload("in-store-replacement", replacement.xlsx);
+    await worker("active");
+    const updated = await download();
+    assert(
+      updated.result.partitionCount === 3 && updated.result.totalRowCount === 3,
+      "Partial upload only replaces the appeared store-day."
+    );
+    assert(
+      updated.records.get("合成甲店/2026-10-27")![0]![incomeColumn] === "20",
+      "Appeared store-day is replaced."
+    );
+    for (const untouched of ["合成甲店/2026-10-26", "合成乙店/2026-10-27"])
+      assertStrict.deepEqual(
+        updated.records.get(untouched),
+        full.records.get(untouched),
+        "Absent store-days must remain unchanged."
+      );
+    const stable = await manifest();
+    const broken = await createFixture([
+      { ...fixture.rows[0]!, [incomeColumn]: "30" },
+      {
+        ...fixture.rows[3]!,
+        ...(takeaway ? { "营业收入(元)": "bad" } : { 结账方式: "现金 1，错误尾部" })
+      }
+    ]);
+    const rejected = await upload("in-store-invalid-later-row", broken.xlsx);
+    await worker("rejected");
+    await waitForPartitionImportStatus(
+      rejected.partitionImportJobId,
+      authorizationHeader(adminToken),
+      "rejected"
+    );
+    const failure = await call<{ error: { code: string; message: string } }>(
+      "get_partition_import_status",
+      { partitionImportJobId: rejected.partitionImportJobId },
+      admin
+    );
+    assert(
+      failure.error.code === "PARTITION_SOURCE_INVALID" && /Row 4/.test(failure.error.message),
+      "Invalid nonempty payment must identify the original source row."
+    );
+    assertStrict.deepEqual(
+      await manifest(),
+      stable,
+      "A later invalid payment must reject the whole source and preserve current data."
+    );
+    const empty = await createFixture([]);
+    const emptyJob = await upload("in-store-empty", empty.xlsx);
+    await worker("rejected");
+    await waitForPartitionImportStatus(
+      emptyJob.partitionImportJobId,
+      authorizationHeader(adminToken),
+      "rejected"
+    );
+    assertStrict.deepEqual(await manifest(), stable, "An empty source cannot clear current data.");
+    const outsideWindow = await createFixture([{ ...fixture.rows[0]!, 营业日期: "20261028" }]);
+    const outsideJob = await upload("orders-outside-window", outsideWindow.xlsx);
+    await worker("rejected");
+    const outsideStatus = await call<{ error: { code: string } }>(
+      "get_partition_import_status",
+      { partitionImportJobId: outsideJob.partitionImportJobId },
+      admin
+    );
+    assert(
+      outsideStatus.error.code === "PARTITION_SOURCE_DATE_OUT_OF_RANGE",
+      "Source business dates must fit the declared window."
+    );
+    assertStrict.deepEqual(
+      await manifest(),
+      stable,
+      "Out-of-window source cannot alter current partitions."
+    );
+    await upload("orders-older-complete-export-reuploaded", fixture.xlsx);
+    await worker("active");
+    assertStrict.deepEqual(
+      await manifest(),
+      available,
+      "The last successful complete upload wins, even when it restores older source content."
+    );
+    let preparedRequestId = "";
+    await comparePartitionDownloads({
+      context: {
+        serviceUrl: apiUrl,
+        accessToken: readerToken,
+        launcherVersion: LAUNCHER_VERSION,
+        fetchImplementation: fetch
+      },
+      scope: { ...scope, dataset },
+      amountColumn: incomeColumn,
+      expected: {
+        partitionCount: 3,
+        rowCount: initialRowCount,
+        amountCents: takeaway ? 3960 : 3760
+      },
+      build: async (requestId) => {
+        preparedRequestId = requestId;
+        await worker("active");
+      }
+    });
+    await prisma.businessAuthorizationState.update({
+      where: { orgId: "default-org" },
+      data: { mode: "legacy", version: { increment: 1 } }
+    });
+    const legacyPreparation = await call<{ partitionCount: number }>(
+      "prepare_structured_partition_download",
+      {
+        ...scope,
+        startDate: "20261026",
+        endDate: "20261027",
+        idempotencyKey: "in-store-legacy-zip"
+      }
+    );
+    assert(
+      legacyPreparation.partitionCount === 0,
+      "Legacy ZIP preparation cannot select order partitions."
+    );
+    const deniedBundle = await createLauncherToolHandler(
+      "download_structured_partitions",
+      reader
+    )({ requestId: preparedRequestId });
+    assert(
+      deniedBundle.isError && JSON.stringify(deniedBundle).includes("PARTITION_DOWNLOAD_FORBIDDEN"),
+      "Reissuing an existing ZIP capability must require current complete business authorization."
+    );
+  } finally {
+    await Promise.all(
+      directories.map((directory) => rm(directory, { recursive: true, force: true }))
+    );
+    await prisma.$disconnect();
   }
 }
 

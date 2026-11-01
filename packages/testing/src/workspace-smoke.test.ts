@@ -8,7 +8,6 @@ const expectedWorkspaceNames = [
   "@smedc/db",
   "@smedc/domain",
   "@smedc/ledger-archive",
-  "@smedc/marketing-web",
   "@smedc/mcp-contract",
   "@smedc/release-ops",
   "@smedc/storage",

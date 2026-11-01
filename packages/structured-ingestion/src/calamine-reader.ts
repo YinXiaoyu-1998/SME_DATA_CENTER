@@ -24,6 +24,7 @@ export async function streamCalamineXlsxFileRows(input: {
   consumer: XlsxStreamConsumer;
   signal?: AbortSignal;
   command?: readonly string[];
+  preserveCellWhitespace?: boolean;
 }): Promise<XlsxStreamProfile> {
   throwIfAborted(input.signal);
   const inspection = await inspectXlsxFile(input.filePath, input.limits);
@@ -97,7 +98,9 @@ export async function streamCalamineXlsxFileRows(input: {
             throw new Error("Calamine reader emitted non-monotonic row numbers.");
           if (rawCells.length > MAX_PARTITION_COLUMNS)
             throw new CalamineSourceError("Partition worksheet column limit exceeded.");
-          const cells = rawCells.map((cell) => checkedCellText(cell, input.limits));
+          const cells = rawCells.map((cell) =>
+            checkedCellText(cell, input.limits, input.preserveCellWhitespace)
+          );
           lastRowNumber = rowNumber;
           const consumerStartedAt = performance.now();
           await input.consumer.row(sheet, rowNumber, cells);
@@ -231,10 +234,14 @@ function parseEvent(line: string): ProtocolEvent {
   throw new Error("Calamine reader emitted an unknown event.");
 }
 
-function checkedCellText(value: string, limits: XlsxReadLimits): string {
+function checkedCellText(
+  value: string,
+  limits: XlsxReadLimits,
+  preserveWhitespace = false
+): string {
   if (value.length > limits.maxStructuredCellChars)
     throw new CalamineSourceError("Structured cell length limit exceeded.");
-  return value.trim();
+  return preserveWhitespace ? value : value.trim();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -7,7 +7,6 @@ RUN npm install --global npm@11.18.0
 COPY package.json package-lock.json tsconfig.json tsconfig.base.json tsup.release.config.ts ./
 COPY apps/admin-web/package.json ./apps/admin-web/package.json
 COPY apps/api/package.json ./apps/api/package.json
-COPY apps/marketing-web/package.json ./apps/marketing-web/package.json
 COPY apps/mcp-launcher/package.json ./apps/mcp-launcher/package.json
 COPY apps/release-ops/package.json ./apps/release-ops/package.json
 COPY apps/worker/package.json ./apps/worker/package.json
@@ -106,7 +105,6 @@ CMD ["node", "dist/release/worker.js"]
 
 FROM runtime-base AS release-ops
 
-COPY --from=build --chown=node:node /app/dist/marketing ./dist/marketing
 
 COPY --from=release-ops-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma

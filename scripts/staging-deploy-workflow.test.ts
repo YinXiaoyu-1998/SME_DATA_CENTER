@@ -95,6 +95,12 @@ it("caches each runtime target and hands off only tested main images to the matc
   for (const target of ["api", "worker", "release-ops"]) {
     expect(quality).toContain(`cache-from: type=gha,version=2,scope=smedc-${target}`);
     expect(quality).toContain(`cache-to: type=gha,version=2,scope=smedc-${target},mode=max`);
+    const build = quality
+      .split(`- name: Build ${target} runtime image`)[1]
+      ?.split("\n      - name:")[0];
+    const freshStages = `runtime-base,${target}`;
+    expect(build).toContain(`no-cache-filters: ${freshStages}\n`);
+    expect(build).not.toMatch(/\n\s+no-cache:\s+true/);
   }
   expect(quality).toContain("retention-days: 1");
   expect(quality).toContain("overwrite: true");
@@ -121,21 +127,9 @@ it("runs all native launcher release checks only for an explicit version tag or 
     expect(release).toContain(os);
 });
 
-it("keeps the public static host separate from authenticated API and business pages", async () => {
+it("keeps readiness private on the authenticated API host", async () => {
   const api = await readFile(join(repoRoot, "deploy/staging/nginx-smedc.conf"), "utf8");
-  const site = await readFile(join(repoRoot, "deploy/staging/nginx-marketing.conf"), "utf8");
-  const bootstrap = await readFile(
-    join(repoRoot, "deploy/staging/nginx-marketing-bootstrap.conf"),
-    "utf8"
-  );
   expect(api).toContain("server_name api.smedatacenter.xyz;");
   expect(api).toContain("proxy_pass http://127.0.0.1:3000;");
   expect(api).toMatch(/location = \/readyz\s*\{\s*return 404;/);
-  expect(site).not.toContain("proxy_pass");
-  expect(site).toContain("root /opt/smedc/marketing/current;");
-  expect(site).toContain("return 301 https://smedatacenter.xyz$request_uri;");
-  expect(site).toContain("location / { return 404; }");
-  expect(site).not.toContain("try_files $uri /index.html");
-  expect(bootstrap).toContain("/.well-known/acme-challenge/");
-  expect(bootstrap).not.toContain("ssl_certificate");
 });

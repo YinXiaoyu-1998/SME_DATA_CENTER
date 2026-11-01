@@ -12,7 +12,12 @@ export async function initializeFixedBusinessCategories(
       orgId,
       id: randomUUID().replaceAll("-", ""),
       key,
-      name: key,
+      name:
+        key === "in_store_orders"
+          ? "店内订单明细"
+          : key === "takeaway_orders"
+            ? "平台外卖订单明细"
+            : key,
       kind: "fixed" as const,
       confidentialityLevel: null,
       allowGroup: FIXED_BUSINESS_CATEGORY_OWNERSHIP[key] === "group",
