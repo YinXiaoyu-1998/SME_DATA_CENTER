@@ -158,7 +158,15 @@ export function createEnterpriseWorkflowService(options: {
           if (input.operation.kind === "check_actions") {
             const bound = await requireBinding(tx, actor, workflow, input.operation, now);
             for (const intent of input.operation.actions)
-              await authorizeAction(tx, actor, auth, workflow, bound.snapshot, intent);
+              await authorizeAction(
+                tx,
+                actor,
+                auth,
+                workflow,
+                bound.snapshot,
+                intent,
+                bound.livePolicy
+              );
             return { allowed: true, intentRequired: true };
           }
           return runOperation(tx, actor, auth, workflow, input.operation, now);

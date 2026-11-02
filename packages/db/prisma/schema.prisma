@@ -1573,6 +1573,7 @@ model WorkflowRun {
   endDate DateTime @map("end_date") @db.Date
   mode String @db.VarChar(32)
   snapshot Json
+  restrictivePolicy Json? @map("restrictive_policy")
   phase String @default("preparing") @db.VarChar(32)
   status WorkflowRunState @default(running)
   summary Json?
