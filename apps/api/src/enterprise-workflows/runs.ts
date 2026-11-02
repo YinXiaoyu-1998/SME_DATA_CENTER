@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  WORKFLOW_CAPABILITY_VERSION,
   workflowLivePolicy,
   intersectWorkflowLivePolicy,
   workflowLivePolicySchema,
@@ -26,6 +25,7 @@ import {
 } from "./repository.js";
 import { configuration, integration, validateConfiguration } from "./configuration.js";
 import { getInstallation, requireReady } from "./installations.js";
+import { supportsWorkflowPackageVersion } from "./package-compatibility.js";
 const backfillSchema = z
   .object({
     kind: z.literal("backfill"),
@@ -213,7 +213,7 @@ export async function runOperation(
     )
       fail("WORKFLOW_VERSION_CONFLICT");
     if (
-      op.workflowPackageVersion !== WORKFLOW_CAPABILITY_VERSION ||
+      !supportsWorkflowPackageVersion(op.workflowPackageVersion) ||
       installation.workflowPackageVersion !== op.workflowPackageVersion
     )
       fail("WORKFLOW_VERSION_INCOMPATIBLE");

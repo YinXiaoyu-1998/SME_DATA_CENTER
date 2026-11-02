@@ -23,6 +23,11 @@ then verify live service capability and current administrator authorization befo
 If capability is unavailable, report that service gap. Do not substitute `latest`, raw JSON-RPC
 or a separate credentialed HTTP client.
 
+The service capability version and companion package revision are separate. The v1 service
+supports stable `1.0.x` workflow packages; other minor/major lines and prereleases require a
+compatibility update. Register the actual package version. Each run remains pinned to its exact
+package revision, including resume; never report `1.0.0` to bypass an incompatibility response.
+
 When compatible official tools exist, call `list_enterprise_workflows` to verify live service
 capability/version and obtain the authenticated enterprise catalog and official settings entry.
 Do not infer readiness from tool discovery, construct organization URLs or demand JSON from the
