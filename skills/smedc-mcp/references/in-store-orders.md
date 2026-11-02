@@ -208,7 +208,6 @@ prepare a fresh download after upgrading. Earlier download links remain governed
 TTL. Request fingerprints are preserved for history, so a new-name operation needs a new
 idempotency key; an old key conflict is not permission to alter the stored original request.
 
-
 ## Versioned Workflow Source Scope (Release Gated)
 
 The optional enterprise-workflow contract requires explicit `orderScope: settled_only`
