@@ -18,6 +18,9 @@ const employee: AuthenticatedEmployee = {
 
 function context(): ApiServerContext {
   return {
+    workflows: () => {
+      throw new Error("unused");
+    },
     permissions: () => {
       throw new Error("unused");
     },

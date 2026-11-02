@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   WORKFLOW_LIMITS,
+  WORKFLOW_MINIMUM_LAUNCHER_VERSION,
   workflowEnterpriseKeySchema,
   workflowIdSchema,
   workflowTypeSchema,
@@ -16,10 +17,11 @@ import {
   workflowActionReceiptSchema,
   workflowRunSummarySchema,
   workflowMigrationManifestSchema,
+  workflowMigrationChunkSchema,
   workflowPayloadFits
 } from "@smedc/domain";
 
-export const ENTERPRISE_WORKFLOW_LAUNCHER_VERSION = "0.16.0";
+export const ENTERPRISE_WORKFLOW_LAUNCHER_VERSION = WORKFLOW_MINIMUM_LAUNCHER_VERSION;
 const selector = { enterpriseKey: workflowEnterpriseKeySchema, workflowType: workflowTypeSchema };
 const expected = {
   expectedVersion: workflowVersionSchema,
@@ -46,6 +48,34 @@ const intentBatch = z
     "Action batch exceeds limits or repeats action IDs."
   );
 const installationOperation = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("migration_append"),
+      migrationId: workflowIdSchema,
+      expectedVersion: workflowVersionSchema,
+      sequence: workflowVersionSchema,
+      chunk: workflowMigrationChunkSchema,
+      chunkHash: workflowHashSchema
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("migration_seal"),
+      migrationId: workflowIdSchema,
+      expectedVersion: workflowVersionSchema,
+      chunkCount: z.number().int().min(1),
+      recordCount: z.number().int().nonnegative(),
+      chunksDigest: workflowHashSchema
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("migration_get"),
+      migrationId: workflowIdSchema,
+      cursor: workflowVersionSchema.optional(),
+      limit: z.literal(1).optional()
+    })
+    .strict(),
   z.object({ kind: z.literal("register"), installation: workflowInstallationSchema }).strict(),
   z
     .object({
@@ -105,6 +135,15 @@ const installationOperation = z.discriminatedUnion("kind", [
 const runOperation = z.discriminatedUnion("kind", [
   z
     .object({
+      kind: z.literal("prepare_backfill"),
+      installationId: workflowIdSchema,
+      assignmentEpoch: workflowVersionSchema,
+      window: workflowDateRangeSchema,
+      reason: z.string().trim().min(1).max(2000)
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("start"),
       installationId: workflowIdSchema,
       assignmentEpoch: workflowVersionSchema,
@@ -149,7 +188,12 @@ const actionOperation = z.discriminatedUnion("kind", [
       receipt: workflowActionReceiptSchema.refine(
         (v) =>
           v.state !== "unknown" &&
-          ["service_status", "provider_readback", "manual_resolution"].includes(v.evidence),
+          [
+            "service_status",
+            "launcher_transfer",
+            "provider_readback",
+            "manual_resolution"
+          ].includes(v.evidence),
         "Unknown actions require trusted readback or audited manual resolution."
       )
     })
@@ -163,7 +207,11 @@ const actionOperation = z.discriminatedUnion("kind", [
 ]);
 export const WORKFLOW_MCP_INPUT_SCHEMAS = {
   list_enterprise_workflows: z
-    .object({ enterpriseKey: workflowEnterpriseKeySchema.optional() })
+    .object({
+      enterpriseKey: workflowEnterpriseKeySchema.optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      cursor: workflowIdSchema.optional()
+    })
     .strict(),
   get_enterprise_workflow: z.object(selector).strict(),
   prepare_enterprise_workflow_change: z
@@ -189,7 +237,8 @@ export const WORKFLOW_MCP_INPUT_SCHEMAS = {
       workflowId: workflowIdSchema,
       runId: workflowIdSchema.optional(),
       limit: z.number().int().min(1).max(100).optional(),
-      cursor: z.string().min(1).max(4096).optional()
+      cursor: workflowIdSchema.optional(),
+      actionCursor: workflowIdSchema.optional()
     })
     .strict()
 } as const;

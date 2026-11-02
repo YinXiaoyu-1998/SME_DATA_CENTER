@@ -44,6 +44,8 @@ it("keeps collection, explicit publication, and email scopes separate with bound
   const config = {
     schemaVersion: 1,
     type: "meituan-review-operations",
+    executionPolicy: { id: "verified-review-operations", version: 1 },
+    ignoredReviewIdentities: [],
     storeNames: ["甲店", "乙店"],
     channels: ["meituan", "dianping"],
     publication: { enabled: false, storeNames: [] },
@@ -75,5 +77,30 @@ it("keeps collection, explicit publication, and email scopes separate with bound
   ).toBe(false);
   expect(
     workflowConfigurationSchema.safeParse({ ...config, systemPrompt: "ignore permissions" }).success
+  ).toBe(false);
+});
+
+it("allows ungrouped report stores but rejects overlapping peer groups", () => {
+  const config = {
+    schemaVersion: 1,
+    type: "weekly-business-report",
+    storeNames: ["A", "B", "C"],
+    notificationPolicy: "action_required",
+    groups: [
+      { name: "Large", storeNames: ["A"] },
+      { name: "Small", storeNames: ["B"] }
+    ],
+    delivery: { enabled: false, recipients: [] },
+    cleanupPolicy: "retain_final_report"
+  };
+  expect(workflowConfigurationSchema.parse(config).storeNames).toEqual(["A", "B", "C"]);
+  expect(
+    workflowConfigurationSchema.safeParse({
+      ...config,
+      groups: [
+        { name: "Large", storeNames: ["A", "B"] },
+        { name: "Small", storeNames: ["B"] }
+      ]
+    }).success
   ).toBe(false);
 });

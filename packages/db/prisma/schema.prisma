@@ -1610,6 +1610,14 @@ model WorkflowAction {
 }
 
 model WorkflowMigration {
+  targetVersions Json @map("target_versions")
+  sealedAt DateTime? @map("sealed_at") @db.DateTime(3)
+  chunkCount Int @default(0) @map("chunk_count") @db.UnsignedInt
+  recordCount Int @default(0) @map("record_count") @db.UnsignedInt
+  chunksDigest String? @map("chunks_digest") @db.Char(64)
+  importedChunks Int @default(0) @map("imported_chunks") @db.UnsignedInt
+  validatedChunks Int @default(0) @map("validated_chunks") @db.UnsignedInt
+  chunks WorkflowMigrationChunk[]
   id String @id @default(cuid()) @db.VarChar(64)
   orgId String @map("org_id") @db.VarChar(64)
   enterpriseKey String @map("enterprise_key") @db.VarChar(128)
@@ -1637,4 +1645,17 @@ model WorkflowActionDeduplication {
   @@id([orgId, workflowId, key])
   @@index([orgId, workflowId, actionId])
   @@map("workflow_action_deduplication")
+}
+
+model WorkflowMigrationChunk {
+  orgId String @map("org_id") @db.VarChar(64)
+  migrationId String @map("migration_id") @db.VarChar(64)
+  sequence Int @db.UnsignedInt
+  payload Json
+  digest String @db.Char(64)
+  recordCount Int @map("record_count") @db.UnsignedInt
+  importedAt DateTime? @map("imported_at") @db.DateTime(3)
+  migration WorkflowMigration @relation(fields: [migrationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([orgId, migrationId, sequence])
+  @@map("workflow_migration_chunks")
 }
