@@ -9,6 +9,8 @@ import { z } from "zod";
 export { FILE_UPLOAD_ADMIN_REQUIRED_CODE, FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE } from "@smedc/domain";
 import {
   declaredOrderScopeSchema,
+  orderScopeTransitionConfirmationSchema,
+  prepareOrderScopeTransitionSchema,
   validateOrderScopeDataset,
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   PUBLIC_INPUT_LIMITS,
@@ -442,10 +444,15 @@ const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
     dataset: structuredDataset,
+    orderScopeTransition: orderScopeTransitionConfirmationSchema
+      .optional()
+      .describe(
+        "Explicit confirmation from prepare_order_scope_transition, bound to current versions and original source SHA-256."
+      ),
     orderScope: declaredOrderScopeSchema
       .optional()
       .describe(
-        "In-store order source scope. legacy_unknown is read-only historical metadata. Other datasets reject this field."
+        "Declared in-store source query scope, never a row filter or a proof inferred from order statuses. Preserve original nulls and unexpected statuses for verification. legacy_unknown is read-only historical metadata. Other datasets reject this field."
       ),
     enterpriseName: z
       .string()
@@ -481,6 +488,12 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
+    if (input.orderScopeTransition && (input.dataset !== "in_store_orders" || !input.orderScope))
+      context.addIssue({
+        code: "custom",
+        path: ["orderScopeTransition"],
+        message: "A transition requires an explicit in-store order scope."
+      });
     if (!validateOrderScopeDataset(input.dataset, input.orderScope))
       context.addIssue({
         code: "custom",
@@ -971,6 +984,7 @@ const permissionReadNames = new Set([
 ]);
 
 export const SMEDC_MCP_TOOL_NAMES = [
+  "prepare_order_scope_transition",
   "upsert_store_reviews",
   "query_store_reviews",
   "smedc_get_current_user",
@@ -1055,6 +1069,24 @@ export const MCP_ERROR_CODES = [
 export type McpErrorCode = (typeof MCP_ERROR_CODES)[number];
 
 export const SMEDC_MCP_TOOL_CONTRACTS = [
+  defineToolContract({
+    name: "prepare_order_scope_transition",
+    title: "Prepare order source scope transition",
+    description:
+      "Current admin previews exact existing store-day versions before replacing a different or historical unknown order source scope. No data is changed. Confirm the returned preview and digest with the original source checksum in an in_store_orders upload; stale versions fail atomically.",
+    inputSchema: prepareOrderScopeTransitionSchema,
+    inputFields: Object.keys(prepareOrderScopeTransitionSchema.shape).map((name) => ({
+      name,
+      required: true,
+      description:
+        "Exact source scope or SHA-256 of the original source bytes; dates use YYYY-MM-DD."
+    })),
+    resultShape: [
+      "previewId, confirmationDigest, expiresAt: server-bound confirmation",
+      "partitions[]: affected store/date/current source scope/version"
+    ],
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+  }),
   ...WORKFLOW_MCP_TOOL_NAMES.map((name) =>
     defineToolContract({
       name,
@@ -1232,7 +1264,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       description: schema.description ?? name
     })),
     resultShape: [
-      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, error",
+      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, orderScope, error",
       "other datasets: document, processing, importBatch"
     ]
   }),
@@ -1245,7 +1277,14 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     inputFields: [
       { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
     ],
-    resultShape: ["partitionImportJobId", "status", "partitionCount", "totalRowCount", "error"]
+    resultShape: [
+      "partitionImportJobId",
+      "status",
+      "partitionCount",
+      "totalRowCount",
+      "orderScope: declared or legacy_unknown for in_store_orders; null for other datasets",
+      "error"
+    ]
   }),
   defineToolContract({
     name: "download_structured_partitions",

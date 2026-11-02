@@ -53,7 +53,8 @@ describe("launcher partition transfer", () => {
       filePath: source,
       name: "source.csv",
       mediaType: "text/csv",
-      dataset: "business",
+      dataset: "in_store_orders",
+      orderScope: "settled_only",
       enterpriseName: "Synthetic",
       startDate: "20260907",
       endDate: "20260913",
@@ -62,7 +63,10 @@ describe("launcher partition transfer", () => {
     });
     expect(
       JSON.parse(String(vi.mocked(fetchImplementation).mock.calls[0]?.[1]?.body))
-    ).toMatchObject({ historicalSupplementReason: "Explicit historical source" });
+    ).toMatchObject({
+      historicalSupplementReason: "Explicit historical source",
+      orderScope: "settled_only"
+    });
     expect(result).toMatchObject({ partitionImportJobId: "pjob_1", status: "queued" });
     await expect(readFile(partOne)).resolves.toHaveLength(16);
     await expect(readFile(partTwo)).resolves.toHaveLength(4);

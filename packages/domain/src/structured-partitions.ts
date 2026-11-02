@@ -33,6 +33,7 @@ export interface PartitionManifestRequest {
 }
 
 export interface PartitionManifestEntry {
+  orderScope?: import("./order-scope.js").OrderScope | null;
   businessDate: string;
   storeId: string | null;
   storeName: string;
