@@ -227,6 +227,7 @@ integrationRun: try {
                         "apps/api/src/auth/prisma-auth-repository.integration.test.ts",
                         "apps/api/src/ledger-web/download.prisma.integration.test.ts",
                         "apps/api/src/structured-query.prisma.integration.test.ts",
+                        "apps/api/src/enterprise-workflows/lifecycle.prisma.integration.test.ts",
                         "packages/ledger-archive/src/publication.prisma.integration.test.ts",
                         "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
                         "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
@@ -257,6 +258,7 @@ integrationRun: try {
       env: {
         ...integrationEnv,
         RUN_AUTH_INTEGRATION: "1",
+        RUN_WORKFLOW_INTEGRATION: "1",
         RUN_LEDGER_PRISMA_INTEGRATION: "1",
         RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1",
         RUN_PARTITION_PRISMA_INTEGRATION: "1",
