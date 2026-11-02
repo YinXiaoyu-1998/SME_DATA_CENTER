@@ -6,12 +6,14 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
-  symlinkSync
+  symlinkSync,
+  writeFileSync
 } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { satisfies } from "semver";
 import { releaseEntries } from "../tsup.release.config.js";
 
 const releaseArtifacts = [
@@ -54,6 +56,43 @@ describe("release build", () => {
       cwd: process.cwd(),
       stdio: "inherit"
     });
+
+    const buildGraph = JSON.parse(
+      readFileSync(resolve("dist/release/metafile-esm.json"), "utf8")
+    ) as {
+      inputs: Record<string, unknown>;
+      outputs: Record<string, { imports: Array<{ path: string; external?: boolean }> }>;
+    };
+    const inputs = Object.keys(buildGraph.inputs);
+    expect(inputs).toContain("node_modules/exceljs/lib/doc/workbook.js");
+    expect(
+      inputs.filter((input) =>
+        /node_modules\/(?:archiver|archiver-utils|glob|minimatch|readdir-glob|rimraf|unzipper|zip-stream)\//.test(
+          input
+        )
+      )
+    ).toEqual([]);
+    expect(inputs.some((input) => input.includes("exceljs/lib/stream/"))).toBe(false);
+    const workerImports = buildGraph.outputs["dist/release/worker.js"]!.imports;
+    expect(workerImports).toContainEqual(
+      expect.objectContaining({ path: "readable-stream-v3", external: true })
+    );
+    expect(workerImports.some((entry) => entry.path === "readable-stream")).toBe(false);
+    for (const workspace of ["worker", "release-ops"]) {
+      const manifest = JSON.parse(
+        readFileSync(resolve(`apps/${workspace}/package.json`), "utf8")
+      ) as { dependencies: Record<string, string> };
+      expect(manifest.dependencies).not.toHaveProperty("exceljs");
+      for (const dependency of [
+        "dayjs",
+        "fast-csv",
+        "jszip",
+        "readable-stream-v3",
+        "saxes",
+        "uuid"
+      ])
+        expect(manifest.dependencies).toHaveProperty(dependency);
+    }
 
     const cleanRoot = mkdtempSync(join(tmpdir(), "smedc-release-"));
     try {
@@ -122,11 +161,116 @@ describe("release build", () => {
         /from ["'](?:exceljs|pdf-lib)["']/
       );
       await expectCompiledApiStarts(cleanRoot);
+      expectProductionWorkbookRoundTrips();
     } finally {
       rmSync(cleanRoot, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 60_000);
 });
+
+function expectProductionWorkbookRoundTrips() {
+  const scratch = mkdtempSync(join(tmpdir(), "smedc-workbook-release-"));
+  try {
+    const entry = join(scratch, "workbook-smoke.ts");
+    writeFileSync(
+      entry,
+      `import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve, sep } from "node:path";
+import { Workbook } from ${JSON.stringify(resolve("apps/worker/src/ledger-pdf/workbook.ts"))};
+const workbook = new Workbook();
+const sheet = workbook.addWorksheet("食品进货台账", { pageSetup: { orientation: "landscape" } });
+sheet.getCell("A1").value = "合成台账";
+sheet.getCell("A1").font = { bold: true };
+sheet.getCell("A2").value = "=SUM(A1:A2)";
+const image = workbook.addImage({ buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=", "base64"), extension: "png" });
+sheet.addImage(image, { tl: { col: 0, row: 3 }, ext: { width: 20, height: 20 } });
+const loaded = new Workbook();
+await loaded.xlsx.load(await workbook.xlsx.writeBuffer());
+assert.equal(loaded.worksheets[0].getCell("A1").value, "合成台账");
+assert.equal(loaded.worksheets[0].getCell("A1").font.bold, true);
+assert.equal(loaded.worksheets[0].getCell("A2").value, "=SUM(A1:A2)");
+assert.equal(loaded.worksheets[0].pageSetup.orientation, "landscape");
+assert.equal(loaded.worksheets[0].getImages().length, 1);
+for (const name of ["exceljs", "archiver", "glob", "minimatch", "unzipper"]) assert.throws(() => require.resolve(name));
+const versions = {};
+for (const name of ["dayjs", "fast-csv", "jszip", "readable-stream-v3", "saxes", "uuid"]) {
+  assert.ok(require.resolve(name).startsWith(resolve("node_modules", name) + sep));
+  versions[name] = JSON.parse(readFileSync(resolve("node_modules", name, "package.json"), "utf8")).version;
+}
+console.log(JSON.stringify(versions));
+`
+    );
+    execFileSync(
+      "npm",
+      [
+        "exec",
+        "--",
+        "tsup",
+        entry,
+        "--config",
+        "tsup.release.config.ts",
+        "--out-dir",
+        join(scratch, "built")
+      ],
+      { stdio: "pipe" }
+    );
+    const lock = JSON.parse(readFileSync("package-lock.json", "utf8")) as {
+      packages: Record<string, unknown>;
+    };
+    for (const workspace of ["worker", "release-ops"]) {
+      const directory = join(scratch, workspace);
+      mkdirSync(directory);
+      for (const file of ["package.json", "package-lock.json"])
+        copyFileSync(file, join(directory, file));
+      for (const location of Object.keys(lock.packages)) {
+        if (!location || location.includes("node_modules")) continue;
+        mkdirSync(join(directory, location), { recursive: true });
+        copyFileSync(join(location, "package.json"), join(directory, location, "package.json"));
+      }
+      // The initial repository npm ci has cached this exact lock; never use the network here.
+      execFileSync(
+        "npm",
+        [
+          "ci",
+          "--offline",
+          "--omit=dev",
+          "--ignore-scripts",
+          "--no-audit",
+          "--no-fund",
+          "--workspace",
+          `@smedc/${workspace}`,
+          "--include-workspace-root=false"
+        ],
+        { cwd: directory, stdio: "pipe" }
+      );
+      mkdirSync(join(directory, "dist/release"), { recursive: true });
+      copyFileSync(
+        join(scratch, "built/workbook-smoke.js"),
+        join(directory, "dist/release/workbook-smoke.js")
+      );
+      const versions = JSON.parse(
+        execFileSync(process.execPath, ["dist/release/workbook-smoke.js"], {
+          cwd: directory,
+          encoding: "utf8",
+          env: { ...process.env, NODE_PATH: "" }
+        })
+      ) as Record<string, string>;
+      const manifest = JSON.parse(readFileSync(`apps/${workspace}/package.json`, "utf8")) as {
+        dependencies: Record<string, string>;
+      };
+      for (const [name, version] of Object.entries(versions)) {
+        const range = manifest.dependencies[name]!.replace(/^npm:[^@]+@/, "");
+        expect(
+          satisfies(version, range),
+          `${workspace}: ${name}@${version} must satisfy ${range}`
+        ).toBe(true);
+      }
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
 
 async function expectCompiledApiStarts(cleanRoot: string): Promise<void> {
   const port = await findAvailablePort();
