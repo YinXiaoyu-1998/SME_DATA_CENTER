@@ -68,7 +68,10 @@ try {
   const [{ PrismaMariaDb }, { PrismaClient }] = await Promise.all([
     import("@prisma/adapter-mariadb"), import("@prisma/client")
   ]);
-  prisma = new PrismaClient({ adapter: new PrismaMariaDb(process.env.DATABASE_URL) });
+  prisma = new PrismaClient({ adapter: new PrismaMariaDb(process.env.DATABASE_URL, {
+    // Match createDatabaseAdapter: the RDS proxy requires text protocol; values remain driver-bound.
+    useTextProtocol: true
+  }) });
   const checks = [
     ["enterprise_integrations", "order_scope_required", "order_scope_required = 1", []],
     ["structured_partitions", "order_scope", "order_scope IS NOT NULL AND order_scope != ?", ["legacy_unknown"]],
