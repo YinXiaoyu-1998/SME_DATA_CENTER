@@ -34,6 +34,9 @@ function context(
   }
 ): ApiServerContext {
   return {
+    workflows: () => {
+      throw new Error("unused");
+    },
     permissions: () => legacyPermissionService(employee),
     environment: {},
     delegationProof: "proof",

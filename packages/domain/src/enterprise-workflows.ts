@@ -3,6 +3,13 @@ import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 
 export const WORKFLOW_SCHEMA_VERSION = 1;
 export const WORKFLOW_CAPABILITY_VERSION = "1.0.0";
+export const WORKFLOW_MINIMUM_LAUNCHER_VERSION = "0.16.0";
+export const ENTERPRISE_WORKFLOW_CAPABILITY = Object.freeze({
+  id: "enterprise-workflows-v1",
+  version: WORKFLOW_CAPABILITY_VERSION,
+  configurationSchemaVersion: WORKFLOW_SCHEMA_VERSION,
+  minimumLauncherVersion: WORKFLOW_MINIMUM_LAUNCHER_VERSION
+});
 export const WORKFLOW_TYPES = [
   "meituan-daily-ingestion",
   "meituan-review-operations",
@@ -203,6 +210,22 @@ export const workflowConfigurationSchema = z
       .object({
         ...configurationBase,
         type: z.literal("meituan-review-operations"),
+        executionPolicy: z
+          .object({ id: z.literal("verified-review-operations"), version: z.literal(1) })
+          .strict(),
+        ignoredReviewIdentities: z
+          .array(
+            z
+              .object({
+                source: workflowReviewSourceIdentitySchema,
+                feedbackId: workflowNameSchema,
+                reason: z.string().min(1).max(2000),
+                purpose: z.literal("exclude_source_record")
+              })
+              .strict()
+          )
+          .max(WORKFLOW_LIMITS.sourceIdentities)
+          .default([]),
         channels: z
           .array(z.enum(["meituan", "dianping"]))
           .min(1)
@@ -239,6 +262,14 @@ export const workflowConfigurationSchema = z
     const selected = new Set(value.storeNames);
     if (value.type === "meituan-review-operations") {
       if (
+        new Set(
+          value.ignoredReviewIdentities.map((i) =>
+            JSON.stringify([workflowSourceIdentityKey(i.source), i.feedbackId])
+          )
+        ).size !== value.ignoredReviewIdentities.length
+      )
+        context.addIssue({ code: "custom", message: "Duplicate ignored review identity." });
+      if (
         value.publication.storeNames.some((s) => !selected.has(s)) ||
         (value.publication.enabled && !value.publication.storeNames.length)
       )
@@ -250,11 +281,13 @@ export const workflowConfigurationSchema = z
     if (value.type === "weekly-business-report") {
       if (
         new Set(value.groups.map((g) => g.name)).size !== value.groups.length ||
+        new Set(value.groups.flatMap((g) => g.storeNames)).size !==
+          value.groups.reduce((n, g) => n + g.storeNames.length, 0) ||
         value.groups.some((g) => g.storeNames.some((s) => !selected.has(s)))
       )
         context.addIssue({
           code: "custom",
-          message: "Report groups need unique names and selected stores."
+          message: "Report groups need unique names, disjoint membership and selected stores."
         });
     }
     if (!workflowPayloadFits(value, WORKFLOW_LIMITS.configBytes))
@@ -495,7 +528,7 @@ export const workflowActionIdentitySchema = z.discriminatedUnion("kind", [
       ...actionScope,
       kind: z.literal("download"),
       dataset: z.enum(["business", "dishes", "in_store_orders", "takeaway_orders"]),
-      manifestHash: workflowHashSchema
+      manifestHash: workflowHashSchema.optional()
     })
     .strict(),
   z
@@ -541,7 +574,23 @@ export const workflowActionIdentitySchema = z.discriminatedUnion("kind", [
       (v) =>
         v.purpose === "review_drafts"
           ? !!v.reviewIdentities?.length &&
-            v.reviewIdentities.every((r) => v.recipients.includes(r.recipient))
+            v.reviewIdentities.every((r) => v.recipients.includes(r.recipient)) &&
+            new Set(
+              v.reviewIdentities.map((r) =>
+                JSON.stringify([
+                  workflowSourceIdentityKey(r.source),
+                  r.feedbackId,
+                  r.recipient.toLowerCase()
+                ])
+              )
+            ).size === v.reviewIdentities.length &&
+            new Set(
+              v.reviewIdentities.map((r) =>
+                JSON.stringify([workflowSourceIdentityKey(r.source), r.feedbackId])
+              )
+            ).size *
+              v.recipients.length ===
+              v.reviewIdentities.length
           : v.reviewIdentities === undefined,
       "Review notifications require per-review/per-recipient identities."
     )
@@ -561,6 +610,7 @@ export const workflowActionReceiptSchema = z
     state: z.enum(["confirmed", "failed", "unknown"]),
     evidence: z.enum([
       "service_status",
+      "launcher_transfer",
       "provider_readback",
       "manual_resolution",
       "request_rejected",
@@ -570,13 +620,41 @@ export const workflowActionReceiptSchema = z
     jobId: workflowNameSchema.optional(),
     resultHash: workflowHashSchema.optional(),
     reason: z.string().max(2000).optional(),
-    verifiedAt: z.iso.datetime()
+    verifiedAt: z.iso.datetime(),
+    launcherTransfer: z
+      .object({
+        identityHash: workflowHashSchema,
+        manifestHash: workflowHashSchema,
+        resultHash: workflowHashSchema,
+        launcherVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
+        verifiedAt: z.iso.datetime(),
+        partitionCount: z.number().int().nonnegative().max(100000),
+        fileCount: z.number().int().nonnegative().max(100000),
+        totalByteSize: z.string().regex(/^\d{1,20}$/),
+        totalRowCount: z.string().regex(/^\d{1,20}$/),
+        requestId: workflowIdSchema.optional()
+      })
+      .strict()
+      .optional(),
+    providerReadback: z
+      .object({
+        identityHash: workflowHashSchema,
+        artifactHash: workflowHashSchema,
+        correlationMarker: workflowIdSchema,
+        providerReceiptId: workflowNameSchema,
+        observedAt: z.iso.datetime(),
+        outcome: z.enum(["published", "sent", "not_executed"])
+      })
+      .strict()
+      .optional()
   })
   .strict()
   .superRefine((v, c) => {
     if (
       v.state === "confirmed" &&
-      (!["service_status", "provider_readback", "manual_resolution"].includes(v.evidence) ||
+      (!["service_status", "launcher_transfer", "provider_readback", "manual_resolution"].includes(
+        v.evidence
+      ) ||
         (!v.receiptId && !v.jobId))
     )
       c.addIssue({
@@ -730,3 +808,40 @@ export type WorkflowInstallationState = (typeof WORKFLOW_INSTALLATION_STATES)[nu
 export type WorkflowRunState = (typeof WORKFLOW_RUN_STATUSES)[number];
 export type WorkflowActionState = (typeof WORKFLOW_ACTION_STATES)[number];
 export type WorkflowMigrationStage = (typeof WORKFLOW_MIGRATION_STAGES)[number];
+
+// Each transport page is bounded; the complete migration is a sealed sequence of pages.
+export const workflowMigrationChunkSchema = z
+  .array(
+    workflowMigrationManifestSchema.shape.workflows.element.pick({
+      workflowId: true,
+      completedActions: true,
+      unresolved: true
+    })
+  )
+  .min(1)
+  .max(3)
+  .refine(
+    (v) =>
+      new Set(v.map((w) => w.workflowId)).size === v.length &&
+      v.reduce((n, w) => n + w.completedActions.length + w.unresolved.length, 0) <=
+        WORKFLOW_LIMITS.summaryItems &&
+      workflowPayloadFits(v, WORKFLOW_LIMITS.summaryBytes),
+    "Migration page exceeds limits or repeats workflow IDs."
+  );
+export type WorkflowMigrationChunk = z.infer<typeof workflowMigrationChunkSchema>;
+
+// Stable across JSON database key ordering; transport and clients use this for digests.
+export function workflowCanonicalJson(value: unknown): string {
+  const normalize = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (item !== null && typeof item === "object")
+      return Object.fromEntries(
+        Object.entries(item)
+          .filter(([, v]) => v !== undefined)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([key, v]) => [key, normalize(v)])
+      );
+    return item;
+  };
+  return JSON.stringify(normalize(value));
+}

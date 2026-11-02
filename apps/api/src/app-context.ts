@@ -1,4 +1,8 @@
 import {
+  createEnterpriseWorkflowService,
+  type EnterpriseWorkflowService
+} from "./enterprise-workflows/service.js";
+import {
   createPrismaBusinessAuthorizationService,
   type BusinessAuthorizationService
 } from "./business-authorization.js";
@@ -81,6 +85,7 @@ import {
 } from "./request-audit-context.js";
 
 export interface ApiServerOptions {
+  enterpriseWorkflowService?: EnterpriseWorkflowService;
   storeReviewService?: StoreReviewService;
   costCardService?: CostCardService;
   businessAuthorizationService?: BusinessAuthorizationService & { disconnect?(): Promise<void> };
@@ -116,6 +121,7 @@ export interface ApiServerOptions {
 }
 
 export interface ApiServerContext {
+  workflows: () => EnterpriseWorkflowService;
   storeReviews: () => StoreReviewService;
   costCards: () => CostCardService;
   permissions: () => BusinessAuthorizationService;
@@ -161,6 +167,25 @@ function requireCursorSigningSecret(environment: NodeJS.ProcessEnv): string {
 
 export function createApiServerContext(options: ApiServerOptions = {}): ApiServerContext {
   const environment = options.runtimeEnv ?? process.env;
+  let workflowService = options.enterpriseWorkflowService;
+  const workflowRetentionTimer = setInterval(() => {
+    void workflowService?.pruneRetention().catch(() => undefined);
+  }, 3600000);
+  workflowRetentionTimer.unref();
+  function workflows() {
+    if (!workflowService) {
+      const url = environment["DATABASE_URL"];
+      if (!url) throw new Error("DATABASE_URL is required for workflows.");
+      const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
+      workflowService = createEnterpriseWorkflowService({
+        prisma,
+        disconnect: () => prisma.$disconnect(),
+        setupUrl: (orgId, enterpriseKey) =>
+          `${environment["SMEDC_PUBLIC_ORIGIN"] ?? ""}/admin/permissions/${encodeURIComponent(orgId)}/workflows${enterpriseKey ? `/${encodeURIComponent(enterpriseKey)}` : ""}`
+      });
+    }
+    return workflowService;
+  }
   let permissionService = options.businessAuthorizationService;
   function permissions() {
     if (!permissionService) {
@@ -376,8 +401,10 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
       return;
     }
     closed = true;
+    clearInterval(workflowRetentionTimer);
     await legacyEmployeeRepository?.disconnect?.();
     await permissionService?.disconnect?.();
+    await workflowService?.disconnect?.();
     await authPrisma?.$disconnect();
     await ledgerPrisma?.$disconnect();
     await storeReviewPrisma?.$disconnect();
@@ -397,6 +424,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   }
 
   return {
+    workflows,
     permissions,
     environment,
     delegationProof,

@@ -1,3 +1,4 @@
+import { createWorkflowMcpToolHandlers } from "./workflow-tools.js";
 import {
   errorToolResult,
   type SmedcMcpToolName,
@@ -77,6 +78,12 @@ export function createSmedcMcpToolHandlers(
   });
 
   return {
+    ...createWorkflowMcpToolHandlers({
+      bearerToken: options.bearerToken,
+      audit: options.audit,
+      delegationProof: options.delegationProof,
+      inject: options.inject
+    }),
     ...readOnlyHandlers,
     ...actionHandlers,
     ...createOrderScopeMcpToolHandlers(options),
