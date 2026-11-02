@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { LocalFileSystemStorageAdapter } from "@smedc/storage";
@@ -1997,6 +1997,26 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       ).toBe(200);
     });
     it("allows admin configuration but requires current business grants before a report reads data", async () => {
+      const weeklyPlannerFixture: {
+        reportWindow: { startDate: string; endDate: string };
+        storeNames: string[];
+        extracts: Array<{ dataset: string; startDate: string; endDate: string }>;
+      } = JSON.parse(
+        await readFile(
+          new URL("./weekly-planner-eligibility.fixture.json", import.meta.url),
+          "utf8"
+        )
+      );
+      const beforeWeeklyClock = testClock;
+      testClock = new Date("2026-07-27T06:00:00.000Z");
+      const reportStores = weeklyPlannerFixture.storeNames;
+      await prisma.businessStore.createMany({
+        data: reportStores.map((name) => ({
+          orgId: actor.orgId,
+          enterpriseKey: "enterprise",
+          name
+        }))
+      });
       const weekly = { enterpriseKey: "enterprise", workflowType: "weekly-business-report" };
       const shared = (await call("get_enterprise_workflow", selector)).json().integration;
       let current = { version: 0, controlVersion: 0, integration: shared, workflowId: "" };
@@ -2027,16 +2047,16 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         configuration: {
           schemaVersion: 1,
           type: weekly.workflowType,
-          storeNames: ["Store A"],
+          storeNames: reportStores,
           notificationPolicy: "action_required",
-          groups: [{ name: "Synthetic group", storeNames: ["Store A"] }],
+          groups: [{ name: "Synthetic group", storeNames: [reportStores[0]!] }],
           delivery: { enabled: false, recipients: [] },
           cleanupPolicy: "retain_final_report"
         }
       });
       await change({
         kind: "authorization",
-        grant: [{ kind: "download", datasets: ["business", "dishes"], storeNames: ["Store A"] }],
+        grant: [{ kind: "download", datasets: ["business", "dishes"], storeNames: reportStores }],
         revokeAuthorizationIds: []
       });
       await change({ kind: "control", state: "active", reason: "Synthetic report setup" });
@@ -2109,7 +2129,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         expectedIntegrationVersion: current.integration.version,
         expectedControlVersion: current.controlVersion,
         workflowPackageVersion: "1.0.0",
-        window: { startDate: "2026-10-26", endDate: "2026-11-01" },
+        window: weeklyPlannerFixture.reportWindow,
         mode: "scheduled"
       };
       const denied = await call("manage_workflow_run", { workflowId, operation: start });
@@ -2147,7 +2167,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
             enterpriseKey: "enterprise",
             categoryIds: ["business", "dishes"],
             ownership: "store",
-            stores: { kind: "fixed", values: ["Store A"] },
+            stores: { kind: "fixed", values: reportStores },
             dimensions: {}
           }
         ]
@@ -2172,10 +2192,72 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         identity: {
           kind: "download",
           dataset: "business",
-          storeNames: ["Store A"],
+          storeNames: reportStores,
           window: allowedWindow
         }
       };
+      const checkDownload = (
+        dataset: string,
+        window: { startDate: string; endDate: string },
+        storeNames = reportStores
+      ) =>
+        call("manage_workflow_run", {
+          workflowId,
+          operation: {
+            kind: "check_actions",
+            ...binding,
+            actions: [
+              {
+                ...downloadIntent,
+                identity: { ...downloadIntent.identity, dataset, window, storeNames }
+              }
+            ]
+          }
+        });
+      expect(allowedWindow).toEqual(weeklyPlannerFixture.reportWindow);
+      // Literal planner result: min(52weeks, prior52weeks, prior daily year, prior full-month year).
+      const history = { startDate: "2024-07-01", endDate: "2026-07-26" };
+      expect(weeklyPlannerFixture.storeNames).toHaveLength(2);
+      expect(weeklyPlannerFixture.extracts).toHaveLength(28);
+      expect(
+        weeklyPlannerFixture.extracts.filter((extract) => extract.dataset === "business")
+      ).toHaveLength(25);
+      // Captured actual business-analysis planner output, including monthly chunks and3 dishes comparisons.
+      const planned = await call("manage_workflow_run", {
+        workflowId,
+        operation: {
+          kind: "check_actions",
+          ...binding,
+          actions: weeklyPlannerFixture.extracts.map((extract, index) => ({
+            actionId: `planned-${index}`,
+            identity: {
+              kind: "download",
+              dataset: extract.dataset,
+              storeNames: reportStores,
+              window: { startDate: extract.startDate, endDate: extract.endDate }
+            }
+          }))
+        }
+      });
+      expect(planned.statusCode, planned.body).toBe(200);
+      expect((await checkDownload("business", history)).statusCode).toBe(200);
+      expect(
+        (await checkDownload("business", { startDate: "2024-07-01", endDate: "2024-07-31" }))
+          .statusCode
+      ).toBe(200);
+      expect(
+        (await checkDownload("business", { ...history, startDate: "2024-06-30" })).statusCode
+      ).toBe(403);
+      expect(
+        (await checkDownload("business", { ...history, endDate: "2026-07-27" })).statusCode
+      ).toBe(403);
+      expect((await checkDownload("business", history, ["Unselected Store"])).statusCode).toBe(403);
+      expect((await checkDownload("dishes", history)).statusCode).toBe(403);
+      expect((await checkDownload("in_store_orders", history)).statusCode).toBe(403);
+      expect(
+        (await checkDownload("dishes", { startDate: "2026-07-13", endDate: "2026-07-19" }))
+          .statusCode
+      ).toBe(200);
       const claimed = await action({ kind: "intent", ...binding, actions: [downloadIntent] });
       expect(claimed.statusCode, claimed.body).toBe(200);
       expect(claimed.json().actions[0].permitted).toBe(true);
@@ -2249,7 +2331,8 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(403);
-      testClock = new Date(testClock.getTime() + 91 * 86400000);
+      expect((await checkDownload("business", history)).statusCode).toBe(403);
+      testClock = new Date(beforeWeeklyClock.getTime() + 91 * 86400000);
       const weeklyHost = (await call("get_workflow_status", { workflowId })).json().installations[0]
         .hostSnapshot;
       const observedSchedule = await install({

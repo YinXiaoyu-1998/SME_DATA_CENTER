@@ -26,6 +26,36 @@ import {
 } from "./repository.js";
 import { requireBinding } from "./runs.js";
 import { getInstallation } from "./installations.js";
+// Match business-analysis build_query_plan.py daily_history, including completed
+// calendar months and Feb29 clamping when comparing the previous calendar year.
+function weeklyBusinessHistoryWindow(endDate: string) {
+  const end = new Date(endDate + "T00:00:00Z");
+  const daysBefore = (days: number) => new Date(end.getTime() - days * 86400000);
+  const previousYear = (value: Date) => {
+    const result = new Date(value);
+    const month = result.getUTCMonth();
+    result.setUTCFullYear(result.getUTCFullYear() - 1);
+    if (result.getUTCMonth() !== month) result.setUTCDate(0);
+    return result;
+  };
+  const lastMonthEnd = new Date(end);
+  lastMonthEnd.setUTCMonth(lastMonthEnd.getUTCMonth() + 1, 0);
+  if (end.getTime() !== lastMonthEnd.getTime()) {
+    lastMonthEnd.setUTCMonth(lastMonthEnd.getUTCMonth(), 0);
+  }
+  const monthlyTrendStart = new Date(lastMonthEnd);
+  monthlyTrendStart.setUTCDate(1);
+  monthlyTrendStart.setUTCMonth(monthlyTrendStart.getUTCMonth() - 11);
+  const earliest = Math.min(
+    ...[
+      daysBefore(363),
+      daysBefore(727),
+      previousYear(daysBefore(364)),
+      previousYear(monthlyTrendStart)
+    ].map((date) => date.getTime())
+  );
+  return { startDate: new Date(earliest).toISOString().slice(0, 10), endDate };
+}
 export function deduplicationKeys(
   identity: WorkflowActionIdentity,
   readBinding?: { runId: string; actionId: string }
@@ -122,17 +152,20 @@ export async function authorizeAction(
     (identity.window.startDate < snapshot.window.startDate ||
       identity.window.endDate > snapshot.window.endDate)
   ) {
-    // Reports also fetch the previous week and aligned previous-year dates.
+    // Only business history expands for weekly trends; other reads keep comparison windows.
     if (identity.kind !== "download" || config.type !== "weekly-business-report")
       fail("WORKFLOW_PERMISSION_DENIED");
-    const allowed = [0, -7, -364].map((offset) => ({
-      startDate: new Date(Date.parse(snapshot.window.startDate) + offset * 86400000)
-        .toISOString()
-        .slice(0, 10),
-      endDate: new Date(Date.parse(snapshot.window.endDate) + offset * 86400000)
-        .toISOString()
-        .slice(0, 10)
-    }));
+    const allowed =
+      identity.dataset === "business"
+        ? [weeklyBusinessHistoryWindow(snapshot.window.endDate)]
+        : [0, -7, -364].map((offset) => ({
+            startDate: new Date(Date.parse(snapshot.window.startDate) + offset * 86400000)
+              .toISOString()
+              .slice(0, 10),
+            endDate: new Date(Date.parse(snapshot.window.endDate) + offset * 86400000)
+              .toISOString()
+              .slice(0, 10)
+          }));
     if (
       !allowed.some(
         (w) => identity.window.startDate >= w.startDate && identity.window.endDate <= w.endDate
