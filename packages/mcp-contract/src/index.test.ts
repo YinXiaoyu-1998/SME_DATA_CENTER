@@ -43,6 +43,50 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  list_enterprise_workflows: {},
+  get_enterprise_workflow: { enterpriseKey: "enterprise", workflowType: "meituan-daily-ingestion" },
+  prepare_enterprise_workflow_change: {
+    enterpriseKey: "enterprise",
+    workflowType: "meituan-daily-ingestion",
+    expectedVersion: 0,
+    expectedIntegrationVersion: 0,
+    expectedControlVersion: 0,
+    change: { kind: "control", state: "paused", reason: "Pause for maintenance" }
+  },
+  save_enterprise_workflow: {
+    enterpriseKey: "enterprise",
+    workflowType: "meituan-daily-ingestion",
+    expectedVersion: 0,
+    expectedIntegrationVersion: 0,
+    expectedControlVersion: 0,
+    previewId: "preview-1",
+    confirmationDigest: "a".repeat(64)
+  },
+  manage_workflow_installation: {
+    workflowId: "workflow-1",
+    operation: {
+      kind: "set_state",
+      installationId: "installation-1",
+      expectedVersion: 1,
+      state: "paused",
+      reason: "Maintenance"
+    }
+  },
+  manage_workflow_run: {
+    workflowId: "workflow-1",
+    operation: {
+      kind: "renew",
+      installationId: "installation-1",
+      runId: "run-1",
+      assignmentEpoch: 1,
+      controlVersion: 1
+    }
+  },
+  record_workflow_action: {
+    workflowId: "workflow-1",
+    operation: { kind: "get", actionIds: ["action-1"] }
+  },
+  get_workflow_status: { workflowId: "workflow-1" },
   upsert_store_reviews: {
     reviews: [
       {
@@ -585,7 +629,15 @@ const invalidInputCases = [
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
-      "suspend_authorization_reads"
+      "suspend_authorization_reads",
+      "list_enterprise_workflows",
+      "get_enterprise_workflow",
+      "prepare_enterprise_workflow_change",
+      "save_enterprise_workflow",
+      "manage_workflow_installation",
+      "manage_workflow_run",
+      "record_workflow_action",
+      "get_workflow_status"
     ] as const
   ).map((tool) => ({
     tool,
@@ -643,7 +695,15 @@ describe("SMEDC MCP contract", () => {
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
-      "suspend_authorization_reads"
+      "suspend_authorization_reads",
+      "list_enterprise_workflows",
+      "get_enterprise_workflow",
+      "prepare_enterprise_workflow_change",
+      "save_enterprise_workflow",
+      "manage_workflow_installation",
+      "manage_workflow_run",
+      "record_workflow_action",
+      "get_workflow_status"
     ]);
     expect(
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
@@ -1580,7 +1640,15 @@ describe("current business authorization contracts", () => {
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
-      "suspend_authorization_reads"
+      "suspend_authorization_reads",
+      "list_enterprise_workflows",
+      "get_enterprise_workflow",
+      "prepare_enterprise_workflow_change",
+      "save_enterprise_workflow",
+      "manage_workflow_installation",
+      "manage_workflow_run",
+      "record_workflow_action",
+      "get_workflow_status"
     ];
     expect(SMEDC_MCP_TOOL_NAMES).toEqual(expect.arrayContaining(names));
     for (const name of names) {

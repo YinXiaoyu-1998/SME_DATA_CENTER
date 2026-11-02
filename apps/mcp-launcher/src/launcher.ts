@@ -14,6 +14,7 @@ import {
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
   PERMISSION_MCP_TOOL_NAMES,
+  WORKFLOW_MCP_TOOL_NAMES,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -90,8 +91,18 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_management_status"
   | "prepare_authorization_cutover"
   | "activate_authorization_cutover"
-  | "suspend_authorization_reads";
+  | "suspend_authorization_reads"
+  | "list_enterprise_workflows"
+  | "get_enterprise_workflow"
+  | "prepare_enterprise_workflow_change"
+  | "save_enterprise_workflow"
+  | "manage_workflow_installation"
+  | "manage_workflow_run"
+  | "record_workflow_action"
+  | "get_workflow_status";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
+
+const WORKFLOW_TOOL_NAMES = new Set<string>(WORKFLOW_MCP_TOOL_NAMES);
 
 const PERMISSION_TOOL_NAMES = new Set<string>(PERMISSION_MCP_TOOL_NAMES);
 
@@ -256,6 +267,7 @@ export function registerLauncherTools(
           ? launcherUploadToolInputShape(tool)
           : LEDGER_PDF_TOOL_NAMES.has(tool.name) ||
               PERMISSION_TOOL_NAMES.has(tool.name) ||
+              WORKFLOW_TOOL_NAMES.has(tool.name) ||
               [
                 "download_cost_cards",
                 "archive_cost_card",
