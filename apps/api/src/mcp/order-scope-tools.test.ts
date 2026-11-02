@@ -1,6 +1,5 @@
 import { expect, it } from "vitest";
-import { createOrderScopeMcpToolHandlers } from "./order-scope-tools.js";
-import type { McpRequestContext } from "./tool-handlers.js";
+import { createSmedcMcpToolHandlers, type McpRequestContext } from "./tool-handlers.js";
 it("prepares the exact current scope through the authenticated partition endpoint", async () => {
   const audit = {
     requestId: "req-scope",
@@ -8,7 +7,15 @@ it("prepares the exact current scope through the authenticated partition endpoin
     clientSource: "mcp_launcher" as const,
     launcherVersion: "0.16.0"
   };
-  const handlers = createOrderScopeMcpToolHandlers({
+  const handlers = createSmedcMcpToolHandlers({
+    uploadAuthorizationAudit: () => {
+      throw new Error("Upload authorization is unused in this test");
+    },
+    logAuditFailure: () => {},
+    maxUploadBytes: 1024,
+    uploadDelegate: async () => {
+      throw new Error("Upload delegation is unused in this test");
+    },
     bearerToken: "synthetic-token",
     audit,
     delegationProof: "synthetic-proof",

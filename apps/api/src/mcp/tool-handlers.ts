@@ -11,6 +11,7 @@ import {
 } from "../file-upload-authorization.js";
 import { createActionMcpToolHandlers } from "./action-tools.js";
 import { createReadOnlyMcpToolHandlers } from "./read-tools.js";
+import { createOrderScopeMcpToolHandlers } from "./order-scope-tools.js";
 import type { ApiDelegationContext } from "./api-delegation.js";
 import {
   createUploadToolHandlers,
@@ -78,6 +79,7 @@ export function createSmedcMcpToolHandlers(
   return {
     ...readOnlyHandlers,
     ...actionHandlers,
+    ...createOrderScopeMcpToolHandlers(options),
     ...uploadHandlers
   };
 }
