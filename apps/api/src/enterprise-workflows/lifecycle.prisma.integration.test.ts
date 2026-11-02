@@ -1241,6 +1241,115 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         expect(restored.statusCode, restored.body).toBe(200);
         expect(restored.json().manifest.workflows).toHaveLength(3);
       }
+      const advanceHost = (stage = "host_switched") =>
+        install({
+          kind: "migration_advance",
+          migrationId: migration.migrationId,
+          sourceSnapshotHash: manifest.sourceSnapshotHash,
+          expectedVersion: migration.version,
+          stage,
+          confirmationDigest: migration.confirmationDigest
+        });
+      const unassigned = await advanceHost();
+      expect(unassigned.json().error.code).toBe("WORKFLOW_INSTALLATION_MISMATCH");
+      for (const member of portableManifest.workflows) {
+        const memberInstall = (operation: unknown) =>
+          call("manage_workflow_installation", { workflowId: member.workflowId, operation });
+        const hostSnapshot = {
+          ...member.hostSnapshot,
+          // A different computer may receive a new ID; same-computer upgrades retain theirs.
+          taskId:
+            member.workflowId === "migration-weekly"
+              ? "new-weekly-task"
+              : member.hostSnapshot.taskId,
+          verifiedAt: testClock.toISOString()
+        };
+        expect(
+          (
+            await memberInstall({
+              kind: "register",
+              installation: {
+                installationId: "migration-mac",
+                deviceAlias: "Synthetic Mac",
+                host: "codex",
+                platform: "macos",
+                launcherVersion: "0.16.0",
+                workflowPackageVersion: "1.0.3",
+                hostSnapshot
+              }
+            })
+          ).statusCode
+        ).toBe(200);
+        expect(
+          (
+            await memberInstall({
+              kind: "record_checks",
+              installationId: "migration-mac",
+              firstRunVerification: "not_run",
+              checks: [
+                "configuration",
+                "permissions",
+                "workspace",
+                "dependencies",
+                "host_schedule",
+                "host_timezone",
+                "host_model",
+                "download",
+                "meituan_erp",
+                "meituan_reviews"
+              ].map((capability) => ({
+                capability,
+                status: "ready",
+                nextStep: "",
+                checkedAt: testClock.toISOString()
+              }))
+            })
+          ).statusCode
+        ).toBe(200);
+        const takeover = await memberInstall({
+          kind: "prepare_takeover",
+          installationId: "migration-mac",
+          expectedAssignmentEpoch: 0,
+          oldHostState: "paused"
+        });
+        expect(takeover.statusCode, takeover.body).toBe(200);
+        expect(
+          (
+            await memberInstall({
+              kind: "takeover",
+              installationId: "migration-mac",
+              expectedAssignmentEpoch: 0,
+              previewId: takeover.json().previewId,
+              confirmationDigest: takeover.json().confirmationDigest
+            })
+          ).statusCode
+        ).toBe(200);
+      }
+      const freshHost = {
+        ...manifest.workflows[0]!.hostSnapshot,
+        verifiedAt: testClock.toISOString()
+      };
+      await install({
+        kind: "record_host",
+        installationId: "migration-mac",
+        hostSnapshot: {
+          ...freshHost,
+          verifiedAt: new Date(Date.parse(migration.createdAt) - 120000).toISOString()
+        }
+      });
+      const staleHost = await advanceHost();
+      expect(staleHost.json().error.code).toBe("WORKFLOW_SOURCE_UNAVAILABLE");
+      await install({
+        kind: "record_host",
+        installationId: "migration-mac",
+        hostSnapshot: freshHost
+      });
+      const switched = await advanceHost();
+      expect(switched.statusCode, switched.body).toBe(200);
+      migration = switched.json();
+      expect(migration.stage).toBe("host_switched");
+      const unverified = await advanceHost("verified");
+      expect(unverified.json().error.code).toBe("WORKFLOW_SOURCE_UNAVAILABLE");
       const another = await install({
         kind: "migration_preview",
         manifest: {

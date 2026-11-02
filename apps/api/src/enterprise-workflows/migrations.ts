@@ -553,13 +553,10 @@ export async function migrationOperation(
       )
         fail("WORKFLOW_SOURCE_UNAVAILABLE");
       const installedHost = workflowHostSnapshotSchema.parse(installation.hostSnapshot);
-      const oldHost = manifest.workflows.find(
-        (w) => w.workflowId === target.workflowId
-      )!.hostSnapshot;
-      if (
-        installedHost.taskId === oldHost.taskId ||
-        Date.parse(installedHost.verifiedAt) < row.createdAt.getTime() - 60000
-      )
+      // Task IDs are host-local: an in-place upgrade retains its existing ID.
+      // The assigned installation and advanced epoch above identify the handoff;
+      // fresh host readback is still required, regardless of whether the ID changed.
+      if (Date.parse(installedHost.verifiedAt) < row.createdAt.getTime() - 60000)
         fail("WORKFLOW_SOURCE_UNAVAILABLE");
     }
   }
