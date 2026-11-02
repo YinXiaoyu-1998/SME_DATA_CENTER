@@ -73,6 +73,8 @@ ENV NODE_ENV=production
 
 FROM runtime-base AS api
 
+LABEL xyz.smedatacenter.order-scope-contract="1"
+
 ENV HOST=127.0.0.1
 ENV PORT=3000
 
@@ -88,6 +90,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 CMD ["node", "dist/release/api.js"]
 
 FROM runtime-base AS worker
+
+LABEL xyz.smedatacenter.order-scope-contract="1"
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libreoffice-calc fonts-noto-cjk poppler-utils \

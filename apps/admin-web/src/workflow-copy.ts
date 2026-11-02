@@ -436,8 +436,8 @@ export const workflowCopy: Record<string, { zh: string; en: string }> = {
     en: "Execution control"
   },
   active: {
-    zh: "已启用",
-    en: "Active"
+    zh: "允许执行",
+    en: "Execution permitted"
   },
   paused: {
     zh: "已暂停",
@@ -460,8 +460,8 @@ export const workflowCopy: Record<string, { zh: string; en: string }> = {
     en: "Not installed"
   },
   activate: {
-    zh: "预览启用",
-    en: "Preview activation"
+    zh: "预览允许执行",
+    en: "Preview execution permission"
   },
   pause: {
     zh: "预览暂停",
@@ -472,8 +472,12 @@ export const workflowCopy: Record<string, { zh: string; en: string }> = {
     en: "Preview execution revocation"
   },
   activateHelp: {
-    zh: "启用会要求后续新订单上传声明来源口径。仅在准备就绪并完成旧任务交接后确认；保存配置不会改动现有任务。",
-    en: "Activation requires source scope for subsequent new order uploads. Confirm only after preparation and old-task handoff. Saving settings does not change existing tasks."
+    zh: "允许执行后，仍需在 Codex 完成准备、指定电脑并启用任务。保存配置不会改动现有任务。",
+    en: "After granting execution permission, complete preparation, computer assignment and task enablement in Codex. Saving settings does not change existing tasks."
+  },
+  activateOrderScopeHelp: {
+    zh: "每日采集选择店内订单时，准备就绪、指定电脑并启用安装后，会要求后续新订单上传声明来源口径。暂停或撤销不会取消此要求。",
+    en: "When daily ingestion includes in-store orders, enabling a ready, assigned installation requires source scope for subsequent order uploads. Pausing or revoking does not remove this requirement."
   },
   status: {
     zh: "指定电脑与最近状态",

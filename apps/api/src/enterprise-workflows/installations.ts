@@ -8,6 +8,18 @@ import { ENTERPRISE_WORKFLOW_LAUNCHER_VERSION, type WorkflowMcpInputs } from "@s
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 import { audit, fail, hash, id, json, type Actor, type Tx, type Workflow } from "./repository.js";
 import { configuration, integration } from "./configuration.js";
+// Call only after readiness and assignment are checked in the locked workflow transaction.
+async function activateOrderScope(tx: Tx, workflow: Workflow) {
+  const config = await configuration(tx, workflow);
+  if (config?.type !== "meituan-daily-ingestion" || !config.datasets.includes("in_store_orders"))
+    return;
+  await tx.enterpriseIntegration.update({
+    where: {
+      orgId_enterpriseKey: { orgId: workflow.orgId, enterpriseKey: workflow.enterpriseKey }
+    },
+    data: { orderScopeRequired: true }
+  });
+}
 const takeoverSchema = z
   .object({
     kind: z.literal("takeover"),
@@ -179,6 +191,7 @@ export async function installOperation(
           workflow.controlState !== "active"
         )
           fail("WORKFLOW_INSTALLATION_MISMATCH");
+        await activateOrderScope(tx, workflow);
       }
     }
     const row = await tx.workflowInstallation.update({
@@ -357,6 +370,7 @@ export async function installOperation(
         version: { increment: 1 }
       }
     });
+    if (workflow.controlState === "active") await activateOrderScope(tx, workflow);
     await tx.workflowChangePreview.update({ where: { id: preview.id }, data: { consumedAt: now } });
     await audit(tx, actor, "takeover", workflow.id, {
       installationId: op.installationId,

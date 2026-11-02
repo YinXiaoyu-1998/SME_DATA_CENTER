@@ -34,6 +34,12 @@ describe("runtime image contracts", () => {
     expect(workerSection).not.toContain("npm run worker:dev");
   });
 
+  it("declares order scope enforcement on both rollback writer images", () => {
+    for (const stage of ["api", "worker"]) {
+      expect(dockerStage(stage)).toContain('LABEL xyz.smedatacenter.order-scope-contract="1"');
+    }
+  });
+
   it("ships the Calamine partition reader only in the worker image", () => {
     const apiSection = dockerStage("api");
     const workerSection = dockerStage("worker");
