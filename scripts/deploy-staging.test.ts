@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ORDER_SCOPE_ROLLBACK_PROBE,
   imageReference,
   parseDeployArgs,
   releaseOpsImageReference,
@@ -148,6 +149,12 @@ describe("deploy-staging image build", () => {
 });
 
 describe("deploy-staging remote scripts", () => {
+  it("keeps the standalone rollback probe compatible with the staging RDS text protocol", () => {
+    expect(ORDER_SCOPE_ROLLBACK_PROBE).toMatch(
+      /new PrismaMariaDb\(process\.env\.DATABASE_URL,\s*\{[\s\S]*?useTextProtocol:\s*true/
+    );
+  });
+
   it.each([
     { label: "", used: true, allowed: false, runningIds: "aaaaaaaaaaaa" },
     { label: "", used: true, allowed: false, runningIds: "" },
