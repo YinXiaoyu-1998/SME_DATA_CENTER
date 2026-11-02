@@ -2,6 +2,16 @@
 
 本文件保留当时验证证据，不说明当前部署、权限或操作授权。当前状态见 [staging-readiness](../implementation/staging-readiness.md)。旧路径/版本仅为历史引用。
 
+## 2026-11-03：工作流包补丁兼容发布
+
+[部署 run 41489846084](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41489846084) 和 [main 门禁 41488451295](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41488451295) 对应 `e51f3f1858ea18816d5cdf0e079f46a9f05a1cbb`，于北京时间 01:23 完成。服务不再将 companion 包版本与协议 `1.0.0` 做精确相等比较，接受稳定 `1.0.x`，保留安装与运行快照的精确包版本约束。公开 health 正常、readyz 404，fixture-only smoke 通过。后续同机任务 ID 修复的当前发布证据见 [staging-readiness](../implementation/staging-readiness.md)；本记录不宣称真实任务已切换或首轮已通过。
+
+## 2026-11-02：工作流基础服务首次部署
+
+[部署 run 41405921819](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41405921819) 与 [main 门禁 41405137679](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41405137679) 对应 `360d33acbadbb285d7410de5d360e677c285d47f`。当时 API/worker 镜像为 `360d33acbadb`，loopback readiness 200，公开 health 200、readyz 404，正式 fixture smoke 成功。
+
+当次发布前后 12 组原有角色、密级、停用状态、类别、门店及 grant 元数据摘要相同；一次性合成企业的三类配置保存/读回、版本冲突、组织隔离、管理员/停用检查和重复登记通过。合成账号与数据已清理，当次核验结束时中央工作流、集成及 order-scope-required 集成均为 0，没有真实企业配置导入、取数、发信、回复或接管。此计数仅描述当时状态，不能据此判断后来的租户迁移状态。
+
 ## 2026-10-28：订单首次部署与客户端策略快照
 
 [部署 40698985223](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40698985223) 和 [质量门禁 40697665741](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/40697665741) 对应订单首次实现提交 `3f4eeff`。当时只读发现线上推荐仍为 `0.13.1`、最低为 `0.12.0`；尚未执行本次订单线上认证端到端验收。此前直接主机/schema 核验停留在 2026-10-19 的 `9484dcb6e9a9`。这是更新前的历史快照，后续部署、当前策略及已完成范围见 [当前就绪状态](../implementation/staging-readiness.md)。
