@@ -1,9 +1,10 @@
 <!doctype html>
+
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <meta content="light" name="color-scheme" />
     <title>SMEDC 自动任务｜餐饮管理人员使用指南</title>
     <style>
       :root {
@@ -689,69 +690,178 @@
           display: block !important;
         }
       }
+
+      [hidden] {
+        display: none !important;
+      }
+      html {
+        scroll-behavior: auto;
+      }
+      .route-chooser {
+        padding-top: 42px;
+      }
+      .route-chooser h1 {
+        margin-bottom: 20px;
+      }
+      .route-choice {
+        width: 100%;
+        font: inherit;
+        color: var(--ink);
+        border: 0;
+        text-align: left;
+        cursor: pointer;
+      }
+      .route-choice:focus-visible,
+      .change-route:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 4px;
+      }
+      .route-choice:hover {
+        background: var(--tint);
+      }
+      .route-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 28px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .change-route {
+        font: inherit;
+        font-size: 14px;
+        color: var(--accent);
+        background: var(--surface);
+        border: 1px solid var(--accent);
+        border-radius: 5px;
+        padding: 8px 14px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .route-panel:focus,
+      .route-panel h2:focus,
+      #choose-title:focus {
+        outline: none;
+      }
+      .route-prep {
+        margin: 18px 0;
+      }
+      .route-help {
+        padding-bottom: 12px;
+      }
+      @media (max-width: 760px) {
+        .route-toolbar {
+          align-items: flex-start;
+        }
+        .route-choice {
+          grid-template-columns: 32px 1fr;
+        }
+      }
+      @media print {
+        #chooser,
+        .route-toolbar {
+          display: none;
+        }
+      }
     </style>
   </head>
   <body>
-    <a class="skip" href="#version">跳到操作路线</a>
+    <a class="skip" href="#chooser">跳到选择</a>
     <header class="top">
       <div class="wrap">
         <div class="brand">SMEDC <span class="edition">企业资料中枢</span></div>
-        <div class="edition">自动任务操作指南<br />复制提示词，按步骤完成</div>
+        <div class="edition">定时任务操作指南<br />选好情况，按一条路线做完</div>
       </div>
     </header>
     <main class="wrap">
-      <div class="hero">
-        <div>
-          <div class="eyebrow">适用于使用这套流程的各家企业</div>
-          <h1>选一条路线，<br />照着做。</h1>
-          <p class="lead">
-            每一步都写明在哪台电脑操作、给 Codex
-            发什么，以及看到什么结果才继续。企业名称、门店、邮箱和时间使用你自己的设置。
-          </p>
+      <section aria-labelledby="choose-title" class="route-chooser" id="chooser">
+        <div class="eyebrow">先选你要做的事</div>
+        <h1 id="choose-title" tabindex="-1">你想怎么使用定时任务？</h1>
+        <p class="lead">点击与你现在情况最接近的一项，只看这条路线的完整步骤。</p>
+        <div class="routes">
+          <button
+            aria-controls="route-a"
+            aria-expanded="false"
+            class="route route-choice"
+            data-route="a"
+            type="button"
+          >
+            <span class="number">A</span><strong>想开始使用定时任务</strong
+            ><span>还没有相同任务正在执行，想从安装、设置开始。</span><b>查看步骤 →</b></button
+          ><button
+            aria-controls="route-b"
+            aria-expanded="false"
+            class="route route-choice"
+            data-route="b"
+            type="button"
+          >
+            <span class="number">B</span><strong>想把这台电脑的定时任务升级到新版</strong
+            ><span>继续用当前电脑，保留业务设置、原时间和完成记录。</span><b>查看步骤 →</b></button
+          ><button
+            aria-controls="route-c"
+            aria-expanded="false"
+            class="route route-choice"
+            data-route="c"
+            type="button"
+          >
+            <span class="number">C</span><strong>想把定时任务从旧电脑迁到新电脑</strong
+            ><span>先在旧电脑保存，再在新电脑准备，最后明确切换。</span><b>查看步骤 →</b>
+          </button>
         </div>
-        <aside class="ready-box">
-          <h3>先准备好</h3>
-          <ul>
-            <li>能使用 Codex 的 Mac</li>
-            <li>本企业的 SMEDC 管理员账号</li>
-            <li>有对应门店权限的美团账号</li>
-            <li>需要邮件时，可授权的 Gmail 账号</li>
-          </ul>
-          <p class="note">
-            不会写代码没有关系。提示词整段复制即可；需要登录或确认业务范围时，再按 Codex
-            的提示操作。
-          </p>
-        </aside>
-      </div>
-      <nav aria-label="指南目录">
-        <a href="#version">先做第 0 步</a><a href="#start">选择路线</a
-        ><a href="#setup">A 首次使用</a><a href="#legacy">B 旧流程首次迁入</a
-        ><a href="#move">C 换新电脑</a><a href="#help">遇到问题</a>
-      </nav>
-      <section id="version">
-        <div class="section-label">所有路线都先做 · 第 0 步</div>
-        <h2>先把这台电脑的 SMEDC 更新并验证好</h2>
-        <p class="intro">
-          首次使用：在当前电脑做。旧流程首次迁入：在旧电脑做。换电脑：旧电脑和新电脑分别做一次；旧电脑更新过，不代表新电脑也已经更新。
+        <p class="note">
+          如果公司已有另一台电脑在执行同一套任务，你想换到自己的电脑，请选
+          C。每条路线都包含需要的版本检查、登录、配置和核验步骤。
         </p>
-        <span class="where">每一台将要操作的 Mac</span>
-        <p>
-          在这台电脑打开 Codex，新建或继续一个聊天，把下面整段发送给它。由 Codex
-          完成检查和可自动完成的更新。
+      </section>
+      <section aria-labelledby="route-a-title" class="route-panel" hidden="" id="route-a">
+        <div class="route-toolbar">
+          <span>已选择：想开始使用定时任务</span
+          ><button class="change-route" type="button">重新选择</button>
+        </div>
+        <div class="section-label">路线 A · 全部步骤已在本页展开</div>
+        <h2 id="route-a-title" tabindex="-1">想开始使用定时任务</h2>
+        <p class="intro">在准备运行任务的这台电脑上依次完成。无需查看其他路线。</p>
+        <p class="path-note">
+          这台电脑：更新验证 → 登录 → 业务设置 → 美团与邮件检查 → 暂停任务 → 启用并核验。
         </p>
-        <div class="prompt-box">
-          <div class="prompt-toolbar">
-            <span>先复制这一段，再选择下面的路线</span
-            ><button
-              type="button"
-              class="copy-button"
-              data-copy="prompt-0"
-              aria-label="复制提示词：第0步安装更新并验证"
-            >
-              复制提示词
-            </button>
-          </div>
-          <pre class="prompt" id="prompt-0">
+        <details class="route-prep">
+          <summary>开始前准备什么？</summary>
+          <aside class="ready-box">
+            <h3>先准备好</h3>
+            <ul>
+              <li>能使用 Codex 的 Mac</li>
+              <li>本企业的 SMEDC 管理员账号</li>
+              <li>有对应门店权限的美团账号</li>
+              <li>需要邮件时，可授权的 Gmail 账号</li>
+            </ul>
+            <p class="note">
+              不会写代码没有关系。提示词整段复制即可；需要登录或确认业务范围时，再按 Codex
+              的提示操作。
+            </p>
+          </aside>
+        </details>
+        <ol class="steps">
+          <li>
+            <span class="where">准备运行任务的这台 Mac</span>
+            <h3>第一步：更新并验证这台电脑的 SMEDC</h3>
+            <p>
+              打开这台电脑的 Codex，把下面整段发送给它。它会检查核心技能、官方
+              launcher、当前连接和相关流程技能。
+            </p>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制整段，发给本步标明电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：A 第一步：更新并验证这台电脑的 SMEDC"
+                  class="copy-button"
+                  data-copy="a-prompt-1"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="a-prompt-1">
 请先为这台 Mac 完成 SMEDC 的版本检查和安装/更新，再进入企业设置或流程迁移。
 官方核心技能：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
 官方流程技能：https://github.com/YinXiaoyu-1998/smedc-companion-skills
@@ -760,59 +870,23 @@
 原任务的日程、门店、收件人和业务动作保持原安排，不启用第二套任务。正在传输或执行业务时，先核对进度再安排重连。
 如果必须退出并重新打开 Codex，请明确告诉我：完成正在进行的操作后，按 Command+Q 完全退出，再重新打开并回到这段聊天发送“继续验证 SMEDC 升级”。等我操作后继续验证，不要提前宣称升级完成。
 最后用中文列出：核心技能是否已更新、批准的 launcher 版本、当前 Codex 连接是否已生效、相关流程技能哪些已对齐/待选择/有待处理项，以及我下一步做什么。</pre>
-        </div>
-        <p class="done">
-          <strong>看到这些才继续：</strong>Codex
-          明确确认“核心版本已更新，当前连接已生效”，并列清相关技能状态。出现“等待重启 / 等待重连验证
-          /
-          定制待处理”时，先处理后再继续。尚未选择的业务技能可以显示“待选择”，不能把它们算成已安装。
-        </p>
-        <p>
-          如需重开 Codex：先按提示完成正在进行的操作，再按
-          <strong>Command+Q</strong> 完全退出；重新打开后回到这段聊天，发送：<strong
-            >继续验证 SMEDC 升级</strong
-          >。
-        </p>
-        <details>
-          <summary>为什么要先做这一步？</summary>
-          <p>
-            服务端、这台电脑安装的核心技能、launcher 文件和 Codex
-            当前连接，是不同的状态。服务已上线、下载过新版文件或开了新聊天，都不等于这台电脑完成升级。登录和企业配置在后续步骤继续；已经验证完成的安装直接复用。
-          </p>
-        </details>
-      </section>
-      <section id="start">
-        <h2>第 0 步通过后，选你的路线</h2>
-        <div class="routes">
-          <a class="route" href="#setup"
-            ><span class="number">A</span><strong>还没有正在运行的旧流程</strong
-            ><span>在将来执行任务的电脑，先做第 0 步，再登录和配置。</span><b>做 A →</b></a
-          ><a class="route" href="#legacy"
-            ><span class="number">B</span><strong>旧电脑已有自定义流程</strong
-            ><span>先在旧电脑整理并保存设置和必要记录。</span><b>做 B →</b></a
-          ><a class="route" href="#move"
-            ><span class="number">C</span><strong>要从旧电脑换到新电脑</strong
-            ><span>先保存旧机记录，新机准备好后再切换。</span><b>做 C →</b></a
-          >
-        </div>
-        <p class="path-note">
-          <strong>使用方法：</strong>先完成第 0
-          步，再选好路线，只按这一条路线从上往下做。点击“复制提示词”，粘贴到对应电脑的 Codex
-          聊天框并发送。等它完成，再看每步的“看到这些才继续”。所有提示词都由你发送，不会因为打开本页就执行。
-        </p>
-        <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
-      </section>
-      <section id="setup">
-        <div class="section-label">路线 A · 首次使用</div>
-        <h2>在执行任务的电脑上，从第一步开始</h2>
-        <p class="intro">
-          适用于没有相同旧任务正在运行的企业。不需要操作另一台旧电脑；如果已有旧流程，请改走 B 或
-          C。
-        </p>
-        <ol class="steps">
+            </div>
+            <p class="done">
+              <strong>看到这些才继续：</strong>Codex
+              明确确认核心版本与当前连接已生效，并列清相关技能状态。等待重启、重连验证或差异处理时，先处理再继续。
+            </p>
+            <details class="step-note">
+              <summary>补充说明（需要时展开）</summary>
+              <p>
+                如需重开：先完成正在进行的操作，按 Command+Q 完全退出
+                Codex；重开后回到该聊天发送“继续验证 SMEDC
+                升级”。新电脑要单独更新，不能拿旧电脑的检查结果代替。
+              </p>
+            </details>
+          </li>
           <li>
             <span class="where">使用这套流程的电脑</span>
-            <h3>第一步：登录并确认企业</h3>
+            <h3>第二步：登录并确认企业</h3>
             <p>
               在 Codex 打开的官方 SMEDC
               网页，用企业提供的管理员账号登录。没有账号时，先联系企业负责人或服务人员开通。密码和验证码只填在官方网页。
@@ -821,19 +895,18 @@
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：A 第二步：登录并确认企业"
                   class="copy-button"
-                  data-copy="prompt-1"
-                  aria-label="复制提示词：使用这套流程的电脑 登录并确认企业"
+                  data-copy="a-prompt-2"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-1">
-请按照官方 SMEDC 核心技能安装指南，为这台 Mac 安装或安全更新 SMEDC，并准备我选定的自动任务。
-官方安装指南：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
-官方自动任务流程：https://github.com/YinXiaoyu-1998/smedc-companion-skills/tree/main/skills/smedc-workflows
-先检查已有安装，保留已有企业设置和其他工具。需要我登录时，请打开官方网页并告诉我该用哪个账号。请逐项带我完成，不要让我编辑代码、JSON 或隐藏文件。先保持所有新任务暂停。</pre>
+              <pre class="prompt" id="a-prompt-2">
+请确认这台 Mac 已完成官方 SMEDC 核心技能、MCP/launcher 的更新和实际连接验证；未完成时先带我完成。
+请打开官方 SMEDC 登录页面，让我使用本企业已获授权的管理员账号登录，核对企业和当前账号角色。已有企业和业务设置直接复用，不重新创建。
+登录后告诉我本机登录与权限检查结果。先不启用任务。</pre>
             </div>
             <p class="done">
               <strong>看到这些才继续：</strong>Codex
@@ -842,7 +915,7 @@
           </li>
           <li>
             <span class="where">同一台电脑</span>
-            <h3>第二步：选任务，保存企业设置</h3>
+            <h3>第三步：选任务，保存企业设置</h3>
             <p>
               在 Codex
               提供的“自动任务”网页中选择业务企业。按页面核对门店和收件人；点“预览来源设置”或“预览任务设置”，核对“变更前
@@ -852,15 +925,15 @@
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：A 第三步：选任务，保存企业设置"
                   class="copy-button"
-                  data-copy="prompt-2"
-                  aria-label="复制提示词：同一台电脑 选任务，保存企业设置"
+                  data-copy="a-prompt-3"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-2">
+              <pre class="prompt" id="a-prompt-3">
 请读取我们企业已有的自动任务设置，缺少的再带我补齐。
 用中文名称让我选择：每日数据采集、评价处理、自然周周报，以及所需门店和数据类型。请根据我已登录的美团页面提出门店对应候选，让我确认；已有分组、收件人与业务规则先展示给我。
 需要自动发布回复或发邮件时，分别展示允许的门店、发件邮箱、收件人和用途，再由我确认持续授权。请打开服务返回的官方设置页面，带我预览并保存。先不要启用任务。</pre>
@@ -879,7 +952,7 @@
           </li>
           <li>
             <span class="where">同一台电脑</span>
-            <h3>第三步：登录美团并连接所需 Gmail</h3>
+            <h3>第四步：登录美团并连接所需 Gmail</h3>
             <p>
               按 Codex 打开的网页登录美团管家；评价任务还要检查经营宝。邮件任务要在 Codex 中完成
               Gmail 连接授权，选择约定的发件账号。
@@ -888,15 +961,15 @@
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：A 第四步：登录美团并连接所需 Gmail"
                   class="copy-button"
-                  data-copy="prompt-3"
-                  aria-label="复制提示词：同一台电脑 登录美团并连接所需 Gmail"
+                  data-copy="a-prompt-4"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-3">
+              <pre class="prompt" id="a-prompt-4">
 请逐项检查这台 Mac 的运行环境，并一次只告诉我当前需要完成的一项操作：
 1. 打开美团管家，核对已登录账号、来源企业/集团及所选门店。
 2. 如果选择了评价任务，再打开经营宝，分别核对美团和点评的门店访问。
@@ -919,7 +992,7 @@
           </li>
           <li>
             <span class="where">同一台电脑</span>
-            <h3>第四步：核对 Codex 中的暂停任务</h3>
+            <h3>第五步：核对 Codex 中的暂停任务</h3>
             <p>
               打开 Codex 的自动任务列表，核对 Codex 列出的任务。没有明确项目要求时，让 Codex
               选择可用的本机工作方式；你不需要自己建立复杂项目。
@@ -928,15 +1001,15 @@
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：A 第五步：核对 Codex 中的暂停任务"
                   class="copy-button"
-                  data-copy="prompt-4"
-                  aria-label="复制提示词：同一台电脑 核对 Codex 中的暂停任务"
+                  data-copy="a-prompt-5"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-4">
+              <pre class="prompt" id="a-prompt-5">
 请为我选定的自动任务完成本机准备，并在 Codex 中创建或核对暂停任务。
 时间只在 Codex 管理：已有任务沿用原时间、时区、模型和推理设置；没有原时间时，结合电脑通常开机的时段给我建议，等我确认。
 请核对本机运行、独立运行聊天、北京时间、可用模型、工作文件夹和失败提示设置。模型不可用时给我可选项，不要自行更换。
@@ -949,21 +1022,21 @@
           </li>
           <li>
             <span class="where">同一台电脑</span>
-            <h3>第五步：明确启用，检查首次结果</h3>
+            <h3>第六步：明确启用，检查首次结果</h3>
             <p>先确认这家企业没有其他电脑或旧任务正在执行相同流程。然后发送下面的话。</p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：A 第六步：明确启用，检查首次结果"
                   class="copy-button"
-                  data-copy="prompt-5"
-                  aria-label="复制提示词：同一台电脑 明确启用，检查首次结果"
+                  data-copy="a-prompt-6"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-5">
+              <pre class="prompt" id="a-prompt-6">
 我确认：所选流程没有其他仍在执行的旧任务，刚才展示的门店、时间和允许动作已经核对。
 请在准备检查通过后启用选定任务，读回实际启用状态，并按已确认的范围验证首次运行。未授权的邮件或回复保持关闭；文件格式尚未验证时，必须先验证再上传。
 请分别报告下载、入库、报告、已授权邮件或回复的真实结果。不适用的项目标明“不适用”；处理中、失败和结果未知单独列出，不要记为成功或盲目重试。</pre>
@@ -974,49 +1047,186 @@
             </p>
           </li>
         </ol>
+        <section class="route-help">
+          <div class="section-label">遇到问题时，直接复制</div>
+          <h2>遇到问题，直接发给当前电脑的 Codex</h2>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>需要重新登录</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：需要重新登录"
+                  class="copy-button"
+                  data-copy="a-help-1"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="a-help-1">
+请告诉我当前缺的是 SMEDC、美团管家、经营宝还是 Gmail 的登录/连接，打开对应官方页面，并说明应该使用哪个企业或发件账号。我完成后，请从原来的步骤、日期和进度继续检查。</pre>
+            </div>
+          </article>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>看不懂缺项或提示</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：看不懂缺项或提示"
+                  class="copy-button"
+                  data-copy="a-help-2"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="a-help-2">
+请把当前需要我处理的事项改写成一次一个的简单操作：在哪台电脑、打开哪个页面、用哪个账号、点哪个按钮，以及看到什么才算完成。能由你完成的文件和配置处理请直接完成，不要让我编辑代码或 JSON。</pre>
+            </div>
+          </article>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>结果不明或担心重复</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：结果不明或担心重复"
+                  class="copy-button"
+                  data-copy="a-help-3"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="a-help-3">
+先不要重复上传、发邮件或发布回复。请查询原动作的真实结果，列出已确认完成、处理中、未执行和仍未知的事项；告诉我下一步需要做什么。</pre>
+            </div>
+          </article>
+          <details>
+            <summary>日常运行需要我保持什么状态？</summary>
+            <p>
+              Mac 保持开机、联网与唤醒，Codex 保持运行，工作文件夹仍然可用。时间在 Codex
+              的自动任务中管理；门店、分组和收件人通过 SMEDC
+              的“自动任务”页面预览确认。需要改变这些内容时，可以直接让 Codex 带你操作。
+            </p>
+          </details>
+          <details>
+            <summary>有哪些任务可以选择？</summary>
+            <p>
+              每日数据采集：选择营业、菜品、店内已结账订单、平台外卖和收货单中的所需类型。评价处理：选择采集门店和渠道，发布范围另行确认。自然周周报：可先生成本地报告，邮件交付使用已允许的
+              Gmail 发件账号。三项可以分开选择。
+            </p>
+          </details>
+        </section>
       </section>
-      <section id="legacy">
-        <div class="section-label">路线 B · 旧流程首次迁入</div>
-        <h2>先在旧电脑保存，再决定在哪里继续</h2>
+      <section aria-labelledby="route-b-title" class="route-panel" hidden="" id="route-b">
+        <div class="route-toolbar">
+          <span>已选择：想把这台电脑的定时任务升级到新版</span
+          ><button class="change-route" type="button">重新选择</button>
+        </div>
+        <div class="section-label">路线 B · 全部步骤已在本页展开</div>
+        <h2 id="route-b-title" tabindex="-1">想把这台电脑的定时任务升级到新版</h2>
         <p class="intro">
-          适用于以前已有定时提示词、本地脚本或完成记录，但尚未纳入这套可迁移流程的情况。第一至第三步都在旧电脑完成。换电脑只做前三步，再转
-          C；仍在原电脑继续用，才做后面三步。
+          以下操作都在当前这台 Mac
+          完成。先检查当前任务，再决定哪些需要升级或迁移，不用先判断内部版本。
         </p>
+        <p class="path-note">
+          同一台电脑：更新验证 → 清点 → 预览 → 保存读回 → 新版暂停准备 → 暂停原任务/补齐记录 →
+          启用新版。
+        </p>
+        <details class="route-prep">
+          <summary>开始前准备什么？</summary>
+          <aside class="ready-box">
+            <h3>先准备好</h3>
+            <ul>
+              <li>能使用 Codex 的 Mac</li>
+              <li>本企业的 SMEDC 管理员账号</li>
+              <li>有对应门店权限的美团账号</li>
+              <li>需要邮件时，可授权的 Gmail 账号</li>
+            </ul>
+            <p class="note">
+              不会写代码没有关系。提示词整段复制即可；需要登录或确认业务范围时，再按 Codex
+              的提示操作。
+            </p>
+          </aside>
+        </details>
         <ol class="steps">
           <li>
-            <span class="where">旧电脑</span>
-            <h3>第一步：找到原流程和已有记录</h3>
+            <span class="where">当前这台 Mac</span>
+            <h3>第一步：更新并验证这台电脑的 SMEDC</h3>
             <p>
-              在原流程一直使用的旧电脑打开 Codex。先做清点；缺少迁移工具时，让 Codex
-              按官方指南带你准备。
+              打开这台电脑的 Codex，把下面整段发送给它。它会检查核心技能、官方
+              launcher、当前连接和相关流程技能。
+            </p>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制整段，发给本步标明电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：B 第一步：更新并验证这台电脑的 SMEDC"
+                  class="copy-button"
+                  data-copy="b-prompt-1"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="b-prompt-1">
+请先为这台 Mac 完成 SMEDC 的版本检查和安装/更新，再进入企业设置或流程迁移。
+官方核心技能：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
+官方流程技能：https://github.com/YinXiaoyu-1998/smedc-companion-skills
+请先读取官方默认分支的最新核心技能，以它批准的精确版本更新核心 Skill 和官方 MCP/launcher，并验证当前 Codex 实际连接已经使用新版，不要只看下载目录、服务端版本或配置路径。
+对这台电脑已安装、与所选流程有关的技能逐目录比对，区分远端本次更新、本机原有但远端漏收的通用能力和真正的企业专属配置。保留原有通用能力与业务设置；有未确认的差异时，先给我中文处理方案，等我确认后再替换。还没选流程时，不要自动安装无关的业务技能。
+原任务的日程、门店、收件人和业务动作保持原安排，不启用第二套任务。正在传输或执行业务时，先核对进度再安排重连。
+如果必须退出并重新打开 Codex，请明确告诉我：完成正在进行的操作后，按 Command+Q 完全退出，再重新打开并回到这段聊天发送“继续验证 SMEDC 升级”。等我操作后继续验证，不要提前宣称升级完成。
+最后用中文列出：核心技能是否已更新、批准的 launcher 版本、当前 Codex 连接是否已生效、相关流程技能哪些已对齐/待选择/有待处理项，以及我下一步做什么。</pre>
+            </div>
+            <p class="done">
+              <strong>看到这些才继续：</strong>Codex
+              明确确认核心版本与当前连接已生效，并列清相关技能状态。等待重启、重连验证或差异处理时，先处理再继续。
+            </p>
+            <details class="step-note">
+              <summary>补充说明（需要时展开）</summary>
+              <p>
+                如需重开：先完成正在进行的操作，按 Command+Q 完全退出
+                Codex；重开后回到该聊天发送“继续验证 SMEDC
+                升级”。新电脑要单独更新，不能拿旧电脑的检查结果代替。
+              </p>
+            </details>
+          </li>
+          <li>
+            <span class="where">当前这台 Mac</span>
+            <h3>第二步：检查正在使用的任务和记录</h3>
+            <p>
+              在这台电脑的 Codex 发送下面的话，由它判断当前任务状态。需要登录时，在它打开的 SMEDC
+              官方页面使用本企业管理员账号登录。
             </p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：B 第二步：检查正在使用的任务和记录"
                   class="copy-button"
-                  data-copy="prompt-6"
-                  aria-label="复制提示词：旧电脑 找到原流程和已有记录"
+                  data-copy="b-prompt-2"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-6">
-我要把这台电脑已有的自动流程纳入 SMEDC 的可迁移流程。请先读取以下官方指南，检查并准备所需能力，保留原任务、时间表和已有定制。
-官方安装指南：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
-官方自动任务流程：https://github.com/YinXiaoyu-1998/smedc-companion-skills/tree/main/skills/smedc-workflows
-然后只读清点原任务、实际时间表、门店、分组、发布范围、邮件用途与收件人、清理规则，以及已完成和结果不明的记录。
-请告诉我找到哪些流程、还缺哪些来源。原任务继续按原安排运行；此步不要暂停、改写、创建启用任务或开始新的业务动作。不要让我手工整理 JSON。</pre>
+              <pre class="prompt" id="b-prompt-2">
+我要继续使用这台电脑，把当前定时任务升级为官方新版可迁移任务。请读取当前实际任务、业务设置、时间表、运行组件、已完成与未解决记录，判断哪些已是新版、哪些还需迁移。
+如果已经全部采用新版且没有待迁移差异，请明确说明，复用现有任务并完成必要核验，不要重复创建或强行替换。
+需要迁移时，请列出找到的任务和缺项。此时保持原任务原安排，不暂停、不启用第二套任务；不要让我整理 JSON。</pre>
             </div>
             <p class="done">
               <strong>看到这些才继续：</strong>Codex
-              列出找到的流程与缺项，能区分业务设置、完成记录和结果不明的事项。
+              清楚列出任务状态和待迁移项。若已验证全部采用新版且无需迁移，本路线到此结束；有待迁移项再继续。
             </p>
           </li>
           <li>
-            <span class="where">旧电脑</span>
-            <h3>第二步：审阅迁移预览</h3>
+            <span class="where">当前这台 Mac</span>
+            <h3>第三步：核对这次升级的迁移预览</h3>
             <p>
               阅读 Codex
               给出的中文对照表。逐项确认门店、分组、收件人、自动回复范围和时间；有冲突时，先让 Codex
@@ -1026,18 +1236,18 @@
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：B 第三步：核对这次升级的迁移预览"
                   class="copy-button"
-                  data-copy="prompt-7"
-                  aria-label="复制提示词：旧电脑 审阅迁移预览"
+                  data-copy="b-prompt-3"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-7">
+              <pre class="prompt" id="b-prompt-3">
 请按刚才找到的真实来源，为这些流程准备完整迁移预览。
 用中文列出“原来是什么、迁入后是什么、哪里缺失或冲突”。保留原时间表和必要的完成记录；记录来源与核对依据，不能把结果不明当作成功，也不能因为缺记录就重发。
-请把需要我决定的事项逐项展示，先等我确认这份具体预览。此步不保存或启用新流程，也不暂停旧任务。</pre>
+请把需要我决定的事项逐项展示，先等我确认这份具体预览。此步不保存或启用新版任务，也不暂停旧任务。</pre>
             </div>
             <p class="done">
               <strong>看到这些才继续：</strong
@@ -1045,24 +1255,24 @@
             </p>
           </li>
           <li>
-            <span class="where">旧电脑</span>
-            <h3>第三步：保存已确认内容并读回</h3>
+            <span class="where">当前这台 Mac</span>
+            <h3>第四步：保存已确认的设置与必要记录</h3>
             <p>确认上一步的具体预览后，发送下面的话。若仍有冲突，先留在第二步。</p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：B 第四步：保存已确认的设置与必要记录"
                   class="copy-button"
-                  data-copy="prompt-8"
-                  aria-label="复制提示词：旧电脑 保存已确认内容并读回"
+                  data-copy="b-prompt-4"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-8">
+              <pre class="prompt" id="b-prompt-4">
 我已核对并确认上一份具体迁移预览。请把已确认的企业设置及有依据的必要完成记录按官方流程保存到 SMEDC，并完整读回核对。
-原任务继续按原安排运行。新流程保持暂停，不授予预览之外的动作范围。保留未解决事项；若尚有不能保存或不能恢复的内容，请准确列出，不要宣称迁移全部完成。
+原任务继续按原安排运行。新版任务保持暂停，不授予预览之外的动作范围。保留未解决事项；若尚有不能保存或不能恢复的内容，请准确列出，不要宣称迁移全部完成。
 最后告诉我：哪些设置和记录已保存、新电脑能恢复哪些、哪些本地文件仍只在旧电脑，以及还差什么。</pre>
             </div>
             <p class="done">
@@ -1071,25 +1281,25 @@
             </p>
           </li>
           <li>
-            <span class="where">旧电脑 · 仅在这台电脑继续用时</span>
-            <h3>第四步：准备新的暂停任务</h3>
+            <span class="where">当前这台 Mac</span>
+            <h3>第五步：准备新版暂停任务并检查登录</h3>
             <p>
-              如果准备换电脑，跳过本步和后两步，直接做 C 路线。继续用这台电脑时，让 Codex
-              检查美团、所需 Gmail 和运行设置。
+              按 Codex 的提示检查美团管家、经营宝和所需 Gmail
+              连接，再在自动任务列表核对新版任务保持暂停。此时原任务继续按原安排运行。
             </p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：B 第五步：准备新版暂停任务并检查登录"
                   class="copy-button"
-                  data-copy="prompt-9"
-                  aria-label="复制提示词：旧电脑 · 仅在这台电脑继续用时 准备新的暂停任务"
+                  data-copy="b-prompt-5"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-9">
+              <pre class="prompt" id="b-prompt-5">
 请逐项检查这台 Mac 的运行环境，并一次只告诉我当前需要完成的一项操作：
 1. 打开美团管家，核对已登录账号、来源企业/集团及所选门店。
 2. 如果选择了评价任务，再打开经营宝，分别核对美团和点评的门店访问。
@@ -1101,31 +1311,31 @@
 时间只在 Codex 管理：已有任务沿用原时间、时区、模型和推理设置；没有原时间时，结合电脑通常开机的时段给我建议，等我确认。
 请核对本机运行、独立运行聊天、北京时间、可用模型、工作文件夹和失败提示设置。模型不可用时给我可选项，不要自行更换。
 创建后读回实际任务，向我展示每项任务的名称、时间、模型、状态及缺项。不要让我手动填写内部编号或复制旧电脑的任务文件。所有新任务先保持暂停。
-已有原任务仍要保留；此时只准备新流程，不要同时启用两套任务。</pre>
+已有原任务仍要保留；此时只准备新版任务，不要同时启用两套任务。</pre>
             </div>
             <p class="done">
               <strong>看到这些才继续：</strong
-              >新流程准备完成且保持暂停，原任务和新任务能够清楚区分；原时间表已保留。
+              >新版任务准备完成且保持暂停，原任务和新任务能够清楚区分；原时间表已保留。
             </p>
           </li>
           <li>
-            <span class="where">旧电脑 · 仅在这台电脑继续用时</span>
-            <h3>第五步：暂停旧任务并补齐最后记录</h3>
+            <span class="where">当前这台 Mac</span>
+            <h3>第六步：暂停原任务并补齐最后记录</h3>
             <p>选一个方便检查的切换时段。发送后，打开 Codex 自动任务列表核对旧任务确实已经暂停。</p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：B 第六步：暂停原任务并补齐最后记录"
                   class="copy-button"
-                  data-copy="prompt-10"
-                  aria-label="复制提示词：旧电脑 · 仅在这台电脑继续用时 暂停旧任务并补齐最后记录"
+                  data-copy="b-prompt-6"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-10">
-现在开始把这台电脑从旧流程切换到刚准备的新流程。请核对准确的旧任务，暂停它们并读回实际状态。
+              <pre class="prompt" id="b-prompt-6">
+现在开始把这台电脑从原有定时任务切换到刚准备的新版任务。请核对准确的旧任务，暂停它们并读回实际状态。
 若有正在处理的旧轮次，先核对在途动作和锁，不强行把未知结果当作失败。把最后新增的完成记录和未解决事项同步并完整读回。
 请向我展示旧任务已暂停及最后记录核对结果，先不要启用新任务。</pre>
             </div>
@@ -1135,24 +1345,24 @@
             </p>
           </li>
           <li>
-            <span class="where">旧电脑 · 仅在这台电脑继续用时</span>
-            <h3>第六步：启用新流程并验收</h3>
-            <p>确认第五步已经完成，再发送下面的话。</p>
+            <span class="where">当前这台 Mac</span>
+            <h3>第七步：启用新版任务并核验首轮</h3>
+            <p>确认上一步的原任务实际暂停、最后记录已核对，再发送下面的话。</p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：B 第七步：启用新版任务并核验首轮"
                   class="copy-button"
-                  data-copy="prompt-11"
-                  aria-label="复制提示词：旧电脑 · 仅在这台电脑继续用时 启用新流程并验收"
+                  data-copy="b-prompt-7"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-11">
+              <pre class="prompt" id="b-prompt-7">
 我已确认刚才列出的旧任务已暂停，最后记录和待处理项已核对。
-请按已保存的配置完成新流程的指定与启用，核对实际日程和状态，再验证首轮结果。不要重做已确认完成的事项；未知邮件或回复先核对。
+请按已保存的配置完成新版任务的指定与启用，核对实际日程和状态，再验证首轮结果。不要重做已确认完成的事项；未知邮件或回复先核对。
 请列出本轮已核验完成、处理中、失败和待我处理的项目。</pre>
             </div>
             <p class="done">
@@ -1160,75 +1370,313 @@
             </p>
           </li>
         </ol>
-        <p class="path-note">
-          <strong>准备换电脑？</strong>完成 B 的第三步后，直接转到 <a href="#move">C 路线</a>。B
-          的第四至第六步仅用于在原电脑上继续使用新流程。
-        </p>
+        <section class="route-help">
+          <div class="section-label">遇到问题时，直接复制</div>
+          <h2>遇到问题，直接发给当前电脑的 Codex</h2>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>需要重新登录</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：需要重新登录"
+                  class="copy-button"
+                  data-copy="b-help-1"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="b-help-1">
+请告诉我当前缺的是 SMEDC、美团管家、经营宝还是 Gmail 的登录/连接，打开对应官方页面，并说明应该使用哪个企业或发件账号。我完成后，请从原来的步骤、日期和进度继续检查。</pre>
+            </div>
+          </article>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>看不懂缺项或提示</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：看不懂缺项或提示"
+                  class="copy-button"
+                  data-copy="b-help-2"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="b-help-2">
+请把当前需要我处理的事项改写成一次一个的简单操作：在哪台电脑、打开哪个页面、用哪个账号、点哪个按钮，以及看到什么才算完成。能由你完成的文件和配置处理请直接完成，不要让我编辑代码或 JSON。</pre>
+            </div>
+          </article>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>结果不明或担心重复</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：结果不明或担心重复"
+                  class="copy-button"
+                  data-copy="b-help-3"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="b-help-3">
+先不要重复上传、发邮件或发布回复。请查询原动作的真实结果，列出已确认完成、处理中、未执行和仍未知的事项；告诉我下一步需要做什么。</pre>
+            </div>
+          </article>
+          <details>
+            <summary>日常运行需要我保持什么状态？</summary>
+            <p>
+              Mac 保持开机、联网与唤醒，Codex 保持运行，工作文件夹仍然可用。时间在 Codex
+              的自动任务中管理；门店、分组和收件人通过 SMEDC
+              的“自动任务”页面预览确认。需要改变这些内容时，可以直接让 Codex 带你操作。
+            </p>
+          </details>
+          <details>
+            <summary>有哪些任务可以选择？</summary>
+            <p>
+              每日数据采集：选择营业、菜品、店内已结账订单、平台外卖和收货单中的所需类型。评价处理：选择采集门店和渠道，发布范围另行确认。自然周周报：可先生成本地报告，邮件交付使用已允许的
+              Gmail 发件账号。三项可以分开选择。
+            </p>
+          </details>
+        </section>
       </section>
-      <section id="move">
-        <div class="section-label">路线 C · 旧电脑 → 新电脑</div>
-        <h2>按“旧机保存 → 新机准备 → 旧机暂停 → 新机接管”操作</h2>
+      <section aria-labelledby="route-c-title" class="route-panel" hidden="" id="route-c">
+        <div class="route-toolbar">
+          <span>已选择：想把定时任务从旧电脑迁到新电脑</span
+          ><button class="change-route" type="button">重新选择</button>
+        </div>
+        <div class="section-label">路线 C · 全部步骤已在本页展开</div>
+        <h2 id="route-c-title" tabindex="-1">想把定时任务从旧电脑迁到新电脑</h2>
         <p class="intro">
-          旧电脑和新电脑交替操作。每一步顶部都有电脑标记；请在标明的那台电脑发送提示词。
+          旧电脑和新电脑交替操作，每一步都标明操作位置；所需操作都按顺序列在下面。
         </p>
+        <p class="path-note">
+          旧电脑第 1–4 步 → 新电脑第 5–8 步 → 回旧电脑第 9 步 → 新电脑第 10–11 步。
+        </p>
+        <details class="route-prep">
+          <summary>开始前准备什么？</summary>
+          <aside class="ready-box">
+            <h3>先准备好</h3>
+            <ul>
+              <li>能使用 Codex 的 Mac</li>
+              <li>本企业的 SMEDC 管理员账号</li>
+              <li>有对应门店权限的美团账号</li>
+              <li>需要邮件时，可授权的 Gmail 账号</li>
+            </ul>
+            <p class="note">
+              不会写代码没有关系。提示词整段复制即可；需要登录或确认业务范围时，再按 Codex
+              的提示操作。
+            </p>
+          </aside>
+        </details>
+        <details>
+          <summary>旧电脑已经无法使用？先看恢复条件</summary>
+          <p>
+            在新电脑告诉
+            Codex：“旧电脑已经无法使用，请读取已保存的配置与记录，列出可恢复、缺失和结果未知的事项，先准备暂停任务，给我旧设备退役的确认步骤。”没有保存的本地文件不能自动找回；旧任务是否还可能运行、未知邮件是否已发出，都要明确核对后再接管。
+          </p>
+        </details>
         <ol class="steps">
           <li>
             <span class="where">旧电脑</span>
-            <h3>第一步：确认设置与记录已经保存</h3>
+            <h3>第一步：更新并验证旧电脑的 SMEDC</h3>
             <p>
-              在旧电脑的 Codex 发送下面的话。若旧流程还没纳入 SMEDC，先完成 B 路线的第一至第三步。
+              打开这台电脑的 Codex，把下面整段发送给它。它会检查核心技能、官方
+              launcher、当前连接和相关流程技能。
+            </p>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制整段，发给本步标明电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：C 第一步：更新并验证旧电脑的 SMEDC"
+                  class="copy-button"
+                  data-copy="c-prompt-1"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-prompt-1">
+请先为这台 Mac 完成 SMEDC 的版本检查和安装/更新，再进入企业设置或流程迁移。
+官方核心技能：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
+官方流程技能：https://github.com/YinXiaoyu-1998/smedc-companion-skills
+请先读取官方默认分支的最新核心技能，以它批准的精确版本更新核心 Skill 和官方 MCP/launcher，并验证当前 Codex 实际连接已经使用新版，不要只看下载目录、服务端版本或配置路径。
+对这台电脑已安装、与所选流程有关的技能逐目录比对，区分远端本次更新、本机原有但远端漏收的通用能力和真正的企业专属配置。保留原有通用能力与业务设置；有未确认的差异时，先给我中文处理方案，等我确认后再替换。还没选流程时，不要自动安装无关的业务技能。
+原任务的日程、门店、收件人和业务动作保持原安排，不启用第二套任务。正在传输或执行业务时，先核对进度再安排重连。
+如果必须退出并重新打开 Codex，请明确告诉我：完成正在进行的操作后，按 Command+Q 完全退出，再重新打开并回到这段聊天发送“继续验证 SMEDC 升级”。等我操作后继续验证，不要提前宣称升级完成。
+最后用中文列出：核心技能是否已更新、批准的 launcher 版本、当前 Codex 连接是否已生效、相关流程技能哪些已对齐/待选择/有待处理项，以及我下一步做什么。</pre>
+            </div>
+            <p class="done">
+              <strong>看到这些才继续：</strong>Codex
+              明确确认核心版本与当前连接已生效，并列清相关技能状态。等待重启、重连验证或差异处理时，先处理再继续。
+            </p>
+            <details class="step-note">
+              <summary>补充说明（需要时展开）</summary>
+              <p>
+                如需重开：先完成正在进行的操作，按 Command+Q 完全退出
+                Codex；重开后回到该聊天发送“继续验证 SMEDC
+                升级”。新电脑要单独更新，不能拿旧电脑的检查结果代替。
+              </p>
+            </details>
+          </li>
+          <li>
+            <span class="where">旧电脑</span>
+            <h3>第二步：清点任务、设置与完成记录</h3>
+            <p>
+              在旧电脑的 Codex
+              发送下面的话。即使任务已经使用新版，也让它读回核对；不需要去看其他路线。
             </p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第二步：清点任务、设置与完成记录"
                   class="copy-button"
-                  data-copy="prompt-12"
-                  aria-label="复制提示词：旧电脑 确认设置与记录已经保存"
+                  data-copy="c-prompt-2"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-12">
-我要换到另一台 Mac 执行这些自动任务。请检查当前企业设置、实际时间表、必要完成记录和未解决事项是否已完整保存到 SMEDC，并读回核对。
-如果仍是未迁入的旧流程，请先带我完成迁移预览和确认保存；不要假设新电脑能读取这台电脑的本地文件。
-此时旧任务继续按原安排运行。请告诉我新电脑能恢复什么、还缺什么，不暂停或切换任务。</pre>
+              <pre class="prompt" id="c-prompt-2">
+我要把这台旧电脑正在使用的定时任务迁到另一台 Mac。请按官方工作流技能读取实际任务、时间表、企业设置、门店、分组、允许动作、邮件身份与收件人、必要完成记录和未解决事项。
+请自动判断哪些已保存于 SMEDC、哪些仍只在旧电脑；缺少的内容按真实来源整理，不让我手工整理文件或 JSON。
+此时旧电脑保持原运行安排，不暂停、不接管，也不启用第二套任务。</pre>
+            </div>
+            <p class="done">
+              <strong>看到这些才继续：</strong>Codex
+              列出找到的流程与缺项，能区分业务设置、完成记录和结果不明的事项。
+            </p>
+          </li>
+          <li>
+            <span class="where">旧电脑</span>
+            <h3>第三步：核对迁移预览</h3>
+            <p>
+              阅读 Codex
+              提供的中文对照表，核对业务设置、时间表和必要记录。有缺项、冲突或变化时，先逐项确认。
+            </p>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
+                ><button
+                  aria-label="复制提示词：C 第三步：核对迁移预览"
+                  class="copy-button"
+                  data-copy="c-prompt-3"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-prompt-3">
+请为换机准备完整迁移预览，用中文列出原设置、已保存内容、待保存变化、缺失项和未解决事项。
+已有设置先复用并对照；没有变化的项目明确标为“无需修改，可直接复用”。有变化或缺失时展示具体处理方案，等我确认后再保存。
+保留原时间表和有依据的必要完成记录；结果不明不算成功，不因为缺记录就重发。旧电脑继续原运行安排。</pre>
             </div>
             <p class="done">
               <strong>看到这些才继续：</strong
-              >设置与记录已保存、读回结果明确；不可恢复的本地内容和未解决事项已列出。
+              >每一项变化和待决定事项都已看懂；缺失、冲突及结果不明的事项有明确处理方式。尚未确认时，不发送下一步的保存提示词。
+            </p>
+          </li>
+          <li>
+            <span class="where">旧电脑</span>
+            <h3>第四步：保存并读回换机所需内容</h3>
+            <p>确认上一步具体预览后发送。已保存且无变化的内容让 Codex 直接读回，不重复建立配置。</p>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
+                ><button
+                  aria-label="复制提示词：C 第四步：保存并读回换机所需内容"
+                  class="copy-button"
+                  data-copy="c-prompt-4"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-prompt-4">
+我已确认上一步的具体迁移预览。请保存已确认的变化和有依据的必要完成记录，再完整读回核对；原来已经保存且没有变化的内容直接复用，不重复创建或扩大授权。
+请列出新电脑能恢复的设置与记录、仍只在旧电脑的本地文件，以及未解决事项。旧电脑暂时继续原安排，新任务不启用；有不能恢复或不能保存的内容，明确告诉我。</pre>
+            </div>
+            <p class="done">
+              <strong>看到这些才继续：</strong>Codex
+              明确给出保存和完整读回结果，列出可恢复内容与未解决事项；旧任务仍按原安排运行。
             </p>
           </li>
           <li>
             <span class="where">新电脑</span>
-            <h3>第二步：安装并登录同一企业</h3>
+            <h3>第五步：更新并验证新电脑的 SMEDC</h3>
             <p>
-              先在新 Mac 完成第 0 步，再打开 Codex 聊天并粘贴下面整段。Codex
-              会先下载并用浏览器打开这份通用指南。随后打开它提供的官方 SMEDC
-              登录页，用同一企业已获授权的管理员账号登录；不用重新注册一家企业。
+              现在换到新 Mac，打开
+              Codex，把下面整段发给它。它会先准备本机指南，再完成这台电脑自己的版本检查。
+            </p>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制整段，发给本步标明电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：C 第五步：更新并验证新电脑的 SMEDC"
+                  class="copy-button"
+                  data-copy="c-prompt-5"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-prompt-5">
+如果这台新电脑还没有本指南，请先下载并用浏览器打开：
+https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guides/automation-user-guide.html
+在指南中选“把定时任务从旧电脑迁到新电脑”，从标有“新电脑”的更新步骤继续；旧电脑前面的整理和保存已经完成，不再重复。
+
+
+请先为这台 Mac 完成 SMEDC 的版本检查和安装/更新，再进入企业设置或流程迁移。
+官方核心技能：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
+官方流程技能：https://github.com/YinXiaoyu-1998/smedc-companion-skills
+请先读取官方默认分支的最新核心技能，以它批准的精确版本更新核心 Skill 和官方 MCP/launcher，并验证当前 Codex 实际连接已经使用新版，不要只看下载目录、服务端版本或配置路径。
+对这台电脑已安装、与所选流程有关的技能逐目录比对，区分远端本次更新、本机原有但远端漏收的通用能力和真正的企业专属配置。保留原有通用能力与业务设置；有未确认的差异时，先给我中文处理方案，等我确认后再替换。还没选流程时，不要自动安装无关的业务技能。
+原任务的日程、门店、收件人和业务动作保持原安排，不启用第二套任务。正在传输或执行业务时，先核对进度再安排重连。
+如果必须退出并重新打开 Codex，请明确告诉我：完成正在进行的操作后，按 Command+Q 完全退出，再重新打开并回到这段聊天发送“继续验证 SMEDC 升级”。等我操作后继续验证，不要提前宣称升级完成。
+最后用中文列出：核心技能是否已更新、批准的 launcher 版本、当前 Codex 连接是否已生效、相关流程技能哪些已对齐/待选择/有待处理项，以及我下一步做什么。</pre>
+            </div>
+            <p class="done">
+              <strong>看到这些才继续：</strong>Codex
+              明确确认核心版本与当前连接已生效，并列清相关技能状态。等待重启、重连验证或差异处理时，先处理再继续。
+            </p>
+            <details class="step-note">
+              <summary>补充说明（需要时展开）</summary>
+              <p>
+                如需重开：先完成正在进行的操作，按 Command+Q 完全退出
+                Codex；重开后回到该聊天发送“继续验证 SMEDC
+                升级”。新电脑要单独更新，不能拿旧电脑的检查结果代替。
+              </p>
+            </details>
+          </li>
+          <li>
+            <span class="where">新电脑</span>
+            <h3>第六步：登录同一企业并读取已保存内容</h3>
+            <p>
+              打开 Codex 提供的官方 SMEDC
+              登录页，用同一企业已获授权的管理员账号登录。密码和验证码只填在官方页面。
             </p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第六步：登录同一企业并读取已保存内容"
                   class="copy-button"
-                  data-copy="prompt-13"
-                  aria-label="复制提示词：新电脑 安装并登录同一企业"
+                  data-copy="c-prompt-6"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-13">
-请先把这份通用指南下载到新电脑并用浏览器打开，让我继续按步骤操作：
-https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guides/automation-user-guide.html
-
-请按照官方 SMEDC 核心技能安装指南，为这台 Mac 安装或安全更新 SMEDC，并准备我选定的自动任务。
-官方安装指南：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
-官方自动任务流程：https://github.com/YinXiaoyu-1998/smedc-companion-skills/tree/main/skills/smedc-workflows
-先检查已有安装，保留已有企业设置和其他工具。需要我登录时，请打开官方网页并告诉我该用哪个账号。请逐项带我完成，不要让我编辑代码、JSON 或隐藏文件。先保持所有新任务暂停。
-请读取这家企业已保存的自动任务设置及迁移记录，先核对企业和账号，只做新电脑准备。不要沿用旧电脑的任务编号或直接复制任务文件。</pre>
+              <pre class="prompt" id="c-prompt-6">
+请确认这台 Mac 已完成官方 SMEDC 核心技能、MCP/launcher 的更新和实际连接验证；未完成时先带我完成。
+请打开官方 SMEDC 登录页面，让我使用本企业已获授权的管理员账号登录，核对企业和当前账号角色。已有企业和业务设置直接复用，不重新创建。
+登录后告诉我本机登录与权限检查结果。先不启用任务。
+请读取旧电脑刚保存的企业设置、迁移记录和已确认结果；先核对企业和账号，只做新电脑准备。没有读到时准确列出缺项，不让我重新凭记忆填写一套。</pre>
             </div>
             <p class="done">
               <strong>看到这些才继续：</strong>企业和账号正确，Codex
@@ -1237,7 +1685,7 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
           </li>
           <li>
             <span class="where">新电脑</span>
-            <h3>第三步：重新登录美团并连接 Gmail</h3>
+            <h3>第七步：登录美团并连接所需 Gmail</h3>
             <p>
               打开新电脑上由 Codex
               提供的美团管家、经营宝官方页面，登录有相应门店权限的账号。需要发信时，在 Codex 的
@@ -1247,15 +1695,15 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第七步：登录美团并连接所需 Gmail"
                   class="copy-button"
-                  data-copy="prompt-14"
-                  aria-label="复制提示词：新电脑 重新登录美团并连接 Gmail"
+                  data-copy="c-prompt-7"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-14">
+              <pre class="prompt" id="c-prompt-7">
 请逐项检查这台 Mac 的运行环境，并一次只告诉我当前需要完成的一项操作：
 1. 打开美团管家，核对已登录账号、来源企业/集团及所选门店。
 2. 如果选择了评价任务，再打开经营宝，分别核对美团和点评的门店访问。
@@ -1271,7 +1719,7 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
           </li>
           <li>
             <span class="where">新电脑</span>
-            <h3>第四步：创建暂停任务并核对恢复结果</h3>
+            <h3>第八步：准备暂停任务并核对恢复结果</h3>
             <p>
               在 Codex 自动任务列表核对新任务仍为暂停。让 Codex
               展示设置对照，直接用门店名、邮箱和时间核对。
@@ -1280,15 +1728,15 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第八步：准备暂停任务并核对恢复结果"
                   class="copy-button"
-                  data-copy="prompt-15"
-                  aria-label="复制提示词：新电脑 创建暂停任务并核对恢复结果"
+                  data-copy="c-prompt-8"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-15">
+              <pre class="prompt" id="c-prompt-8">
 请为我选定的自动任务完成本机准备，并在 Codex 中创建或核对暂停任务。
 时间只在 Codex 管理：已有任务沿用原时间、时区、模型和推理设置；没有原时间时，结合电脑通常开机的时段给我建议，等我确认。
 请核对本机运行、独立运行聊天、北京时间、可用模型、工作文件夹和失败提示设置。模型不可用时给我可选项，不要自行更换。
@@ -1302,7 +1750,7 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
           </li>
           <li>
             <span class="where">回到旧电脑</span>
-            <h3>第五步：暂停旧任务，保存最后新增记录</h3>
+            <h3>第九步：暂停旧电脑任务并保存最后记录</h3>
             <p>
               新电脑准备通过后，回到旧电脑。在你选定的切换时段发送下面的话，并核对实际暂停结果。
             </p>
@@ -1310,15 +1758,15 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第九步：暂停旧电脑任务并保存最后记录"
                   class="copy-button"
-                  data-copy="prompt-16"
-                  aria-label="复制提示词：回到旧电脑 暂停旧任务，保存最后新增记录"
+                  data-copy="c-prompt-9"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-16">
+              <pre class="prompt" id="c-prompt-9">
 新电脑的暂停准备检查已经通过，现在开始切换。
 请核对并暂停这台旧电脑实际执行的对应任务，读回确认。核对最后在途轮次、邮件/回复等未知结果和本地锁，不强行取消后就当作未发生。
 请把准备期间最后新增的完成记录、时间表及未解决事项同步到 SMEDC，完整读回后给我清楚的切换结果。先不要从旧电脑恢复启用。</pre>
@@ -1330,21 +1778,21 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
           </li>
           <li>
             <span class="where">回到新电脑</span>
-            <h3>第六步：刷新最后记录并正式接管</h3>
-            <p>只有第五步确认完成后，才发送这一段。</p>
+            <h3>第十步：在新电脑正式接管</h3>
+            <p>只有旧电脑上一步已经确认任务实际暂停、最后新增记录已同步后，才发送下面的话。</p>
             <div class="prompt-box">
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第十步：在新电脑正式接管"
                   class="copy-button"
-                  data-copy="prompt-17"
-                  aria-label="复制提示词：回到新电脑 刷新最后记录并正式接管"
+                  data-copy="c-prompt-10"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-17">
+              <pre class="prompt" id="c-prompt-10">
 我已确认旧电脑的对应任务实际暂停，最后新增记录和未解决事项已核对保存。
 请重新读取最新设置、迁移记录和完成状态，重新检查这台新电脑的执行资格；按已确认范围正式接管并启用任务，读回实际日程和启用状态。
 原门店、分组、收件人和业务授权沿用已保存内容；不要重发已确认的邮件、重发已发布回复或重做已确认动作。若条件不足，请保持暂停并告诉我具体缺项。</pre>
@@ -1356,7 +1804,7 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
           </li>
           <li>
             <span class="where">新电脑</span>
-            <h3>第七步：检查一次真实运行</h3>
+            <h3>第十一步：在新电脑核验首轮结果</h3>
             <p>
               让 Codex 对首次运行给出逐项结果。你只需核对实际文件、报告和已授权交付是否符合预期。
             </p>
@@ -1364,15 +1812,15 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
               <div class="prompt-toolbar">
                 <span>复制下面整段，粘贴到 Codex 聊天框并发送</span
                 ><button
-                  type="button"
+                  aria-label="复制提示词：C 第十一步：在新电脑核验首轮结果"
                   class="copy-button"
-                  data-copy="prompt-18"
-                  aria-label="复制提示词：新电脑 检查一次真实运行"
+                  data-copy="c-prompt-11"
+                  type="button"
                 >
                   复制提示词
                 </button>
               </div>
-              <pre class="prompt" id="prompt-18">
+              <pre class="prompt" id="c-prompt-11">
 请在已确认的门店、日期和动作范围内验证这台新电脑的首轮运行，并报告实际结果。
 分别说明下载文件是否完整、上传是否真正完成、报告是否生成，以及已授权邮件或回复是否有核验结果。没有选择的项目标为“不适用”。
 处理中、失败、结果未知分别列出；查不清的邮件或回复不重发。告诉我本地成果保存在哪里、哪里可以查看任务状态，以及需要我处理的具体问题。</pre>
@@ -1383,98 +1831,127 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
             </p>
           </li>
         </ol>
-        <details>
-          <summary>旧电脑已经无法使用怎么办？</summary>
-          <p>
-            在新电脑告诉
-            Codex：“旧电脑已经无法使用，请读取已保存的配置与记录，列出可恢复、缺失和结果未知的事项，先准备暂停任务，给我旧设备退役的确认步骤。”没有保存的本地文件不能自动找回；旧任务是否还可能运行、未知邮件是否已发出，都要明确核对后再接管。
-          </p>
-        </details>
-      </section>
-      <section id="help">
-        <div class="section-label">遇到问题时，直接复制</div>
-        <h2>停在哪一步，就从那一步继续。</h2>
-        <article class="sheet" style="margin-top: 16px">
-          <h3>需要重新登录</h3>
-          <div class="prompt-box">
-            <div class="prompt-toolbar">
-              <span>复制给当前电脑的 Codex</span
-              ><button
-                type="button"
-                class="copy-button"
-                data-copy="prompt-19"
-                aria-label="复制提示词：需要重新登录"
-              >
-                复制提示词
-              </button>
-            </div>
-            <pre class="prompt" id="prompt-19">
+        <section class="route-help">
+          <div class="section-label">遇到问题时，直接复制</div>
+          <h2>遇到问题，直接发给当前电脑的 Codex</h2>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>需要重新登录</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：需要重新登录"
+                  class="copy-button"
+                  data-copy="c-help-1"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-help-1">
 请告诉我当前缺的是 SMEDC、美团管家、经营宝还是 Gmail 的登录/连接，打开对应官方页面，并说明应该使用哪个企业或发件账号。我完成后，请从原来的步骤、日期和进度继续检查。</pre>
-          </div>
-        </article>
-        <article class="sheet" style="margin-top: 16px">
-          <h3>看不懂缺项或提示</h3>
-          <div class="prompt-box">
-            <div class="prompt-toolbar">
-              <span>复制给当前电脑的 Codex</span
-              ><button
-                type="button"
-                class="copy-button"
-                data-copy="prompt-20"
-                aria-label="复制提示词：看不懂缺项或提示"
-              >
-                复制提示词
-              </button>
             </div>
-            <pre class="prompt" id="prompt-20">
+          </article>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>看不懂缺项或提示</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：看不懂缺项或提示"
+                  class="copy-button"
+                  data-copy="c-help-2"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-help-2">
 请把当前需要我处理的事项改写成一次一个的简单操作：在哪台电脑、打开哪个页面、用哪个账号、点哪个按钮，以及看到什么才算完成。能由你完成的文件和配置处理请直接完成，不要让我编辑代码或 JSON。</pre>
-          </div>
-        </article>
-        <article class="sheet" style="margin-top: 16px">
-          <h3>结果不明或担心重复</h3>
-          <div class="prompt-box">
-            <div class="prompt-toolbar">
-              <span>复制给当前电脑的 Codex</span
-              ><button
-                type="button"
-                class="copy-button"
-                data-copy="prompt-21"
-                aria-label="复制提示词：结果不明或担心重复"
-              >
-                复制提示词
-              </button>
             </div>
-            <pre class="prompt" id="prompt-21">
+          </article>
+          <article class="sheet" style="margin-top: 16px">
+            <h3>结果不明或担心重复</h3>
+            <div class="prompt-box">
+              <div class="prompt-toolbar">
+                <span>复制给当前电脑的 Codex</span
+                ><button
+                  aria-label="复制提示词：结果不明或担心重复"
+                  class="copy-button"
+                  data-copy="c-help-3"
+                  type="button"
+                >
+                  复制提示词
+                </button>
+              </div>
+              <pre class="prompt" id="c-help-3">
 先不要重复上传、发邮件或发布回复。请查询原动作的真实结果，列出已确认完成、处理中、未执行和仍未知的事项；告诉我下一步需要做什么。</pre>
-          </div>
-        </article>
-        <details>
-          <summary>日常运行需要我保持什么状态？</summary>
-          <p>
-            Mac 保持开机、联网与唤醒，Codex 保持运行，工作文件夹仍然可用。时间在 Codex
-            的自动任务中管理；门店、分组和收件人通过 SMEDC
-            的“自动任务”页面预览确认。需要改变这些内容时，可以直接让 Codex 带你操作。
-          </p>
-        </details>
-        <details>
-          <summary>有哪些任务可以选择？</summary>
-          <p>
-            每日数据采集：选择营业、菜品、店内已结账订单、平台外卖和收货单中的所需类型。评价处理：选择采集门店和渠道，发布范围另行确认。自然周周报：可先生成本地报告，邮件交付使用已允许的
-            Gmail 发件账号。三项可以分开选择。
-          </p>
-        </details>
+            </div>
+          </article>
+          <details>
+            <summary>日常运行需要我保持什么状态？</summary>
+            <p>
+              Mac 保持开机、联网与唤醒，Codex 保持运行，工作文件夹仍然可用。时间在 Codex
+              的自动任务中管理；门店、分组和收件人通过 SMEDC
+              的“自动任务”页面预览确认。需要改变这些内容时，可以直接让 Codex 带你操作。
+            </p>
+          </details>
+          <details>
+            <summary>有哪些任务可以选择？</summary>
+            <p>
+              每日数据采集：选择营业、菜品、店内已结账订单、平台外卖和收货单中的所需类型。评价处理：选择采集门店和渠道，发布范围另行确认。自然周周报：可先生成本地报告，邮件交付使用已允许的
+              Gmail 发件账号。三项可以分开选择。
+            </p>
+          </details>
+        </section>
       </section>
+      <p aria-live="polite" class="copy-status" id="copy-status" role="status"></p>
       <footer>
         <p>
-          SMEDC 企业资料中枢 · 通用操作指南 · 可保存到本机离线阅读。企业设置在正式 SMEDC
-          页面中保存，本页用于操作指引。
+          SMEDC 企业资料中枢 · 通用操作指南 ·
+          可保存到本机离线阅读。点击“复制提示词”后，粘贴到本步标明电脑的 Codex
+          聊天框并发送；等它完成，再看“看到这些才继续”。
         </p>
         <p>
-          更新：2026-11-02。对应已发布客户端 0.16.0 与工作流 1.0.1；准备检查与真实运行结果分别核验。
+          更新：2026-11-02。对应官方客户端 0.16.0 与工作流 1.0.1。准备检查与真实运行结果分别核验。
         </p>
       </footer>
     </main>
     <script>
+      const chooser = document.getElementById("chooser");
+      const panels = [...document.querySelectorAll(".route-panel")];
+      const routeButtons = [...document.querySelectorAll("[data-route]")];
+      function chooseRoute(key) {
+        document.getElementById("copy-status").textContent = "";
+        const selected = document.getElementById("route-" + key);
+        panels.forEach((panel) => {
+          panel.hidden = panel !== selected;
+        });
+        chooser.hidden = true;
+        routeButtons.forEach((button) =>
+          button.setAttribute("aria-expanded", String(button.dataset.route === key))
+        );
+        document.querySelector(".skip").href = "#route-" + key + "-title";
+        selected.querySelector("h2").focus({ preventScroll: true });
+        window.scrollTo({ top: 0, behavior: "auto" });
+      }
+      routeButtons.forEach((button) =>
+        button.addEventListener("click", () => chooseRoute(button.dataset.route))
+      );
+      document.querySelectorAll(".change-route").forEach((button) =>
+        button.addEventListener("click", () => {
+          panels.forEach((panel) => {
+            panel.hidden = true;
+          });
+          routeButtons.forEach((button) => button.setAttribute("aria-expanded", "false"));
+          chooser.hidden = false;
+          document.getElementById("copy-status").textContent = "";
+          document.querySelector(".skip").href = "#chooser";
+          document.getElementById("choose-title").focus({ preventScroll: true });
+          window.scrollTo({ top: 0, behavior: "auto" });
+        })
+      );
+
       document.querySelectorAll("[data-copy]").forEach((button) => {
         button.addEventListener("click", async () => {
           const target = document.getElementById(button.dataset.copy);
