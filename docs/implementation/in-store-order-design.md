@@ -1,7 +1,7 @@
 # 店内订单契约与命名迁移
 
 当前类别为 `in_store_orders`（店内订单明细），与 `takeaway_orders` 按业务类型配对。
-`order_status` 独立保存待制作、未结账、已结账、已撤单、已退单以及来源未知/空状态；结账时间和经营汇总中的结账指标保留原有含义。30 列来源及派生支付 JSON 不变，完整门店营业日包含全部状态，未结账/撤单记录允许空结账时间和 JSON null。字段及快照语义见[经营分区](structured-partitions.md)，员工操作见[店内订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)。
+`order_status` 独立保存待制作、未结账、已结账、已撤单、已退单以及来源未知/空状态；结账时间和经营汇总中的结账指标保留原有含义。30 列来源及派生支付 JSON 不变，完整性以声明来源范围内的完整门店营业日为准：日常企业工作流声明 `settled_only`；只有明确包含全部状态的完整来源才声明 `all_statuses`。历史 `legacy_unknown` 不作为新上传声明；获准的切换前兼容省略只记录未知范围，不能推断为已结账或全部状态。全部状态来源中的未结账/撤单记录允许空结账时间和 JSON null。字段及快照语义见[经营分区](structured-partitions.md)，员工操作见[店内订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)。
 
 Launcher `0.15.0` 已公开发布并独立核验。历史 `0.14.0` 使用 `settled_orders` 名称（[原始接入规格 #283](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/283)）；已核验发布与环境证据保持在 [staging 状态](staging-readiness.md)。批准安装 pin、源码推荐和正式人工验收运行器为已发布并独立核验的 `0.16.0`，不能把旧客户端当作新名称支持证明。
 

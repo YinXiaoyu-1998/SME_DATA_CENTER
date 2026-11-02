@@ -244,7 +244,13 @@ and dimension coverage plus current clearance, including for admins. Legacy/prep
 provide no fallback reads, including coverage and ZIP preparation/signing. Retained ZIP capabilities
 must still satisfy current dataset authorization before reissue.
 
-Original “店内订单明细” uploads declare complete selected store-days across 待制作/未结账/已结账/已撤单/已退单. `order_status` remains nullable source text, including unknown states; no settlement-only filtering or inferred status. Empty settlement/payment fields on unpaid rows yield empty typed values and JSON null. The server validates all 30 source
+Original “店内订单明细” uploads cover complete selected store-days within the declared `orderScope`.
+Daily enterprise workflows declare `settled_only` for complete settled-order originals; `all_statuses`
+requires an explicitly complete all-status source. Historical `legacy_unknown` is not a new-upload
+claim; permitted pre-cutover compatibility omission records unknown scope, without inferring completeness.
+`order_status` independently remains nullable source text, including 待制作/未结账/已结账/已撤单/已退单
+and unknown states. Do not infer or rewrite status from scope, payment or timestamps. Empty
+settlement/payment fields on unpaid rows in an all-status source yield empty typed values and JSON null. The server validates all 30 source
 columns, types and dates, then atomically replaces only store-days actually present; omitted days stay
 unchanged and entirely empty sources fail. All source rows and payment items retain order/multiplicity.
 The 31-column current CSV appends `结账方式JSON` to the 30 source fields; it is not a row-query dataset

@@ -300,10 +300,12 @@ same-key requests with different bytes or metadata are conflicts, not retries.
 
 ## In-Store Orders (Published, Service Gated)
 
-For 店内订单明细 (`in_store_orders`) complete store-day uploads across all order statuses,
+For 店内订单明细 (`in_store_orders`) complete store-day uploads within the declared source scope,
 independent permissions, payment JSON and local CSV downloads, read
 [in-store orders](references/in-store-orders.md) before any operation. `订单状态` retains
 待制作、未结账、已结账、已撤单、已退单 and other source text; settlement is not the dataset identity.
+Daily enterprise workflows require `orderScope: settled_only`; use `all_statuses` only for an
+explicitly complete all-status source. Historical `legacy_unknown` is not a new-upload claim.
 Launcher `0.16.0` is published, independently verified and approved for installation.
 Confirm the matching service migration and current tenant authorization before using the new name.
 

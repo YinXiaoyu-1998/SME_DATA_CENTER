@@ -22,7 +22,7 @@
 | 企业自动任务 | 版本化配置、安装归属、运行租约/动作回执及显式订单来源范围；宿主调度与业务执行属于 companion | [工作流边界](../../skills/smedc-mcp/references/enterprise-workflows.md) |
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
 
-这些能力已存在于当前源码。历史 `settled_orders` 已随 launcher `0.14.0` 发布并核验，匹配服务部署已核实。当前源码改为 `in_store_orders`，按店内订单业务类型保留全部状态，并接入 `takeaway_orders`；它们同属已公开发行并独立核验的 launcher `0.15.0`。批准安装 pin/源码推荐与正式人工验收版本为已公开发布并独立核验的 `0.16.0`。代码、客户端发布、服务迁移部署和真实企业授权分别取证；最近已验证环境见 [staging 状态](staging-readiness.md)。
+这些能力已存在于当前源码。历史 `settled_orders` 已随 launcher `0.14.0` 发布并核验，匹配服务部署已核实。当前源码改为 `in_store_orders`，在声明来源范围内按店内订单业务类型保留原始状态，并接入 `takeaway_orders`；它们同属已公开发行并独立核验的 launcher `0.15.0`。批准安装 pin/源码推荐与正式人工验收版本为已公开发布并独立核验的 `0.16.0`。代码、客户端发布、服务迁移部署和真实企业授权分别取证；最近已验证环境见 [staging 状态](staging-readiness.md)。
 
 店内订单前向命名迁移保留类别/授权/当前 CSV，旧 ZIP 请求失效后重新准备，需停止 API 写入与 worker 并协调升级；具体步骤见[店内订单入口](in-store-order-design.md)。源码交付不执行发布、远端迁移、部署或真实数据回填。
 

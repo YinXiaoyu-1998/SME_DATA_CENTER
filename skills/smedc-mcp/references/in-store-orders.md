@@ -15,21 +15,29 @@ window in `YYYYMMDD`; omit `snapshotDate`. The enterprise's configured fixed-cat
 authoritative; upload metadata cannot override it. File bytes and internal storage links stay
 inside the launcher. The default source limit is 2 GiB. Do not split or repair the source locally.
 
-The file must contain every order from the selected stores and complete business days in the
-source platform's “店内订单明细” export, including all order statuses. Multiple stores and days are supported.
-The uploader is responsible for completeness: validation checks structure, types and the declared
-window, not whether source filters omitted orders. `订单状态` independently preserves
-`待制作`, `未结账`, `已结账`, `已撤单` and `已退单`, including unpaid/cancelled/refunded rows.
-Unknown source states and empty states also remain source text/empty; do not infer state from
-payment, settlement or refund timestamps. An unpaid row may have empty/`--` settlement time
-and payment, yielding an empty typed time and JSON null. Do not submit status-filtered subsets. `business`, `dishes` and `in_store_orders`
-are independent uploads, without cross-dataset reconciliation.
+Confirm the original export's scope before uploading. Each selected store/business day must be
+complete within its declared `orderScope`: daily enterprise workflows use `settled_only` and
+complete settled-order originals; declare `all_statuses` only for an explicitly complete all-status
+source. Multiple stores and days are supported. Do not infer scope from filenames, status values
+or settlement timestamps, or rewrite original bytes to fit a declaration. `legacy_unknown` is
+historical metadata, never a new-upload claim. Only the permitted pre-cutover compatibility path
+may omit scope; that omission records unknown scope, not settled-only or all-status completeness.
+The uploader is responsible for completeness within the declared scope: validation checks
+structure, types and the declared window, not whether source filters omitted eligible orders.
 
-`upload_structured_dataset` — synthetic complete two-day original:
+`订单状态` independently preserves source text such as `待制作`, `未结账`, `已结账`, `已撤单`
+and `已退单`; a scope declaration does not rewrite it. Unknown source states and empty states
+also remain source text/empty; do not infer state from payment, settlement or refund timestamps.
+An unpaid row in an all-status source may have empty/`--` settlement time and payment, yielding
+an empty typed time and JSON null. `business`, `dishes` and `in_store_orders` are independent
+uploads, without cross-dataset reconciliation.
+
+`upload_structured_dataset` — synthetic complete two-day settled-order original:
 
 ```json
 {
   "dataset": "in_store_orders",
+  "orderScope": "settled_only",
   "enterpriseName": "合成企业",
   "startDate": "20261001",
   "endDate": "20261002",
