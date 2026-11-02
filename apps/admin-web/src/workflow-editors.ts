@@ -97,6 +97,7 @@ export const workflowEditorsSource = String.raw`
  function renderControl(parent, view) {
   parent.append(heading("control"), pair(view?.controlState || "notConfigured", "p"), pair("activateHelp", "p"));
   const type = controller.state.selected;
+  if (type === "meituan-daily-ingestion" && controller.state.drafts[type]?.datasets?.includes("in_store_orders")) parent.append(pair("activateOrderScopeHelp", "p"));
   let reason = controller.state.controlReasons[type] || ""; parent.append(field("reason", input(reason, value => { reason = value; controller.state.controlReasons[type] = value; }, 2000, true)));
   for (const [key, state] of [["activate", "active"], ["pause", "paused"], ["revokeControl", "revoked"]]) parent.append(button(key, () => { if (!reason.trim()) throw { uiKey: "invalid" }; return commit({ kind: "control", state, reason }); }, true, state === "revoked" ? "danger" : "secondary"));
  }

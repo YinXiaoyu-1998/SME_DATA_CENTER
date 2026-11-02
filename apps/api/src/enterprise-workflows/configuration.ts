@@ -292,13 +292,6 @@ export async function saveChange(
       const config = await configuration(tx, workflow);
       if (!config) fail("WORKFLOW_CONFIGURATION_REQUIRED");
       await validateConfiguration(tx, workflow, config, shared.configuration);
-      // Explicit activation alone opts the enterprise into the new upload contract.
-      await tx.enterpriseIntegration.update({
-        where: {
-          orgId_enterpriseKey: { orgId: actor.orgId, enterpriseKey: workflow.enterpriseKey }
-        },
-        data: { orderScopeRequired: true }
-      });
     }
     await tx.enterpriseWorkflow.update({
       where: { id: workflow.id },

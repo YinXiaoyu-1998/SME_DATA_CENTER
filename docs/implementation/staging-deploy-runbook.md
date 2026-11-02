@@ -50,7 +50,7 @@ GitHub staging secrets：ACR_PASSWORD、STAGING_CURSOR_SIGNING_SECRET、STAGING_
 5. 验证 loopback health/readiness、公开 health、公开 readiness 隔离和本次变更的关键边界。
 6. 用短期正式 synthetic session 执行 fixture-only 上传/索引/搜索 smoke，撤销会话并清理 run 数据；成功后记录 current-release.env。
 
-失败后发布程序恢复前一 API/worker/release-ops 镜像和 Compose。数据库迁移始终前向，任何镜像回滚均需兼容已应用 schema 和已启用授权；不兼容则按 [安全暂停流程](business-authorization-cutover.md) 阻断读取，不能恢复旧权限放行。
+失败后发布程序恢复前一 API/worker/release-ops 镜像和 Compose。所有镜像切换入口（含指定旧 tag 的部署及手动／自动回滚）均先检查目标 API/worker 的订单来源口径兼容标签；不兼容目标需先停止两项写入服务，再以当前 release-ops 只读检查企业切换标记及明确来源口径的当前分区／未结束导入任务。已切换或存在明确口径时拒绝回滚，仅重启此前运行的原容器；查询失败同样拒绝，不创建或启用原本停止的容器。仅历史 `legacy_unknown` 或尚未使用该功能时允许旧镜像回滚，不清除标记或重写历史口径。数据库迁移始终前向，任何镜像回滚均需兼容已应用 schema 和已启用授权；不兼容则按 [安全暂停流程](business-authorization-cutover.md) 阻断读取，不能恢复旧权限放行。
 
 ## 获准诊断或恢复
 
