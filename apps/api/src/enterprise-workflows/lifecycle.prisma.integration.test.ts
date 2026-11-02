@@ -252,6 +252,16 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(200);
+      expect(
+        (
+          await install({
+            kind: "record_checks",
+            installationId: "mac-a",
+            checks,
+            firstRunVerification: "verified"
+          })
+        ).statusCode
+      ).toBe(409);
       const takeover = await install({
         kind: "prepare_takeover",
         installationId: "mac-a",

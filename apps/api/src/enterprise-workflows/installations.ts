@@ -154,6 +154,22 @@ export async function installOperation(
       new Set(op.checks.map((c) => c.capability)).size !== op.checks.length
     )
       fail("WORKFLOW_SOURCE_UNAVAILABLE");
+    if (op.kind === "record_checks" && op.firstRunVerification === "verified") {
+      const verifiedRun = await tx.workflowRun.findFirst({
+        where: {
+          orgId: actor.orgId,
+          workflowId: workflow.id,
+          installationId: op.installationId,
+          configurationVersion: workflow.version,
+          integrationVersion: (await integration(tx, workflow)).version,
+          workflowPackageVersion: old.workflowPackageVersion,
+          status: "succeeded",
+          finishedAt: { not: null }
+        },
+        select: { id: true }
+      });
+      if (!verifiedRun) fail("WORKFLOW_SOURCE_UNAVAILABLE");
+    }
     if (op.kind === "set_state") {
       if (old.version !== op.expectedVersion) fail("WORKFLOW_VERSION_CONFLICT");
       if (op.state === "enabled") {
