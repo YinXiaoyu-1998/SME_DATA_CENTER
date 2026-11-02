@@ -1,5 +1,5 @@
 import { ENTERPRISE_WORKFLOW_CAPABILITY } from "@smedc/domain";
-import { migrationOperation } from "./migrations.js";
+import { migrationOperation, migrationSummaries } from "./migrations.js";
 import { actionOperation, authorizeAction } from "./actions.js";
 import { requireBinding } from "./runs.js";
 import { installOperation } from "./installations.js";
@@ -161,6 +161,7 @@ export function createEnterpriseWorkflowService(options: {
               !latest || latest.endDate.toISOString().slice(0, 10) < expectedWindow.endDate,
             pendingActions: actions.slice(0, limit),
             nextActionCursor: actions.length > limit ? actions[limit - 1]!.actionId : null,
+            ...(await migrationSummaries(tx, actor, workflow, input.migrationCursor, limit)),
             installations: await tx.workflowInstallation.findMany({
               where: { orgId: actor.orgId, workflowId: workflow.id },
               take: 100,

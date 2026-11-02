@@ -1,11 +1,25 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { LocalFileSystemStorageAdapter } from "@smedc/storage";
+import { createPrismaStructuredImportRepository } from "../structured-imports.js";
+import {
+  createPrismaProcessingWorkerRepository,
+  runWorkerOnce
+} from "../../../worker/src/worker.js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
-import { createBusinessAuthorizationRepository, createDatabaseAdapter } from "@smedc/db";
+import {
+  createBusinessAuthorizationRepository,
+  createDatabaseAdapter,
+  createPrismaStoreReviewRepository
+} from "@smedc/db";
 import { workflowCanonicalJson, type AuthenticatedEmployee } from "@smedc/domain";
 import { createOwnedIntegrationDatabase } from "../../../../scripts/test-integration-support.js";
 import { buildApiServer } from "../server.js";
+import { createStoreReviewService } from "../store-reviews.js";
 import { createEnterpriseWorkflowService } from "./service.js";
 
 describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
@@ -15,6 +29,8 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
     let prisma: PrismaClient;
     let app: ReturnType<typeof buildApiServer>;
     let testClock = new Date();
+    let storageRoot: string;
+    let storage: LocalFileSystemStorageAdapter;
     const actor: AuthenticatedEmployee = {
       id: "workflow_admin",
       orgId: "workflow_org",
@@ -68,16 +84,34 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: { orgId: actor.orgId, mode: "enabled" }
       });
       await prisma.businessEnterpriseIdentity.create({
-        data: { orgId: actor.orgId, enterpriseKey: "enterprise", enterpriseName: "Synthetic" }
+        data: { orgId: actor.orgId, enterpriseKey: "enterprise", enterpriseName: "enterprise" }
       });
       await prisma.businessStore.create({
         data: { orgId: actor.orgId, enterpriseKey: "enterprise", name: "Store A" }
       });
+      storageRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-recovery-"));
+      storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
       app = buildApiServer({
         logger: false,
+        runtimeEnv: { ...process.env, DATABASE_URL: database.databaseUrl },
+        storageAdapter: storage,
+        structuredImportRepository: createPrismaStructuredImportRepository({
+          databaseUrl: database.databaseUrl,
+          transactionTimeoutMs: 15000,
+          batchInsertSize: 500
+        }),
         cursorSigningSecret: "synthetic-test-secret",
         authenticateAccessToken: async () => actor,
-        enterpriseWorkflowService: createEnterpriseWorkflowService({ prisma, now: () => testClock })
+        enterpriseWorkflowService: createEnterpriseWorkflowService({
+          prisma,
+          now: () => testClock
+        }),
+        storeReviewService: createStoreReviewService({
+          repository: createPrismaStoreReviewRepository({
+            prisma,
+            cursorSecret: "synthetic-test-secret"
+          })
+        })
       });
       await app.ready();
     }, 60000);
@@ -85,6 +119,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       await app?.close();
       await prisma?.$disconnect();
       await database?.cleanup();
+      if (storageRoot) await rm(storageRoot, { recursive: true, force: true });
     });
     it("prepares and atomically saves immutable configuration without activating old upload paths", async () => {
       const discovered = (
@@ -467,6 +502,295 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       await prisma.employee.update({ where: { id: actor.id }, data: { role: "admin" } });
     });
 
+    it("confirms an actual uploaded delivery receipt using persisted receipt dates and scope", async () => {
+      const enterpriseKey = "receipt-enterprise";
+      await prisma.businessEnterpriseIdentity.create({
+        data: { orgId: actor.orgId, enterpriseKey, enterpriseName: enterpriseKey }
+      });
+      await prisma.businessStore.create({
+        data: { orgId: actor.orgId, enterpriseKey, name: "Store A" }
+      });
+      await prisma.businessCategory.create({
+        data: {
+          orgId: actor.orgId,
+          id: "delivery_ledger",
+          key: "delivery_ledger",
+          name: "Delivery ledger",
+          kind: "fixed",
+          confidentialityLevel: null,
+          allowGroup: false,
+          allowStore: true
+        }
+      });
+      const ledgerSelector = { ...selector, enterpriseKey };
+      let current = { version: 0, controlVersion: 0, integration: { version: 0 }, workflowId: "" };
+      const change = async (value: unknown) => {
+        const expected = {
+          expectedVersion: current.version,
+          expectedIntegrationVersion: current.integration.version,
+          expectedControlVersion: current.controlVersion
+        };
+        const preview = await call("prepare_enterprise_workflow_change", {
+          ...ledgerSelector,
+          ...expected,
+          change: value
+        });
+        expect(preview.statusCode, preview.body).toBe(200);
+        const saved = await call("save_enterprise_workflow", {
+          ...ledgerSelector,
+          ...expected,
+          previewId: preview.json().previewId,
+          confirmationDigest: preview.json().confirmationDigest
+        });
+        expect(saved.statusCode, saved.body).toBe(200);
+        current = saved.json();
+      };
+      await change({
+        kind: "configuration",
+        configuration: { ...configuration, datasets: ["delivery_ledger"] }
+      });
+      await change({
+        kind: "integration",
+        configuration: {
+          schemaVersion: 1,
+          timezone: "Asia/Shanghai",
+          sourceAccounts: [
+            {
+              product: "meituan_erp",
+              accountRef: "receipt-source",
+              displayName: "Receipt source",
+              sourceEnterpriseName: "Receipt enterprise"
+            }
+          ],
+          storeMappings: [
+            {
+              storeName: "Store A",
+              source: {
+                product: "meituan_erp",
+                channel: "erp",
+                accountRef: "receipt-source",
+                sourceStoreId: "receipt-poi",
+                sourceStoreName: "Store A"
+              }
+            }
+          ],
+          exclusions: []
+        }
+      });
+      await change({
+        kind: "authorization",
+        grant: [{ kind: "upload", datasets: ["delivery_ledger"], storeNames: ["Store A"] }],
+        revokeAuthorizationIds: []
+      });
+      await change({ kind: "control", state: "active", reason: "Synthetic receipt test" });
+      const workflowId = current.workflowId;
+      const install = (operation: unknown) =>
+        call("manage_workflow_installation", { workflowId, operation });
+      expect(
+        (
+          await install({
+            kind: "register",
+            installation: {
+              installationId: "receipt-mac",
+              deviceAlias: "Receipt Mac",
+              host: "codex",
+              platform: "macos",
+              launcherVersion: "0.16.0",
+              workflowPackageVersion: "1.0.0",
+              hostSnapshot: {
+                host: "codex",
+                platform: "macos",
+                taskId: "receipt-task",
+                projectRef: "project",
+                cron: "0 3 * * *",
+                timezone: "Asia/Shanghai",
+                model: "configured-model",
+                reasoningEffort: "high",
+                state: "paused",
+                verifiedAt: testClock.toISOString()
+              }
+            }
+          })
+        ).statusCode
+      ).toBe(200);
+      expect(
+        (
+          await install({
+            kind: "record_checks",
+            installationId: "receipt-mac",
+            checks: [
+              "configuration",
+              "permissions",
+              "workspace",
+              "dependencies",
+              "host_schedule",
+              "host_timezone",
+              "host_model",
+              "download",
+              "meituan_erp"
+            ].map((capability) => ({
+              capability,
+              status: "ready",
+              nextStep: "",
+              checkedAt: testClock.toISOString()
+            })),
+            firstRunVerification: "not_run"
+          })
+        ).statusCode
+      ).toBe(200);
+      const preview = (
+        await install({
+          kind: "prepare_takeover",
+          installationId: "receipt-mac",
+          expectedAssignmentEpoch: 0,
+          oldHostState: "paused"
+        })
+      ).json();
+      expect(
+        (
+          await install({
+            kind: "takeover",
+            installationId: "receipt-mac",
+            expectedAssignmentEpoch: 0,
+            previewId: preview.previewId,
+            confirmationDigest: preview.confirmationDigest
+          })
+        ).statusCode
+      ).toBe(200);
+      const window = (await call("get_workflow_status", { workflowId })).json().expectedWindow;
+      const started = await call("manage_workflow_run", {
+        workflowId,
+        operation: {
+          kind: "start",
+          installationId: "receipt-mac",
+          assignmentEpoch: 1,
+          expectedConfigurationVersion: current.version,
+          expectedIntegrationVersion: current.integration.version,
+          expectedControlVersion: current.controlVersion,
+          workflowPackageVersion: "1.0.0",
+          window,
+          mode: "scheduled"
+        }
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      const binding = {
+        installationId: "receipt-mac",
+        assignmentEpoch: 1,
+        controlVersion: current.controlVersion,
+        runId: started.json().runId
+      };
+      const csv = [
+        "送货单",
+        "单据号,SYNTHETIC-RECEIPT,订货机构,Store A",
+        "送货机构,Synthetic Supplier,收货日期," + window.startDate,
+        "序号,物品名称,规格型号,收货数量,收货金额",
+        "1,Synthetic item,unit,1,80",
+        "合计,,,1,80",
+        "验收人,Synthetic"
+      ].join("\n");
+      const sourceHash = createHash("sha256").update(csv).digest("hex");
+      const action = (operation: unknown) =>
+        call("record_workflow_action", { workflowId, operation });
+      const intent = {
+        actionId: "receipt-upload",
+        identity: {
+          kind: "upload",
+          dataset: "delivery_ledger",
+          storeNames: ["Store A"],
+          window,
+          sourceHash,
+          metadataHash: "b".repeat(64)
+        }
+      };
+      expect(
+        (await action({ kind: "intent", ...binding, actions: [intent] })).json().actions[0]
+          .permitted
+      ).toBe(true);
+      const boundary = "synthetic-receipt-upload";
+      const payload = [
+        ...Object.entries({
+          dataset: "delivery_ledger",
+          enterpriseName: enterpriseKey,
+          idempotencyKey: "synthetic-receipt-upload"
+        }).map(
+          ([name, value]) =>
+            `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+        ),
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="receipt.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n`
+      ].join("");
+      const uploaded = await app.inject({
+        method: "POST",
+        url: "/v1/structured/imports",
+        headers: {
+          authorization: "Bearer synthetic",
+          "content-type": `multipart/form-data; boundary=${boundary}`
+        },
+        payload
+      });
+      expect(uploaded.statusCode, uploaded.body).toBe(202);
+      const jobId = uploaded.json().importBatch.importBatchId;
+      const receipt = {
+        actionId: "receipt-upload",
+        state: "confirmed",
+        evidence: "service_status",
+        jobId,
+        verifiedAt: testClock.toISOString()
+      };
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [receipt] })).statusCode
+      ).toBe(409);
+      const worker = createPrismaProcessingWorkerRepository(database.databaseUrl);
+      try {
+        expect(
+          await runWorkerOnce({ repository: worker, storage, workerId: "receipt-worker" })
+        ).toMatchObject({ processed: true, status: "active" });
+      } finally {
+        await worker.disconnect?.();
+      }
+      const status = await app.inject({
+        method: "GET",
+        url: `/v1/structured/imports/${jobId}`,
+        headers: { authorization: "Bearer synthetic" }
+      });
+      expect(status.statusCode, status.body).toBe(200);
+      expect(status.json()).toMatchObject({
+        document: { status: "active" },
+        processing: { status: "succeeded" },
+        importBatch: { status: "applied" }
+      });
+      expect(uploaded.json().importBatch).toMatchObject({
+        startDate: window.startDate.replaceAll("-", ""),
+        endDate: window.endDate.replaceAll("-", "")
+      });
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [receipt] })).statusCode
+      ).toBe(200);
+      expect(
+        (await action({ kind: "get", actionIds: ["receipt-upload"] })).json().actions[0]
+      ).toMatchObject({ state: "confirmed", receipt });
+      const mismatched = {
+        ...intent,
+        actionId: "receipt-wrong-source",
+        identity: { ...intent.identity, sourceHash: "0".repeat(64) }
+      };
+      expect(
+        (await action({ kind: "intent", ...binding, actions: [mismatched] })).json().actions[0]
+          .permitted
+      ).toBe(true);
+      expect(
+        (
+          await action({
+            kind: "record_receipts",
+            ...binding,
+            receipts: [{ ...receipt, actionId: mismatched.actionId }]
+          })
+        ).statusCode
+      ).toBe(409);
+      expect((await action({ kind: "get", actionIds: ["receipt-upload"] })).body).not.toContain(
+        "Synthetic item"
+      );
+    });
+
     it("imports every sealed migration page and retains all 101 durable completed actions", async () => {
       await prisma.businessEnterpriseIdentity.create({
         data: {
@@ -551,13 +875,130 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           }
         ]
       };
-      const prepared = await install({ kind: "migration_preview", manifest });
+      const reviewSource = {
+        product: "meituan_reviews",
+        channel: "meituan",
+        accountRef: "migration-reviews",
+        sourceStoreId: "migration-poi",
+        sourceStoreName: "Store A"
+      };
+      const portableManifest = {
+        ...manifest,
+        integration: {
+          ...manifest.integration,
+          sourceAccounts: [
+            ...manifest.integration.sourceAccounts,
+            {
+              product: "meituan_reviews",
+              accountRef: "migration-reviews",
+              displayName: "Reviews",
+              sourceEnterpriseName: "Synthetic"
+            }
+          ],
+          storeMappings: [
+            ...manifest.integration.storeMappings,
+            { storeName: "Store A", source: reviewSource }
+          ]
+        },
+        workflows: [
+          ...manifest.workflows,
+          {
+            workflowId: "migration-weekly",
+            configuration: {
+              schemaVersion: 1,
+              type: "weekly-business-report",
+              storeNames: ["Store A"],
+              notificationPolicy: "action_required",
+              groups: [],
+              delivery: { enabled: false, recipients: [] },
+              cleanupPolicy: "retain_final_report"
+            },
+            authorizations: [],
+            hostSnapshot: { ...manifest.workflows[0]!.hostSnapshot, taskId: "old-weekly-task" },
+            completedActions: [],
+            unresolved: []
+          },
+          {
+            workflowId: "migration-reviews",
+            configuration: {
+              schemaVersion: 1,
+              type: "meituan-review-operations",
+              executionPolicy: { id: "verified-review-operations", version: 1 },
+              ignoredReviewIdentities: [],
+              storeNames: ["Store A"],
+              notificationPolicy: "action_required",
+              channels: ["meituan"],
+              publication: { enabled: false, storeNames: [] },
+              brandFacts: "Synthetic",
+              tone: "Helpful",
+              draftNotification: { enabled: false, recipients: [] },
+              cleanupPolicy: "complete_run_only"
+            },
+            authorizations: [],
+            hostSnapshot: { ...manifest.workflows[0]!.hostSnapshot, taskId: "old-review-task" },
+            completedActions: [],
+            unresolved: []
+          }
+        ]
+      };
+      const prepared = await install({ kind: "migration_preview", manifest: portableManifest });
       expect(prepared.statusCode, prepared.body).toBe(200);
       let migration = prepared.json();
-      expect((await install({ kind: "migration_preview", manifest })).json().migrationId).toBe(
-        migration.migrationId
-      );
-      const chunk = [{ workflowId, completedActions: [completion(101)], unresolved: [] }];
+      expect(
+        (await install({ kind: "migration_preview", manifest: portableManifest })).json()
+          .migrationId
+      ).toBe(migration.migrationId);
+      const recoveryItems = [
+        {
+          itemId: "pending-export",
+          kind: "business",
+          disposition: "open",
+          stage: "collecting",
+          scope: {
+            kind: "dataset",
+            dataset: "business",
+            storeNames: ["Store A"],
+            window: { startDate: "2026-01-01", endDate: "2026-01-01" }
+          }
+        },
+        {
+          itemId: "declined-backfill",
+          kind: "business",
+          disposition: "waived",
+          stage: "finished",
+          scope: {
+            kind: "dataset",
+            dataset: "business",
+            storeNames: ["Store A"],
+            window: { startDate: "2025-01-01", endDate: "2025-01-31" }
+          },
+          resolutionReason: "Administrator declined the historical backfill"
+        },
+        {
+          itemId: "missing-evidence",
+          kind: "evidence",
+          disposition: "open",
+          stage: "verifying",
+          scope: { kind: "unknown_scope", reason: "missing_local_evidence" },
+          evidenceHash: "a".repeat(64)
+        },
+        {
+          itemId: "located-report",
+          kind: "evidence",
+          disposition: "resolved",
+          stage: "finished",
+          scope: {
+            kind: "report",
+            storeNames: ["Store A"],
+            window: { startDate: "2026-01-01", endDate: "2026-01-07" }
+          },
+          evidenceRef: "central-report",
+          resolutionReason: "Located the central report"
+        }
+      ];
+      const chunk = [
+        { workflowId, completedActions: [completion(101)], unresolved: [], recoveryItems }
+      ];
       const chunkHash = createHash("sha256").update(workflowCanonicalJson(chunk)).digest("hex");
       const appended = await install({
         kind: "migration_append",
@@ -569,12 +1010,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       });
       expect(appended.statusCode, appended.body).toBe(200);
       migration = appended.json();
-      expect(migration.recordCount).toBe(101);
+      expect(migration.recordCount).toBe(105);
       const page = (
         await install({ kind: "migration_get", migrationId: migration.migrationId })
       ).json();
       expect(page.nextCursor).toBe(1);
       expect(page.chunks[0].chunk[0].completedActions).toHaveLength(100);
+      expect(page.chunks[0].chunk[0]).not.toHaveProperty("recoveryItems");
       expect(
         (
           await install({
@@ -593,7 +1035,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           migrationId: migration.migrationId,
           expectedVersion: migration.version,
           chunkCount: 2,
-          recordCount: 101,
+          recordCount: 105,
           chunksDigest: migration.chunksDigest
         })
       ).json();
@@ -611,7 +1053,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       }
       expect(migration).toMatchObject({
         stage: "imported",
-        recordCount: 101,
+        recordCount: 105,
         importedChunks: 2,
         complete: true
       });
@@ -629,6 +1071,79 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       ).json();
       expect(history.actions).toHaveLength(3);
       expect(history.actions.every((a: { state: string }) => a.state === "confirmed")).toBe(true);
+      const discovered = (await call("get_workflow_status", { workflowId, limit: 1 })).json();
+      expect(discovered.migrations).toEqual([
+        expect.objectContaining({
+          migrationId: migration.migrationId,
+          stage: "imported",
+          recordCount: 105,
+          workflowIds: expect.arrayContaining([workflowId, "migration-weekly", "migration-reviews"])
+        })
+      ]);
+      const recovered = await install({
+        kind: "migration_get",
+        migrationId: discovered.migrations[0].migrationId,
+        cursor: 1
+      });
+      expect(recovered.statusCode, recovered.body).toBe(200);
+      expect(recovered.json().chunks[0]).toMatchObject({
+        recordCount: 5,
+        chunk: [{ workflowId, recoveryItems }]
+      });
+      expect(recovered.json().nextCursor).toBeNull();
+      expect(
+        (
+          await call("record_workflow_action", {
+            workflowId,
+            operation: { kind: "get", actionIds: recoveryItems.map((item) => item.itemId) }
+          })
+        ).json().actions
+      ).toEqual([]);
+      for (const member of ["migration-weekly", "migration-reviews"]) {
+        const memberStatus = (
+          await call("get_workflow_status", { workflowId: member, limit: 1 })
+        ).json();
+        expect(memberStatus.migrations[0].migrationId).toBe(migration.migrationId);
+        const restored = await call("manage_workflow_installation", {
+          workflowId: member,
+          operation: { kind: "migration_get", migrationId: memberStatus.migrations[0].migrationId }
+        });
+        expect(restored.statusCode, restored.body).toBe(200);
+        expect(restored.json().manifest.workflows).toHaveLength(3);
+      }
+      const another = await install({
+        kind: "migration_preview",
+        manifest: {
+          ...portableManifest,
+          sourceSnapshotHash: "e".repeat(64),
+          targetVersion: state.integration.version
+        }
+      });
+      expect(another.statusCode, another.body).toBe(200);
+      const migrationFirstPage = (
+        await call("get_workflow_status", { workflowId, limit: 1 })
+      ).json();
+      expect(migrationFirstPage.migrations).toHaveLength(1);
+      expect(migrationFirstPage.nextMigrationCursor).toEqual(expect.any(String));
+      const migrationLastPage = (
+        await call("get_workflow_status", {
+          workflowId,
+          limit: 1,
+          migrationCursor: migrationFirstPage.nextMigrationCursor
+        })
+      ).json();
+      expect(migrationLastPage.migrations).toHaveLength(1);
+      expect(migrationLastPage.nextMigrationCursor).toBeNull();
+      expect(
+        [
+          migrationFirstPage.migrations[0].migrationId,
+          migrationLastPage.migrations[0].migrationId
+        ].sort()
+      ).toEqual([migration.migrationId, another.json().migrationId].sort());
+      const unrelatedWorkflow = (await call("get_enterprise_workflow", selector)).json().workflowId;
+      expect(
+        (await call("get_workflow_status", { workflowId: unrelatedWorkflow })).json().migrations
+      ).toEqual([]);
     });
     it("exposes controlled MCP reads and rejects stale roles, disabled accounts and foreign tenants", async () => {
       let rpcId = 100;
@@ -956,6 +1471,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         kind: "authorization",
         grant: [
           { kind: "review_publish", channels: ["meituan"], storeNames: ["Store A"] },
+          { kind: "review_sync", channels: ["meituan"], storeNames: ["Store A"] },
           {
             kind: "email",
             purpose: "review_drafts",
@@ -1062,6 +1578,195 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       };
       const action = (operation: unknown) =>
         call("record_workflow_action", { workflowId, operation });
+      const reviews = ["sync-feedback-1", "sync-feedback-2"].map((feedbackId) => ({
+        enterpriseName: "enterprise",
+        source: "美团评价",
+        storeName: "Store A",
+        reviewedAt: window.startDate + "T08:00:00+08:00",
+        reviewerName: feedbackId,
+        feedbackId,
+        content: "Synthetic review",
+        merchantReply: null,
+        replyStatus: "unreplied_with_content"
+      }));
+      const observedFactsHash = createHash("sha256")
+        .update(workflowCanonicalJson(reviews))
+        .digest("hex");
+      const syncIntent = {
+        actionId: "review-sync",
+        identity: {
+          kind: "review_sync",
+          storeNames: ["Store A"],
+          window,
+          source,
+          observedFactsHash
+        }
+      };
+      const sync = await action({ kind: "intent", ...binding, actions: [syncIntent] });
+      expect(sync.statusCode, sync.body).toBe(200);
+      await prisma.businessCategory.create({
+        data: {
+          orgId: actor.orgId,
+          id: "store_reviews",
+          key: "store_reviews",
+          name: "Reviews",
+          kind: "fixed",
+          confidentialityLevel: 1,
+          allowGroup: false,
+          allowStore: true
+        }
+      });
+      const businessPermissions = createBusinessAuthorizationRepository({ prisma });
+      const setReviewRead = async (enabled: boolean) =>
+        businessPermissions.configureAccount({
+          orgId: actor.orgId,
+          actorId: actor.id,
+          employeeId: actor.id,
+          expectedVersion: String(
+            (
+              await prisma.businessAuthorizationState.findUniqueOrThrow({
+                where: { orgId: actor.orgId }
+              })
+            ).version
+          ),
+          clearance: 3,
+          grants: enabled
+            ? [
+                {
+                  id: "review-read-grant",
+                  orgId: actor.orgId,
+                  enterpriseKey: "enterprise",
+                  categoryIds: ["store_reviews"],
+                  ownership: "store",
+                  stores: { kind: "fixed", values: ["Store A"] },
+                  dimensions: {}
+                }
+              ]
+            : []
+        });
+      const upsert = await app.inject({
+        method: "POST",
+        url: "/v1/store-reviews/upsert",
+        headers: { authorization: "Bearer synthetic" },
+        payload: { reviews }
+      });
+      expect(upsert.statusCode, upsert.body).toBe(200);
+      expect(upsert.json()).toMatchObject({ received: 2, inserted: 2 });
+      await setReviewRead(true);
+      let readbackRpcId = 300;
+      const queryReviews = async (cursor?: string) => {
+        const response = await app.inject({
+          method: "POST",
+          url: "/mcp",
+          remoteAddress: "127.0.0.1",
+          headers: {
+            host: "127.0.0.1:3000",
+            authorization: "Bearer synthetic",
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            "x-smedc-launcher-version": "0.16.0"
+          },
+          payload: {
+            jsonrpc: "2.0",
+            id: readbackRpcId++,
+            method: "tools/call",
+            params: {
+              name: "query_store_reviews",
+              arguments: {
+                enterpriseName: "enterprise",
+                storeNames: ["Store A"],
+                sources: ["美团评价"],
+                reviewedAtFrom: window.startDate + "T00:00:00+08:00",
+                reviewedAtTo: window.endDate + "T23:59:59+08:00",
+                limit: 1,
+                ...(cursor ? { cursor } : {})
+              }
+            }
+          }
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        expect(response.json().error, response.body).toBeUndefined();
+        expect(response.json().result.isError, response.body).not.toBe(true);
+        return JSON.parse(response.json().result.content[0].text);
+      };
+      const firstPage = await queryReviews();
+      expect(firstPage.page.nextCursor).toEqual(expect.any(String));
+      const lastPage = await queryReviews(firstPage.page.nextCursor);
+      expect(lastPage.page.nextCursor).toBeNull();
+      const resultHash = createHash("sha256")
+        .update(workflowCanonicalJson([...firstPage.rows, ...lastPage.rows]))
+        .digest("hex");
+      const syncReceipt = {
+        actionId: "review-sync",
+        state: "confirmed",
+        evidence: "smedc_readback",
+        receiptId: "review-sync-readback",
+        resultHash,
+        verifiedAt: testClock.toISOString(),
+        smedcReadback: {
+          identityHash: sync.json().actions[0].identityHash,
+          observedFactsHash,
+          resultHash,
+          observedAt: testClock.toISOString(),
+          reviewCount: 2,
+          matchedCount: 2,
+          outcome: "matched",
+          recordIds: [...firstPage.rows, ...lastPage.rows].map((r: { id: string }) => r.id)
+        }
+      };
+      expect(
+        (
+          await action({
+            kind: "record_receipts",
+            ...binding,
+            receipts: [
+              {
+                ...syncReceipt,
+                smedcReadback: { ...syncReceipt.smedcReadback, observedFactsHash: "0".repeat(64) }
+              }
+            ]
+          })
+        ).statusCode
+      ).toBe(409);
+      expect(
+        (
+          await action({
+            kind: "record_receipts",
+            ...binding,
+            receipts: [
+              {
+                ...syncReceipt,
+                smedcReadback: {
+                  ...syncReceipt.smedcReadback,
+                  recordIds: ["missing-row", syncReceipt.smedcReadback.recordIds[1]]
+                }
+              }
+            ]
+          })
+        ).statusCode
+      ).toBe(409);
+      expect(
+        (
+          await action({
+            kind: "record_receipts",
+            ...binding,
+            receipts: [
+              { ...syncReceipt, smedcReadback: { ...syncReceipt.smedcReadback, matchedCount: 1 } }
+            ]
+          })
+        ).statusCode
+      ).toBe(409);
+      await setReviewRead(false);
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [syncReceipt] })).statusCode
+      ).toBe(403);
+      await setReviewRead(true);
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [syncReceipt] })).statusCode
+      ).toBe(200);
+      expect(
+        (await action({ kind: "get", actionIds: ["review-sync"] })).json().actions[0]
+      ).toMatchObject({ state: "confirmed", receipt: syncReceipt });
       const makeIntent = (actionId: string, selected: string[], renamed = false) => ({
         actionId,
         artifactHash: "a".repeat(64),
@@ -1114,6 +1819,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       });
       expect(first.statusCode, first.body).toBe(200);
       expect(first.json().actions[0].permitted).toBe(true);
+      expect(
+        (await action({ kind: "get", actionIds: ["email-one"] })).json().actions[0]
+      ).toMatchObject({
+        ...makeIntent("email-one", recipients.slice(0, 2)),
+        identityHash: first.json().actions[0].identityHash,
+        state: "intent"
+      });
       const receipt = {
         actionId: "email-one",
         state: "confirmed",
@@ -1172,6 +1884,20 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       });
       expect(remainder.json().actions[0].permitted).toBe(true);
       await change({ kind: "control", state: "paused", reason: "Stop external actions" });
+      const lateReceipt = {
+        ...receipt,
+        actionId: "email-remainder",
+        receiptId: "gmail-late-receipt",
+        providerReadback: {
+          ...proof,
+          identityHash: remainder.json().actions[0].identityHash,
+          correlationMarker: "email-remainder",
+          providerReceiptId: "gmail-late-receipt"
+        }
+      };
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [lateReceipt] })).statusCode
+      ).toBe(200);
       expect(
         (
           await action({
@@ -1326,7 +2052,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         orgId: actor.orgId,
         actorId: actor.id,
         employeeId: actor.id,
-        expectedVersion: "0",
+        expectedVersion: String(
+          (
+            await prisma.businessAuthorizationState.findUniqueOrThrow({
+              where: { orgId: actor.orgId }
+            })
+          ).version
+        ),
         clearance: 3,
         grants: [
           {
@@ -1418,7 +2150,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         orgId: actor.orgId,
         actorId: actor.id,
         employeeId: actor.id,
-        expectedVersion: "1",
+        expectedVersion: String(
+          (
+            await prisma.businessAuthorizationState.findUniqueOrThrow({
+              where: { orgId: actor.orgId }
+            })
+          ).version
+        ),
         clearance: 3,
         grants: []
       });

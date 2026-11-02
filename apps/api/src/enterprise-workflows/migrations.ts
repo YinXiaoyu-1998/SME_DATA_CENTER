@@ -32,7 +32,10 @@ const targetsSchema = z.array(
     .strict()
 );
 const records = (chunk: WorkflowMigrationChunk) =>
-  chunk.reduce((n, w) => n + w.completedActions.length + w.unresolved.length, 0);
+  chunk.reduce(
+    (n, w) => n + w.completedActions.length + w.unresolved.length + (w.recoveryItems?.length ?? 0),
+    0
+  );
 const digestStart = "0".repeat(64);
 const nextDigest = (previous: string, sequence: number, digest: string, count: number) =>
   hash([previous, sequence, digest, count]);
@@ -43,10 +46,58 @@ const migrationView = (row: { id: string; manifest: unknown; [key: string]: unkn
     migrationId: row.id,
     manifest: {
       ...manifest,
-      workflows: manifest.workflows.map((w) => ({ ...w, completedActions: [], unresolved: [] }))
+      workflows: manifest.workflows.map((w) => ({
+        ...w,
+        completedActions: [],
+        unresolved: [],
+        ...(w.recoveryItems !== undefined ? { recoveryItems: [] } : {})
+      }))
     }
   };
 };
+export async function migrationSummaries(
+  tx: Tx,
+  actor: Actor,
+  workflow: Workflow,
+  cursor: string | undefined,
+  limit: number
+) {
+  // Apply tenant, enterprise and complete manifest membership before the page limit.
+  // Select only bounded metadata; configuration/history lives in migration_get pages.
+  const rows = await tx.workflowMigration.findMany({
+    where: {
+      orgId: actor.orgId,
+      enterpriseKey: workflow.enterpriseKey,
+      manifest: { path: "$.workflows[*].workflowId", array_contains: workflow.id },
+      ...(cursor ? { id: { lt: cursor } } : {})
+    },
+    orderBy: { id: "desc" },
+    take: limit + 1,
+    select: {
+      id: true,
+      stage: true,
+      version: true,
+      sourceSnapshotHash: true,
+      targetVersion: true,
+      chunkCount: true,
+      recordCount: true,
+      chunksDigest: true,
+      validatedChunks: true,
+      importedChunks: true,
+      targetVersions: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  });
+  return {
+    migrations: rows.slice(0, limit).map(({ id, targetVersions, ...metadata }) => ({
+      migrationId: id,
+      ...metadata,
+      workflowIds: targetsSchema.parse(targetVersions).map((item) => item.workflowId)
+    })),
+    nextMigrationCursor: rows.length > limit ? rows[limit - 1]!.id : null
+  };
+}
 export async function migrationOperation(
   tx: Tx,
   actor: Actor,
@@ -124,7 +175,8 @@ export async function migrationOperation(
       manifest.workflows.map((w) => ({
         workflowId: w.workflowId,
         completedActions: w.completedActions,
-        unresolved: w.unresolved
+        unresolved: w.unresolved,
+        ...(w.recoveryItems !== undefined ? { recoveryItems: w.recoveryItems } : {})
       }))
     );
     const chunkHash = hash(chunk);
@@ -175,6 +227,8 @@ export async function migrationOperation(
   });
   if (!row) fail("WORKFLOW_CONFIGURATION_REQUIRED");
   const manifest = workflowMigrationManifestSchema.parse(row.manifest);
+  if (!manifest.workflows.some((item) => item.workflowId === workflow.id))
+    fail("WORKFLOW_CONFIGURATION_REQUIRED");
   const targets = targetsSchema.parse(row.targetVersions);
   if (op.kind === "migration_get") {
     const cursor = op.cursor ?? 0;
@@ -190,6 +244,7 @@ export async function migrationOperation(
         sequence: c.sequence,
         chunk: workflowMigrationChunkSchema.parse(c.payload),
         chunkHash: c.digest,
+        recordCount: c.recordCount,
         importedAt: c.importedAt
       })),
       nextCursor: chunks.length > limit ? chunks[limit]!.sequence : null
