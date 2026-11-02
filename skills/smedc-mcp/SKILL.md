@@ -5,6 +5,7 @@ description: >-
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
   用户要求更新 smedc-mcp 或 smedc-mcp-skill 这个 skill 时也使用本技能。
   用户询问 SMEDC 的配套分析、报表或扩展 skill 时也使用本技能。
+  安装 SMEDC、选择企业自动任务或换电脑恢复工作流时也使用本技能。
   企业入驻资料准备、新账号业务授权与管理员 MCP 权限配置时也使用本技能；不负责创建组织、账号或处理密码。
   Also use when users ask about optional SMEDC analysis, reporting, or extension skills.
   Also covers updating this skill from its official GitHub source and installing, configuring,
@@ -88,6 +89,15 @@ Or Update using the
 newly verified exact pin. Never derive a new approved pin from server metadata alone. A general
 SMEDC update includes both the skill and launcher; finish the required
 [upgrade, restart, and cleanup procedure](references/upgrade-cleanup.md) before reporting success.
+
+## Optional Enterprise Workflows
+
+For first-time setup, optional automatic tasks, paused workflow recovery or another computer, read
+[enterprise workflow setup and release checks](references/enterprise-workflows.md). Introduce the
+three independently selectable workflows and report their status; basic SMEDC installation does
+not silently install them or create tasks. The companion owns their versioned runtime and complete
+private migration. Keep the approved launcher pin above until a new publication is independently
+verified; a workflow minimum compatibility version is not an installation approval.
 
 ## Optional Companion Skills
 
