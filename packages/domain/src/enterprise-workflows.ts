@@ -603,7 +603,13 @@ export const workflowActionIntentSchema = z
     artifactHash: workflowHashSchema.optional(),
     correlationMarker: workflowIdSchema.optional()
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) =>
+      !["email", "review_publish"].includes(v.identity.kind) ||
+      (v.artifactHash !== undefined && v.correlationMarker !== undefined),
+    "External publication and email require artifactHash and correlationMarker."
+  );
 export const workflowActionReceiptSchema = z
   .object({
     actionId: workflowIdSchema,
@@ -612,6 +618,7 @@ export const workflowActionReceiptSchema = z
       "service_status",
       "launcher_transfer",
       "provider_readback",
+      "smedc_readback",
       "manual_resolution",
       "request_rejected",
       "transport_unknown"
@@ -636,6 +643,23 @@ export const workflowActionReceiptSchema = z
       })
       .strict()
       .optional(),
+    smedcReadback: z
+      .object({
+        identityHash: workflowHashSchema,
+        observedFactsHash: workflowHashSchema,
+        resultHash: workflowHashSchema,
+        recordIds: z
+          .array(workflowIdSchema)
+          .min(1)
+          .max(1000)
+          .refine((ids) => new Set(ids).size === ids.length, "Readback identities must be unique."),
+        observedAt: z.iso.datetime(),
+        outcome: z.literal("matched"),
+        reviewCount: z.number().int().positive().max(1000),
+        matchedCount: z.number().int().positive().max(1000)
+      })
+      .strict()
+      .optional(),
     providerReadback: z
       .object({
         identityHash: workflowHashSchema,
@@ -652,9 +676,13 @@ export const workflowActionReceiptSchema = z
   .superRefine((v, c) => {
     if (
       v.state === "confirmed" &&
-      (!["service_status", "launcher_transfer", "provider_readback", "manual_resolution"].includes(
-        v.evidence
-      ) ||
+      (![
+        "service_status",
+        "launcher_transfer",
+        "provider_readback",
+        "smedc_readback",
+        "manual_resolution"
+      ].includes(v.evidence) ||
         (!v.receiptId && !v.jobId))
     )
       c.addIssue({
@@ -715,6 +743,53 @@ export const WORKFLOW_MIGRATION_STAGES = [
   "host_switched",
   "verified"
 ] as const;
+// Portable work/evidence metadata never grants execution or claims an external action succeeded.
+export const workflowRecoveryItemSchema = z
+  .object({
+    itemId: workflowIdSchema,
+    kind: z.enum(["business", "evidence"]),
+    disposition: z.enum(["open", "waived", "resolved"]),
+    stage: z.enum(WORKFLOW_RUN_PHASES),
+    scope: z.discriminatedUnion("kind", [
+      z
+        .object({ kind: z.literal("dataset"), dataset: z.enum(WORKFLOW_DATASETS), ...actionScope })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("reviews"),
+          source: workflowReviewSourceIdentitySchema,
+          storeName: workflowNameSchema,
+          window: workflowDateRangeSchema,
+          feedbackId: workflowNameSchema.optional()
+        })
+        .strict(),
+      z.object({ kind: z.literal("report"), ...actionScope }).strict(),
+      z
+        .object({
+          kind: z.literal("unknown_scope"),
+          reason: z.enum([
+            "scope_not_preserved",
+            "missing_local_evidence",
+            "ambiguous_source_identity"
+          ])
+        })
+        .strict()
+    ]),
+    evidenceRef: workflowIdSchema.optional(),
+    evidenceHash: workflowHashSchema.optional(),
+    resolutionReason: z
+      .string()
+      .min(1)
+      .max(2000)
+      .refine((value) => value.trim().length > 0)
+      .optional()
+  })
+  .strict()
+  .refine(
+    (v) => v.disposition === "open" || v.resolutionReason !== undefined,
+    "Waived or resolved recovery items require an explicit reason."
+  );
+export type WorkflowRecoveryItem = z.infer<typeof workflowRecoveryItemSchema>;
 export const workflowMigrationManifestSchema = z
   .object({
     sourceSnapshotHash: workflowHashSchema,
@@ -744,6 +819,14 @@ export const workflowMigrationManifestSchema = z
                   )
               )
               .max(WORKFLOW_LIMITS.summaryItems),
+            recoveryItems: z
+              .array(workflowRecoveryItemSchema)
+              .max(WORKFLOW_LIMITS.summaryItems)
+              .refine(
+                (items) => new Set(items.map((item) => item.itemId)).size === items.length,
+                "Recovery item IDs must be unique within a page."
+              )
+              .optional(),
             unresolved: z
               .array(
                 z
@@ -782,13 +865,18 @@ export const workflowMigrationManifestSchema = z
     (v) =>
       new Set(v.workflows.map((w) => w.configuration.type)).size === v.workflows.length &&
       v.workflows.reduce(
-        (count, workflow) => count + workflow.completedActions.length + workflow.unresolved.length,
+        (count, workflow) =>
+          count +
+          workflow.completedActions.length +
+          workflow.unresolved.length +
+          (workflow.recoveryItems?.length ?? 0),
         0
       ) <= WORKFLOW_LIMITS.summaryItems &&
       workflowPayloadFits(
         v.workflows.map((w) => ({
           completedActions: w.completedActions,
-          unresolved: w.unresolved
+          unresolved: w.unresolved,
+          ...(w.recoveryItems !== undefined ? { recoveryItems: w.recoveryItems } : {})
         })),
         WORKFLOW_LIMITS.summaryBytes
       ) &&
@@ -815,7 +903,8 @@ export const workflowMigrationChunkSchema = z
     workflowMigrationManifestSchema.shape.workflows.element.pick({
       workflowId: true,
       completedActions: true,
-      unresolved: true
+      unresolved: true,
+      recoveryItems: true
     })
   )
   .min(1)
@@ -823,8 +912,11 @@ export const workflowMigrationChunkSchema = z
   .refine(
     (v) =>
       new Set(v.map((w) => w.workflowId)).size === v.length &&
-      v.reduce((n, w) => n + w.completedActions.length + w.unresolved.length, 0) <=
-        WORKFLOW_LIMITS.summaryItems &&
+      v.reduce(
+        (n, w) =>
+          n + w.completedActions.length + w.unresolved.length + (w.recoveryItems?.length ?? 0),
+        0
+      ) <= WORKFLOW_LIMITS.summaryItems &&
       workflowPayloadFits(v, WORKFLOW_LIMITS.summaryBytes),
     "Migration page exceeds limits or repeats workflow IDs."
   );

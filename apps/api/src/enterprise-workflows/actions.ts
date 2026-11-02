@@ -26,6 +26,36 @@ import {
 } from "./repository.js";
 import { requireBinding } from "./runs.js";
 import { getInstallation } from "./installations.js";
+// Match business-analysis build_query_plan.py daily_history, including completed
+// calendar months and Feb29 clamping when comparing the previous calendar year.
+function weeklyBusinessHistoryWindow(endDate: string) {
+  const end = new Date(endDate + "T00:00:00Z");
+  const daysBefore = (days: number) => new Date(end.getTime() - days * 86400000);
+  const previousYear = (value: Date) => {
+    const result = new Date(value);
+    const month = result.getUTCMonth();
+    result.setUTCFullYear(result.getUTCFullYear() - 1);
+    if (result.getUTCMonth() !== month) result.setUTCDate(0);
+    return result;
+  };
+  const lastMonthEnd = new Date(end);
+  lastMonthEnd.setUTCMonth(lastMonthEnd.getUTCMonth() + 1, 0);
+  if (end.getTime() !== lastMonthEnd.getTime()) {
+    lastMonthEnd.setUTCMonth(lastMonthEnd.getUTCMonth(), 0);
+  }
+  const monthlyTrendStart = new Date(lastMonthEnd);
+  monthlyTrendStart.setUTCDate(1);
+  monthlyTrendStart.setUTCMonth(monthlyTrendStart.getUTCMonth() - 11);
+  const earliest = Math.min(
+    ...[
+      daysBefore(363),
+      daysBefore(727),
+      previousYear(daysBefore(364)),
+      previousYear(monthlyTrendStart)
+    ].map((date) => date.getTime())
+  );
+  return { startDate: new Date(earliest).toISOString().slice(0, 10), endDate };
+}
 export function deduplicationKeys(
   identity: WorkflowActionIdentity,
   readBinding?: { runId: string; actionId: string }
@@ -122,17 +152,20 @@ export async function authorizeAction(
     (identity.window.startDate < snapshot.window.startDate ||
       identity.window.endDate > snapshot.window.endDate)
   ) {
-    // Reports also fetch the previous week and aligned previous-year dates.
+    // Only business history expands for weekly trends; other reads keep comparison windows.
     if (identity.kind !== "download" || config.type !== "weekly-business-report")
       fail("WORKFLOW_PERMISSION_DENIED");
-    const allowed = [0, -7, -364].map((offset) => ({
-      startDate: new Date(Date.parse(snapshot.window.startDate) + offset * 86400000)
-        .toISOString()
-        .slice(0, 10),
-      endDate: new Date(Date.parse(snapshot.window.endDate) + offset * 86400000)
-        .toISOString()
-        .slice(0, 10)
-    }));
+    const allowed =
+      identity.dataset === "business"
+        ? [weeklyBusinessHistoryWindow(snapshot.window.endDate)]
+        : [0, -7, -364].map((offset) => ({
+            startDate: new Date(Date.parse(snapshot.window.startDate) + offset * 86400000)
+              .toISOString()
+              .slice(0, 10),
+            endDate: new Date(Date.parse(snapshot.window.endDate) + offset * 86400000)
+              .toISOString()
+              .slice(0, 10)
+          }));
     if (
       !allowed.some(
         (w) => identity.window.startDate >= w.startDate && identity.window.endDate <= w.endDate
@@ -351,10 +384,43 @@ async function verifyServiceReceipt(
       if (
         !batch ||
         batch.sourceDocument.checksumSha256 !== identity.sourceHash ||
-        !batch.startDate ||
-        !batch.endDate ||
-        batch.startDate.toISOString().slice(0, 10) !== identity.window.startDate ||
-        batch.endDate.toISOString().slice(0, 10) !== identity.window.endDate
+        !batch.appliedAt ||
+        batch.archivedAt ||
+        !batch.naturalKey ||
+        batch.sourceDocument.status !== "active" ||
+        batch.sourceDocument.archivedAt
+      )
+        fail("WORKFLOW_ACTION_UNKNOWN");
+      // Receipt uploads derive dates from their original file, not caller date metadata.
+      // Inspect only aggregate facts from the authoritative published receipt rows.
+      const [facts] = await tx.$queryRaw<
+        Array<{
+          rowCount: bigint;
+          invalidCount: bigint;
+          firstDate: string | null;
+          lastDate: string | null;
+        }>
+      >`
+        SELECT COUNT(*) AS rowCount,
+          COALESCE(SUM(CASE WHEN
+            JSON_UNQUOTE(JSON_EXTRACT(payload, '$.store_name')) IS NULL OR
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.store_name')) AS BINARY) NOT IN (${Prisma.join(identity.storeNames)}) OR
+            JSON_UNQUOTE(JSON_EXTRACT(payload, '$.receipt_id')) IS NULL OR
+            CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.receipt_id')) AS BINARY) <> CAST(${batch.naturalKey} AS BINARY) OR
+            JSON_UNQUOTE(JSON_EXTRACT(payload, '$.purchase_date')) IS NULL
+            THEN 1 ELSE 0 END), 0) AS invalidCount,
+          MIN(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.purchase_date'))) AS firstDate,
+          MAX(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.purchase_date'))) AS lastDate
+        FROM delivery_ledger_rows
+        WHERE org_id = ${actor.orgId} AND import_batch_id = ${batch.id} AND source_document_id = ${batch.sourceDocumentId}
+      `;
+      if (
+        !facts ||
+        Number(facts.rowCount) !== batch.appliedRowCount ||
+        Number(facts.rowCount) < 1 ||
+        Number(facts.invalidCount) !== 0 ||
+        facts.firstDate !== identity.window.startDate ||
+        facts.lastDate !== identity.window.endDate
       )
         fail("WORKFLOW_ACTION_UNKNOWN");
       const resources = await tx.businessResource.findMany({
@@ -438,6 +504,9 @@ export async function actionOperation(
         runId: a.runId,
         state: a.state,
         identity: workflowActionIdentitySchema.parse(a.identity),
+        identityHash: hash(a.identity),
+        artifactHash: a.artifactHash,
+        correlationMarker: a.correlationMarker,
         receipt: a.receipt ? workflowActionReceiptSchema.parse(a.receipt) : null
       }))
     };
@@ -570,11 +639,79 @@ export async function actionOperation(
           fail("WORKFLOW_ACTION_UNKNOWN");
       }
     }
+    if (receipt.evidence === "smedc_readback") {
+      const proof = receipt.smedcReadback;
+      if (
+        identity.kind !== "review_sync" ||
+        receipt.state !== "confirmed" ||
+        !proof ||
+        proof.identityHash !== hash(action.identity) ||
+        proof.observedFactsHash !== identity.observedFactsHash ||
+        proof.resultHash !== receipt.resultHash ||
+        proof.observedAt !== receipt.verifiedAt ||
+        Date.parse(proof.observedAt) < action.createdAt.getTime() - 60000 ||
+        Date.parse(proof.observedAt) > now.getTime() + 60000 ||
+        proof.reviewCount !== proof.matchedCount ||
+        proof.reviewCount !== proof.recordIds.length
+      )
+        fail("WORKFLOW_ACTION_UNKNOWN");
+      requireRead(auth, workflow, identity.storeNames, ["store_reviews"]);
+      // Verify the bounded row identities and current permissions. Full field comparison and
+      // source-account/POI namespace binding remain authenticated client attestations.
+      const rows = await tx.storeReview.findMany({
+        where: {
+          orgId: actor.orgId,
+          enterpriseKey: workflow.enterpriseKey,
+          id: { in: proof.recordIds },
+          storeName: { in: identity.storeNames },
+          source: identity.source.channel === "meituan" ? "美团评价" : "点评评价",
+          reviewedAt: {
+            gte: new Date(identity.window.startDate + "T00:00:00+08:00"),
+            lte: new Date(identity.window.endDate + "T23:59:59.999+08:00")
+          }
+        },
+        select: { id: true, enterpriseKey: true, storeName: true, source: true }
+      });
+      const requestedIds = new Set(proof.recordIds);
+      if (
+        rows.length !== proof.recordIds.length ||
+        rows.some(
+          (row) =>
+            !requestedIds.has(row.id) ||
+            row.enterpriseKey !== workflow.enterpriseKey ||
+            !identity.storeNames.includes(row.storeName) ||
+            row.source !== (identity.source.channel === "meituan" ? "美团评价" : "点评评价")
+        )
+      )
+        fail("WORKFLOW_ACTION_UNKNOWN");
+      const rowStores = new Map(rows.map((row) => [`store-review:${row.id}`, row.storeName]));
+      const resources = await tx.businessResource.findMany({
+        where: {
+          orgId: actor.orgId,
+          kind: "store_review",
+          valid: true,
+          categoryId: auth.categories.find((category) => category.key === "store_reviews")!.id,
+          resourceKey: { in: rows.map((row) => `store-review:${row.id}`) }
+        },
+        include: { scopes: true }
+      });
+      if (
+        resources.length !== rows.length ||
+        resources.some(
+          (resource) =>
+            resource.scopes.length !== 1 ||
+            resource.scopes[0]!.enterpriseKey !== workflow.enterpriseKey ||
+            resource.scopes[0]!.ownership !== "store" ||
+            resource.scopes[0]!.storeName !== rowStores.get(resource.resourceKey)
+        )
+      )
+        fail("WORKFLOW_ACTION_UNKNOWN");
+    }
     if (receipt.evidence === "provider_readback") {
       const proof = receipt.providerReadback;
       if (
         !proof ||
-        !["email", "review_publish", "review_sync"].includes(identity.kind) ||
+        !["email", "review_publish"].includes(identity.kind) ||
         proof.identityHash !== hash(action.identity) ||
         proof.artifactHash !== action.artifactHash ||
         proof.correlationMarker !== action.correlationMarker ||
@@ -622,7 +759,9 @@ export async function actionOperation(
           ? "client_provider_readback"
           : receipt.evidence === "launcher_transfer"
             ? "client_launcher_transfer"
-            : receipt.evidence,
+            : receipt.evidence === "smedc_readback"
+              ? "client_smedc_readback"
+              : receipt.evidence,
       ...(receipt.reason ? { reason: receipt.reason } : {})
     });
   }

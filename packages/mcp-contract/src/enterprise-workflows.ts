@@ -192,6 +192,7 @@ const actionOperation = z.discriminatedUnion("kind", [
             "service_status",
             "launcher_transfer",
             "provider_readback",
+            "smedc_readback",
             "manual_resolution"
           ].includes(v.evidence),
         "Unknown actions require trusted readback or audited manual resolution."
@@ -238,7 +239,8 @@ export const WORKFLOW_MCP_INPUT_SCHEMAS = {
       runId: workflowIdSchema.optional(),
       limit: z.number().int().min(1).max(100).optional(),
       cursor: workflowIdSchema.optional(),
-      actionCursor: workflowIdSchema.optional()
+      actionCursor: workflowIdSchema.optional(),
+      migrationCursor: workflowIdSchema.optional()
     })
     .strict()
 } as const;
