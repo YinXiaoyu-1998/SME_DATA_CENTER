@@ -41,6 +41,11 @@ server previews plus expected configuration/integration/control versions. Read t
 schemas; do not invent operations or arbitrary payload fields. The companion owns the bounded
 installation, lease, action, recovery and migration recipes.
 
+Host task IDs are local to each computer. An explicit same-computer migration updates the existing
+task ID and verifies its readback; another computer uses IDs returned by its own host, never an old
+ID as an update target. Migration stages rely on the assigned installation, advanced assignment
+epoch and fresh host readback, not a different task ID. First-run verification remains required.
+
 Shared mapping previews identify affected task types and stores; a dependent configuration change
 requires a fresh preview. After pause/reactivation or explicit takeover, resume the original run ID
 with the current verified assignment/control binding returned by the service. Its original window
