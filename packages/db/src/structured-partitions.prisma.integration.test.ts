@@ -17,6 +17,7 @@ const employeeId = "partition_repo_employee";
 suite("structured partition repository", () => {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const repository = createPrismaStructuredPartitionRepository({ prisma });
+  const leases = new Map<string, { runId: string; workerId: string; attemptNumber: number }>();
 
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Partition Repository Test" } });
@@ -59,6 +60,7 @@ suite("structured partition repository", () => {
     await repository.publishSourceAtomically({
       orgId,
       jobId: "pjob_one",
+      lease: leases.get("pjob_one")!,
       totalRowCount: 3n,
       candidates: [first]
     });
@@ -74,6 +76,7 @@ suite("structured partition repository", () => {
     await repository.publishSourceAtomically({
       orgId,
       jobId: "pjob_two",
+      lease: leases.get("pjob_two")!,
       totalRowCount: 3n,
       candidates: [sameBytes]
     });
@@ -114,6 +117,7 @@ suite("structured partition repository", () => {
       repository.publishSourceAtomically({
         orgId,
         jobId: "pjob_rollback",
+        lease: leases.get("pjob_rollback")!,
         totalRowCount: 6n,
         candidates: conflicting
       })
@@ -136,6 +140,7 @@ suite("structured partition repository", () => {
     await repository.publishSourceAtomically({
       orgId,
       jobId: "pjob_literal_scope",
+      lease: leases.get("pjob_literal_scope")!,
       totalRowCount: BigInt(stores.length * 3),
       candidates: stores.map((store, i) =>
         candidate({
@@ -327,6 +332,67 @@ suite("structured partition repository", () => {
     ).toBe(false);
   });
 
+  it("fences publication and terminal rejection against the current worker attempt", async () => {
+    await createProcessingJob("lease_fence");
+    const jobId = "pjob_lease_fence";
+    const run = await prisma.processingRun.update({
+      where: { partitionImportJobId: jobId },
+      data: {
+        status: "running",
+        lockedBy: "new-worker",
+        attemptNumber: 2,
+        lockedUntil: new Date(Date.now() + 60_000)
+      }
+    });
+    const staleLease = { runId: run.id, workerId: "old-worker", attemptNumber: 1 };
+    const value = candidate({
+      id: "part_lease_fence",
+      storeKey: "lease-fence",
+      businessDate: "2026-09-09",
+      merchantId: "lease-fence",
+      objectKey: `structured-partitions/${orgId}/${jobId}/lease.csv`
+    });
+    const publication = { orgId, jobId, totalRowCount: 3n, candidates: [value], lease: staleLease };
+    await expect(repository.publishSourceAtomically(publication)).rejects.toMatchObject({
+      code: "PROCESSING_LEASE_LOST"
+    });
+    await expect(
+      repository.finishJob({ orgId, jobId, status: "rejected", lease: staleLease })
+    ).rejects.toMatchObject({ code: "PROCESSING_LEASE_LOST" });
+    expect((await repository.findJobForStatus(orgId, jobId))?.status).toBe("processing");
+    const manifest = () =>
+      repository.listReadableManifestRows({
+        orgId,
+        clearance: 3,
+        dataset: "business",
+        enterpriseKey: "synthetic",
+        startDate: "2026-09-09",
+        endDate: "2026-09-09",
+        storeIds: ["lease-fence"],
+        maxPartitions: 10
+      });
+    expect(await manifest()).toHaveLength(0);
+    const currentLease = { runId: run.id, workerId: "new-worker", attemptNumber: 2 };
+    await prisma.processingRun.update({
+      where: { id: run.id },
+      data: { lockedUntil: new Date(Date.now() - 1000) }
+    });
+    await expect(
+      repository.publishSourceAtomically({ ...publication, lease: currentLease })
+    ).rejects.toMatchObject({ code: "PROCESSING_LEASE_LOST" });
+    await expect(
+      repository.finishJob({ orgId, jobId, status: "rejected", lease: currentLease })
+    ).rejects.toMatchObject({ code: "PROCESSING_LEASE_LOST" });
+    expect((await repository.findJobForStatus(orgId, jobId))?.status).toBe("processing");
+    await prisma.processingRun.update({
+      where: { id: run.id },
+      data: { lockedUntil: new Date(Date.now() + 60_000) }
+    });
+    await repository.publishSourceAtomically({ ...publication, lease: currentLease });
+    expect((await repository.findJobForStatus(orgId, jobId))?.status).toBe("published");
+    expect(await manifest()).toHaveLength(1);
+  });
+
   async function createProcessingJob(suffix: string) {
     const jobId = `pjob_${suffix}`;
     await repository.reserveUpload({
@@ -355,6 +421,16 @@ suite("structured partition repository", () => {
       temporaryObjectKey: `structured-import-staging/${orgId}/${jobId}/source`
     });
     expect(await repository.markJobProcessing(orgId, jobId)).toBe(true);
+    const run = await prisma.processingRun.update({
+      where: { partitionImportJobId: jobId },
+      data: {
+        status: "running",
+        lockedBy: "fixture-worker",
+        attemptNumber: 1,
+        lockedUntil: new Date(Date.now() + 120_000)
+      }
+    });
+    leases.set(jobId, { runId: run.id, workerId: "fixture-worker", attemptNumber: 1 });
   }
 });
 

@@ -501,6 +501,7 @@ model PartitionImportJob {
 }
 
 model StructuredPartition {
+  version Int @default(1) @db.UnsignedInt
   orderScope OrderScope? @map("order_scope")
   id                   String           @id @db.VarChar(32)
   orgId                String           @map("org_id") @db.VarChar(64)
@@ -1658,4 +1659,24 @@ model WorkflowMigrationChunk {
   migration WorkflowMigration @relation(fields: [migrationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   @@id([orgId, migrationId, sequence])
   @@map("workflow_migration_chunks")
+}
+
+model OrderScopeTransitionPreview {
+  id String @id @db.VarChar(32)
+  orgId String @map("org_id") @db.VarChar(64)
+  actorId String @map("actor_id") @db.VarChar(32)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(191)
+  enterpriseName String @map("enterprise_name") @db.VarChar(255)
+  startDate DateTime @map("start_date") @db.Date
+  endDate DateTime @map("end_date") @db.Date
+  storeNames Json @map("store_names")
+  orderScope OrderScope @map("order_scope")
+  sourceChecksumSha256 String @map("source_checksum_sha256") @db.Char(64)
+  snapshot Json
+  confirmationDigest String @map("confirmation_digest") @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  jobId String? @unique @map("job_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  @@index([orgId, expiresAt])
+  @@map("order_scope_transition_previews")
 }

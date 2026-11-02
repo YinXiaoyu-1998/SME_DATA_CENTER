@@ -7,7 +7,7 @@ import path from "node:path";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
-import { PARTITION_DATASETS, isPartitionDataset } from "@smedc/domain";
+import { PARTITION_DATASETS, isPartitionDataset, effectiveOrderScope } from "@smedc/domain";
 import {
   abortable,
   apiJson,
@@ -160,6 +160,9 @@ export function downloadPartitionBundle(input: {
         totalRowCount: Number(manifest.totalRowCount),
         files: manifest.files.map((file) => ({
           ...file,
+          ...(manifest.dataset === "in_store_orders"
+            ? { orderScope: effectiveOrderScope(manifest.dataset, file.orderScope) }
+            : {}),
           byteSize: Number(file.byteSize),
           rowCount: Number(file.rowCount)
         }))

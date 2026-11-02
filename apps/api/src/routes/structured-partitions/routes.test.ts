@@ -102,6 +102,111 @@ describe("structured partition routes", () => {
     }
   );
 
+  it("prepares an exact source scope only for a current admin", async () => {
+    const app = Fastify();
+    const preview = {
+      expiresAt: "2026-10-28T00:00:00Z",
+      enterpriseName: "Synthetic",
+      startDate: "2026-10-26",
+      endDate: "2026-10-27",
+      storeNames: ["Store A"],
+      orderScope: "settled_only" as const,
+      sourceChecksumSha256: "a".repeat(64),
+      previewId: "osc_1",
+      confirmationDigest: "b".repeat(64),
+      partitions: [
+        {
+          partitionId: "part_1",
+          storeName: "Store A",
+          businessDate: "2026-10-27",
+          version: 3,
+          orderScope: "legacy_unknown" as const
+        }
+      ]
+    };
+    let currentAdmin = true;
+    registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
+      auth: { ...adminAuth, employee: () => (currentAdmin ? adminAuth.employee() : employee) },
+      uploadAuthorizationAudit: () => ({ appendDenied: async () => {} }),
+      storage: () => {
+        throw new Error("preview does not touch source bytes");
+      },
+      partitions: () => repositoryStub({ prepareOrderScopeTransition: async () => preview }),
+      runtimeLimits: loadApiRuntimeLimits({})
+    });
+    const input = {
+      enterpriseName: "Synthetic",
+      startDate: "2026-10-26",
+      endDate: "2026-10-27",
+      storeNames: ["Store A"],
+      orderScope: "settled_only",
+      sourceChecksumSha256: "a".repeat(64)
+    };
+    try {
+      const prepared = await app.inject({
+        method: "POST",
+        url: "/v1/structured/order-scope-transitions",
+        payload: input
+      });
+      expect(prepared.statusCode).toBe(201);
+      expect(prepared.json()).toEqual(preview);
+      const arbitrary = await app.inject({
+        method: "POST",
+        url: "/v1/structured/order-scope-transitions",
+        payload: { ...input, orgId: "other" }
+      });
+      expect(arbitrary.statusCode).toBe(400);
+      currentAdmin = false;
+      const denied = await app.inject({
+        method: "POST",
+        url: "/v1/structured/order-scope-transitions",
+        payload: input
+      });
+      expect(denied.statusCode).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    { dataset: "business", orderScope: "settled_only" },
+    { dataset: "in_store_orders", orderScope: "legacy_unknown" },
+    { dataset: "in_store_orders", orderScope: null }
+  ])("rejects invalid declared order scope before storage", async (scope) => {
+    const app = Fastify();
+    registerStructuredPartitionRoutes(app, {
+      ...unusedAudit,
+      auth: adminAuth,
+      storage: () => {
+        throw new Error("invalid scope reached storage");
+      },
+      partitions: () => repositoryStub({}),
+      runtimeLimits: loadApiRuntimeLimits({})
+    });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/structured/partition-uploads",
+        payload: {
+          ...scope,
+          enterpriseName: "Synthetic",
+          startDate: "2026-09-07",
+          endDate: "2026-09-07",
+          originalFileName: "orders.csv",
+          mediaType: "text/csv",
+          sourceByteSize: 100,
+          sourceChecksumSha256: "a".repeat(64),
+          idempotencyKey: "scope-invalid"
+        }
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe("INVALID_ORDER_SCOPE");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("keeps the canonical denial when initializing the audit repository fails", async () => {
     const app = Fastify();
     const initializeAudit = vi.fn(() => {
@@ -158,6 +263,7 @@ describe("structured partition routes", () => {
     const repository = repositoryStub({
       reserveUpload: async (input) => {
         expect(input.historicalSupplementReason).toBe("Historical business correction");
+        expect(input.orderScope).toBe("settled_only");
         job = {
           id: input.id!,
           orgId: input.orgId,
@@ -202,7 +308,8 @@ describe("structured partition routes", () => {
       method: "POST",
       url: "/v1/structured/partition-uploads",
       payload: {
-        dataset: "business",
+        dataset: "in_store_orders",
+        orderScope: "settled_only",
         enterpriseName: " Synthetic ",
         startDate: "2026-09-07",
         endDate: "2026-09-13",

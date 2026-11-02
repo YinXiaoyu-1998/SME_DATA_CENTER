@@ -446,3 +446,67 @@ it("uses current granted category rules and rejects cursors after authorization 
     await app.close();
   }
 });
+
+it("exposes authorized coverage separately for every order source scope", async () => {
+  const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
+  dependencies.structuredPartitions = () =>
+    ({
+      listCoverage: async () => ({
+        dataset: "in_store_orders",
+        enterprises: [
+          {
+            enterpriseKey: "synthetic",
+            enterpriseName: "Synthetic",
+            startDate: new Date("2026-10-26"),
+            endDate: new Date("2026-10-27"),
+            partitionCount: 2,
+            totalRowCount: 7n,
+            stores: [{ storeId: null, storeName: "Store A" }],
+            orderScopes: [
+              {
+                orderScope: "settled_only",
+                startDate: new Date("2026-10-26"),
+                endDate: new Date("2026-10-26"),
+                partitionCount: 1,
+                totalRowCount: 5n
+              },
+              {
+                orderScope: "legacy_unknown",
+                startDate: new Date("2026-10-27"),
+                endDate: new Date("2026-10-27"),
+                partitionCount: 1,
+                totalRowCount: 2n
+              }
+            ]
+          }
+        ]
+      })
+    }) as never;
+  const scopedApp = createApp(dependencies);
+  try {
+    const result = await scopedApp.inject({
+      method: "GET",
+      url: "/v1/structured/datasets/in_store_orders/coverage",
+      headers: { authorization: "Bearer valid", "x-smedc-launcher-version": "0.16.0" }
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().enterprises[0].orderScopes).toEqual([
+      {
+        orderScope: "settled_only",
+        startDate: "2026-10-26",
+        endDate: "2026-10-26",
+        partitionCount: 1,
+        totalRowCount: 5
+      },
+      {
+        orderScope: "legacy_unknown",
+        startDate: "2026-10-27",
+        endDate: "2026-10-27",
+        partitionCount: 1,
+        totalRowCount: 2
+      }
+    ]);
+  } finally {
+    await scopedApp.close();
+  }
+});
