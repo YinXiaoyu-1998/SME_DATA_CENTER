@@ -113,7 +113,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         browserSessions: context.browserSessions,
         publicOrigin,
         permissions: context.permissions,
-        metadata: () => context.permissionsUiMetadata!
+        metadata: () => context.permissionsUiMetadata!,
+        workflows: context.workflows
       });
     void context.authCore.pruneSecurityEvents().catch((error: unknown) => {
       app.log.error({ err: error }, "Failed to prune expired authentication security events.");
