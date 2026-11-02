@@ -6,6 +6,7 @@
 - 当前类别/门店/密级授权：[业务权限设计](../implementation/business-related-authorization-design.md)。
 - 当前检索和结构化处理：[数据管线](../implementation/data-pipelines.md)、[经营分区](../implementation/structured-partitions.md)。
 - 当前公共 HTTP/MCP：[API 契约](../implementation/api-contract.md)。
+- 已确认、尚未实现的工作流边界：[ADR 0027](0027-portable-enterprise-workflows.md)；完整实施规格为 [Issue #298](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/298)。
 
 ADR 0004/0009/0025 等记录的标签或仅密级读取、不可变文件分类、仅运维管理密级等旧规则已被当前业务授权契约取代。ADR 0020/0021 的早期 MCP/令牌方案不是现行登录路径。ADR 0026 的当前分区存储决定仍体现在分区契约中，读取权限采用现行业务授权。
 

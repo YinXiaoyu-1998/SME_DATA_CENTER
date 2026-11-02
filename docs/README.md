@@ -27,6 +27,10 @@
 
 平台外卖订单 `takeaway_orders` 已在源码实现，launcher `0.15.0` 尚未发布；契约见[经营分区](implementation/structured-partitions.md)，来源规格见 [Issue #293](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/293)。发布、部署及租户授权须独立确认。
 
+## 已确认的自动工作流设计（尚未实现）
+
+可分发企业工作流、已结账来源口径和换机接管的权威规格为 [Issue #298](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/298)。[图解使用指南](guides/automation-user-guide.html) 面向餐饮管理人员，说明功能完成后的首次安装、旧版更新、已有设置复用及换机步骤，不代表当前已经上线。
+
 ## 历史与过程记录
 
 这些文档保留当时的决定或验证证据，允许出现旧版本、撤回方案和当时尚未完成的工作。执行当前任务必须回到上表。
