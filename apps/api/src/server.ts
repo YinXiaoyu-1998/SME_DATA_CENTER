@@ -1,3 +1,4 @@
+import { registerEnterpriseWorkflowRoutes } from "./enterprise-workflows/routes.js";
 import { registerLedgerWebRoutes } from "./ledger-web/routes.js";
 import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
@@ -59,6 +60,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   registerApiErrorHandler(app);
+  registerEnterpriseWorkflowRoutes(app, { auth: requestAuth, workflows: context.workflows });
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
@@ -111,7 +113,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         browserSessions: context.browserSessions,
         publicOrigin,
         permissions: context.permissions,
-        metadata: () => context.permissionsUiMetadata!
+        metadata: () => context.permissionsUiMetadata!,
+        workflows: context.workflows
       });
     void context.authCore.pruneSecurityEvents().catch((error: unknown) => {
       app.log.error({ err: error }, "Failed to prune expired authentication security events.");

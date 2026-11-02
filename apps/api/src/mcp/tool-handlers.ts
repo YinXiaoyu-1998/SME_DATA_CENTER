@@ -1,3 +1,4 @@
+import { createWorkflowMcpToolHandlers } from "./workflow-tools.js";
 import {
   errorToolResult,
   type SmedcMcpToolName,
@@ -11,6 +12,7 @@ import {
 } from "../file-upload-authorization.js";
 import { createActionMcpToolHandlers } from "./action-tools.js";
 import { createReadOnlyMcpToolHandlers } from "./read-tools.js";
+import { createOrderScopeMcpToolHandlers } from "./order-scope-tools.js";
 import type { ApiDelegationContext } from "./api-delegation.js";
 import {
   createUploadToolHandlers,
@@ -76,8 +78,15 @@ export function createSmedcMcpToolHandlers(
   });
 
   return {
+    ...createWorkflowMcpToolHandlers({
+      bearerToken: options.bearerToken,
+      audit: options.audit,
+      delegationProof: options.delegationProof,
+      inject: options.inject
+    }),
     ...readOnlyHandlers,
     ...actionHandlers,
+    ...createOrderScopeMcpToolHandlers(options),
     ...uploadHandlers
   };
 }

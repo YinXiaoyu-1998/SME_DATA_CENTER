@@ -47,6 +47,7 @@ export interface PartitionDownloadManifest {
   files: PartitionDownloadManifestFile[];
 }
 export interface PartitionDownloadManifestFile {
+  orderScope?: import("./order-scope.js").OrderScope | null;
   fileName: string;
   businessDate: string;
   storeId: string | null;
