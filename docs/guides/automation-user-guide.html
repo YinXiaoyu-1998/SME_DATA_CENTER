@@ -692,7 +692,7 @@
     </style>
   </head>
   <body>
-    <a class="skip" href="#start">跳到操作路线</a>
+    <a class="skip" href="#version">跳到操作路线</a>
     <header class="top">
       <div class="wrap">
         <div class="brand">SMEDC <span class="edition">企业资料中枢</span></div>
@@ -724,16 +724,69 @@
         </aside>
       </div>
       <nav aria-label="指南目录">
-        <a href="#start">选择路线</a><a href="#setup">A 首次使用</a
-        ><a href="#legacy">B 旧流程首次迁入</a><a href="#move">C 换新电脑</a
-        ><a href="#help">遇到问题</a>
+        <a href="#version">先做第 0 步</a><a href="#start">选择路线</a
+        ><a href="#setup">A 首次使用</a><a href="#legacy">B 旧流程首次迁入</a
+        ><a href="#move">C 换新电脑</a><a href="#help">遇到问题</a>
       </nav>
+      <section id="version">
+        <div class="section-label">所有路线都先做 · 第 0 步</div>
+        <h2>先把这台电脑的 SMEDC 更新并验证好</h2>
+        <p class="intro">
+          首次使用：在当前电脑做。旧流程首次迁入：在旧电脑做。换电脑：旧电脑和新电脑分别做一次；旧电脑更新过，不代表新电脑也已经更新。
+        </p>
+        <span class="where">每一台将要操作的 Mac</span>
+        <p>
+          在这台电脑打开 Codex，新建或继续一个聊天，把下面整段发送给它。由 Codex
+          完成检查和可自动完成的更新。
+        </p>
+        <div class="prompt-box">
+          <div class="prompt-toolbar">
+            <span>先复制这一段，再选择下面的路线</span
+            ><button
+              type="button"
+              class="copy-button"
+              data-copy="prompt-0"
+              aria-label="复制提示词：第0步安装更新并验证"
+            >
+              复制提示词
+            </button>
+          </div>
+          <pre class="prompt" id="prompt-0">
+请先为这台 Mac 完成 SMEDC 的版本检查和安装/更新，再进入企业设置或流程迁移。
+官方核心技能：https://github.com/YinXiaoyu-1998/smedc-mcp-skill
+官方流程技能：https://github.com/YinXiaoyu-1998/smedc-companion-skills
+请先读取官方默认分支的最新核心技能，以它批准的精确版本更新核心 Skill 和官方 MCP/launcher，并验证当前 Codex 实际连接已经使用新版，不要只看下载目录、服务端版本或配置路径。
+对这台电脑已安装、与所选流程有关的技能逐目录比对，区分远端本次更新、本机原有但远端漏收的通用能力和真正的企业专属配置。保留原有通用能力与业务设置；有未确认的差异时，先给我中文处理方案，等我确认后再替换。还没选流程时，不要自动安装无关的业务技能。
+原任务的日程、门店、收件人和业务动作保持原安排，不启用第二套任务。正在传输或执行业务时，先核对进度再安排重连。
+如果必须退出并重新打开 Codex，请明确告诉我：完成正在进行的操作后，按 Command+Q 完全退出，再重新打开并回到这段聊天发送“继续验证 SMEDC 升级”。等我操作后继续验证，不要提前宣称升级完成。
+最后用中文列出：核心技能是否已更新、批准的 launcher 版本、当前 Codex 连接是否已生效、相关流程技能哪些已对齐/待选择/有待处理项，以及我下一步做什么。</pre>
+        </div>
+        <p class="done">
+          <strong>看到这些才继续：</strong>Codex
+          明确确认“核心版本已更新，当前连接已生效”，并列清相关技能状态。出现“等待重启 / 等待重连验证
+          /
+          定制待处理”时，先处理后再继续。尚未选择的业务技能可以显示“待选择”，不能把它们算成已安装。
+        </p>
+        <p>
+          如需重开 Codex：先按提示完成正在进行的操作，再按
+          <strong>Command+Q</strong> 完全退出；重新打开后回到这段聊天，发送：<strong
+            >继续验证 SMEDC 升级</strong
+          >。
+        </p>
+        <details>
+          <summary>为什么要先做这一步？</summary>
+          <p>
+            服务端、这台电脑安装的核心技能、launcher 文件和 Codex
+            当前连接，是不同的状态。服务已上线、下载过新版文件或开了新聊天，都不等于这台电脑完成升级。登录和企业配置在后续步骤继续；已经验证完成的安装直接复用。
+          </p>
+        </details>
+      </section>
       <section id="start">
-        <h2>你是哪一种情况？</h2>
+        <h2>第 0 步通过后，选你的路线</h2>
         <div class="routes">
           <a class="route" href="#setup"
             ><span class="number">A</span><strong>还没有正在运行的旧流程</strong
-            ><span>在将来执行任务的电脑，从安装开始。</span><b>做 A →</b></a
+            ><span>在将来执行任务的电脑，先做第 0 步，再登录和配置。</span><b>做 A →</b></a
           ><a class="route" href="#legacy"
             ><span class="number">B</span><strong>旧电脑已有自定义流程</strong
             ><span>先在旧电脑整理并保存设置和必要记录。</span><b>做 B →</b></a
@@ -743,8 +796,8 @@
           >
         </div>
         <p class="path-note">
-          <strong>使用方法：</strong
-          >选好路线，只按这一条路线从上往下做。点击“复制提示词”，粘贴到对应电脑的 Codex
+          <strong>使用方法：</strong>先完成第 0
+          步，再选好路线，只按这一条路线从上往下做。点击“复制提示词”，粘贴到对应电脑的 Codex
           聊天框并发送。等它完成，再看每步的“看到这些才继续”。所有提示词都由你发送，不会因为打开本页就执行。
         </p>
         <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
@@ -759,7 +812,7 @@
         <ol class="steps">
           <li>
             <span class="where">使用这套流程的电脑</span>
-            <h3>第一步：安装并登录 SMEDC</h3>
+            <h3>第一步：登录并确认企业</h3>
             <p>
               在 Codex 打开的官方 SMEDC
               网页，用企业提供的管理员账号登录。没有账号时，先联系企业负责人或服务人员开通。密码和验证码只填在官方网页。
@@ -771,7 +824,7 @@
                   type="button"
                   class="copy-button"
                   data-copy="prompt-1"
-                  aria-label="复制提示词：使用这套流程的电脑 安装并登录 SMEDC"
+                  aria-label="复制提示词：使用这套流程的电脑 登录并确认企业"
                 >
                   复制提示词
                 </button>
@@ -1151,7 +1204,7 @@
             <span class="where">新电脑</span>
             <h3>第二步：安装并登录同一企业</h3>
             <p>
-              在新 Mac 打开 Codex，新建聊天并粘贴下面整段。Codex
+              先在新 Mac 完成第 0 步，再打开 Codex 聊天并粘贴下面整段。Codex
               会先下载并用浏览器打开这份通用指南。随后打开它提供的官方 SMEDC
               登录页，用同一企业已获授权的管理员账号登录；不用重新注册一家企业。
             </p>
@@ -1417,7 +1470,7 @@ https://raw.githubusercontent.com/YinXiaoyu-1998/SME_DATA_CENTER/main/docs/guide
           页面中保存，本页用于操作指引。
         </p>
         <p>
-          更新：2026-11-02。对应已发布客户端 0.16.0 与工作流 1.0.0；准备检查与真实运行结果分别核验。
+          更新：2026-11-02。对应已发布客户端 0.16.0 与工作流 1.0.1；准备检查与真实运行结果分别核验。
         </p>
       </footer>
     </main>
