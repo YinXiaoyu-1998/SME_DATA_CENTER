@@ -13,8 +13,15 @@
     "@smedc/storage": "^0.0.0",
     "@smedc/structured-ingestion": "^0.0.0",
     "dotenv": "17.4.2",
-    "exceljs": "4.4.0",
+    "dayjs": "1.11.21",
+    "fast-csv": "4.3.6",
     "jszip": "^3.10.1",
-    "sharp": "0.35.4"
+    "readable-stream-v3": "npm:readable-stream@3.6.2",
+    "saxes": "5.0.1",
+    "uuid": "11.1.1",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "exceljs": "4.4.0"
   }
 }

@@ -1828,6 +1828,9 @@ it("uses strict store review schemas with shared semantic validation", () => {
     { enterpriseName: undefined },
     { scores: [] },
     { scores: { x: "5" } },
+    { scores: { x: Number.NaN } },
+    { scores: { x: Number.POSITIVE_INFINITY } },
+    { scores: Object.create({ x: 5 }) },
     { extra: true },
     { reviewedAt: "2026-02-30 13" }
   ])
@@ -1856,6 +1859,22 @@ it("preserves arbitrary own score keys from JSON without prototype mutation", ()
   expect(
     Object.getPrototypeOf((parsed.reviews as Array<{ scores: Record<string, number> }>)[0]!.scores!)
   ).toBe(Object.prototype);
+  expect(z.toJSONSchema(contractsByName.get("upsert_store_reviews")!.inputSchema)).toMatchObject({
+    properties: {
+      reviews: {
+        items: {
+          properties: {
+            scores: {
+              anyOf: [
+                { type: "object", additionalProperties: { type: "number" } },
+                { type: "null" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  });
   expect(
     contractsByName
       .get("upsert_store_reviews")!

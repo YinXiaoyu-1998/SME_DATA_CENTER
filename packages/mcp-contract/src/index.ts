@@ -797,10 +797,11 @@ export const upsertStoreReviewsInputSchema = z
               .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
               .nullable()
               .optional(),
-            // Intersect with the untouched input so Zod's record parser cannot discard
-            // own "__proto__" dimensions. Intersection uses safe object spread.
+            // Preserve own score keys that Zod's record/intersection parsers discard.
+            // Batch validation below checks plain objects, finite numbers and byte limits.
             scores: z
-              .intersection(z.record(z.string(), z.number().finite()), z.unknown())
+              .unknown()
+              .meta({ type: "object", additionalProperties: { type: "number" } })
               .nullable()
               .optional(),
             merchantReply: z
