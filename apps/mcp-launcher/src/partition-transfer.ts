@@ -1,7 +1,11 @@
 import {
   PARTITION_DATASETS,
+  orderScopeSchema,
+  effectiveOrderScope,
   normalizeEnterpriseIdentity,
   parsePartitionStoreNameContains,
+  type DeclaredOrderScope,
+  type OrderScopeTransitionConfirmation,
   type PartitionDatasetName
 } from "@smedc/domain";
 import { z } from "zod";
@@ -21,6 +25,7 @@ const unsignedInteger = z.union([
 
 // Shared CSV metadata shape; range responses may encode large counts as strings.
 export const partitionFileMetadataSchema = z.object({
+  orderScope: orderScopeSchema.nullable().optional(),
   businessDate: z.iso.date(),
   storeId: z.string().nullable(),
   storeName: z.string(),
@@ -87,6 +92,8 @@ async function uploadPartitionDatasetInternal(input: {
   idempotencyKey: string;
   confidentialityLevel?: number;
   historicalSupplementReason?: string;
+  orderScope?: DeclaredOrderScope;
+  orderScopeTransition?: OrderScopeTransitionConfirmation;
 }): Promise<unknown> {
   const before = await stat(input.filePath);
   if (!before.isFile()) throw new Error("Local partition upload source is not a regular file.");
@@ -95,6 +102,8 @@ async function uploadPartitionDatasetInternal(input: {
     method: "POST",
     body: {
       dataset: input.dataset,
+      orderScope: input.orderScope,
+      orderScopeTransition: input.orderScopeTransition,
       enterpriseName: input.enterpriseName,
       startDate: compactDateToIso(input.startDate),
       endDate: compactDateToIso(input.endDate),
@@ -289,6 +298,7 @@ async function downloadManifest(
       );
       return {
         fileName,
+        orderScope: effectiveOrderScope(manifest.dataset, partition.orderScope),
         businessDate: partition.businessDate,
         storeId: partition.storeId,
         storeName: partition.storeName,

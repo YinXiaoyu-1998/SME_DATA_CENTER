@@ -60,6 +60,87 @@ interface RunOptions {
   stderr?: "inherit" | "ignore";
 }
 
+// Runs in the existing release-ops image, including pre-workflow images. Missing
+// feature columns mean legacy compatibility; connection/schema errors fail closed.
+export const ORDER_SCOPE_ROLLBACK_PROBE = String.raw`
+let prisma;
+try {
+  const [{ PrismaMariaDb }, { PrismaClient }] = await Promise.all([
+    import("@prisma/adapter-mariadb"), import("@prisma/client")
+  ]);
+  prisma = new PrismaClient({ adapter: new PrismaMariaDb(process.env.DATABASE_URL, {
+    // Match createDatabaseAdapter: the RDS proxy requires text protocol; values remain driver-bound.
+    useTextProtocol: true
+  }) });
+  const checks = [
+    ["enterprise_integrations", "order_scope_required", "order_scope_required = 1", []],
+    ["structured_partitions", "order_scope", "order_scope IS NOT NULL AND order_scope != ?", ["legacy_unknown"]],
+    ["partition_import_jobs", "order_scope", "order_scope IS NOT NULL AND order_scope != ? AND status IN (?, ?, ?)", ["legacy_unknown", "uploading", "queued", "processing"]]
+  ];
+  const tables = await prisma.$queryRawUnsafe(
+    "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?, ?)",
+    ...checks.map(([table]) => table)
+  );
+  const presentColumns = [];
+  for (const [table, column] of checks) {
+    const present = await prisma.$queryRawUnsafe(
+      "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
+      table, column
+    );
+    presentColumns.push(present.length > 0);
+  }
+  const baseTablesPresent = ["structured_partitions", "partition_import_jobs"].every(table => tables.some(row => row.name === table));
+  const legacySchema = baseTablesPresent && tables.length === 2 && presentColumns.every(present => !present);
+  const scopeSchema = baseTablesPresent && tables.length === 3 && presentColumns.every(Boolean);
+  if (!legacySchema && !scopeSchema) throw new Error("Rollback blocked: order scope schema is incomplete or unavailable.");
+  for (const [table, , condition, parameters] of legacySchema ? [] : checks) {
+    const used = await prisma.$queryRawUnsafe("SELECT 1 FROM " + table + " WHERE " + condition + " LIMIT 1", ...parameters);
+    if (used.length) throw new Error("Rollback blocked: order source scope is in use; restore compatible API and worker images.");
+  }
+} catch {
+  console.error("Rollback blocked: order source scope is in use or its durable state could not be verified.");
+  process.exitCode = 1;
+} finally {
+  if (prisma) await prisma.$disconnect().catch(() => { process.exitCode = 1; });
+}
+`;
+
+const REMOTE_ORDER_SCOPE_GUARD = String.raw`
+guard_stopped_writer_ids=""
+require_order_scope_compatible_rollback() {
+  local target_api="$1"
+  local target_worker="$2"
+  docker pull "$target_api" && docker pull "$target_worker" || return 1
+  local api_scope worker_scope
+  api_scope="$(docker image inspect --format '{{index .Config.Labels "xyz.smedatacenter.order-scope-contract"}}' "$target_api")" || return 1
+  worker_scope="$(docker image inspect --format '{{index .Config.Labels "xyz.smedatacenter.order-scope-contract"}}' "$target_worker")" || return 1
+  if [ "$api_scope" = "1" ] && [ "$worker_scope" = "1" ]; then
+    return 0
+  fi
+  # Quiesce both writers before examining durable state, so activation/import
+  # cannot race the compatibility check. Denial restores the current services.
+  local running_writer_ids
+  running_writer_ids="$(compose ps --status running -q api worker)" || return 1
+  local container_id
+  for container_id in $running_writer_ids; do
+    case "$container_id" in *[!a-f0-9]*) return 1 ;; esac
+  done
+  if [ -n "$running_writer_ids" ] && ! docker stop $running_writer_ids; then
+    docker start $running_writer_ids
+    return 1
+  fi
+  guard_stopped_writer_ids="$running_writer_ids"
+  local order_scope_probe='${ORDER_SCOPE_ROLLBACK_PROBE}'
+  if ! compose --profile release run -T --rm release-ops node --input-type=module -e "$order_scope_probe" </dev/null
+  then
+    echo "Rollback refused; keeping the current image release." >&2
+    if [ -n "$running_writer_ids" ]; then docker start $running_writer_ids; fi
+    guard_stopped_writer_ids=""
+    return 1
+  fi
+}
+`;
+
 const REMOTE_ROLLOUT_SCRIPT = String.raw`
 set -Eeuo pipefail
 
@@ -121,6 +202,8 @@ wait_for_url() {
   return 1
 }
 
+${REMOTE_ORDER_SCOPE_GUARD}
+
 rollback_armed=0
 rollback_on_error() {
   local status=$?
@@ -130,7 +213,8 @@ rollback_on_error() {
     previous_api="$(sed -n 's/^SMEDC_API_IMAGE=//p' "$previous_file" | tail -n 1)"
     previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
     previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
-    if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ]; then
+    if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ] && \
+       require_order_scope_compatible_rollback "$previous_api" "$previous_worker"; then
       echo "Rollout failed; restoring the previous API and worker images." >&2
       if [ -f "$previous_compose" ]; then
         install -o root -g root -m 0644 "$previous_compose" "$compose_file"
@@ -141,6 +225,8 @@ rollback_on_error() {
       wait_for_url http://127.0.0.1:3000/healthz "rolled-back API health"
     fi
     set -e
+  elif [ "$status" -ne 0 ] && [ -n "$guard_stopped_writer_ids" ]; then
+    docker start $guard_stopped_writer_ids
   fi
   exit "$status"
 }
@@ -160,6 +246,7 @@ if [ -z "$current_release_ops" ]; then
   current_release_ops="$release_ops_image"
 fi
 test -n "$current_release_ops"
+require_order_scope_compatible_rollback "$api_image" "$worker_image"
 printf 'SMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\n' \
   "$current_api" "$current_worker" "$current_release_ops" > "$previous_file"
 chown root:root "$previous_file"
@@ -212,6 +299,13 @@ previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file"
 test -n "$previous_api"
 test -n "$previous_worker"
 test -n "$previous_release_ops"
+
+compose() {
+  docker compose --env-file "$runtime_file" -f "$compose_file" "$@"
+}
+
+${REMOTE_ORDER_SCOPE_GUARD}
+require_order_scope_compatible_rollback "$previous_api" "$previous_worker"
 
 if [ -f "$previous_compose" ]; then
   install -o root -g root -m 0644 "$previous_compose" "$compose_file"

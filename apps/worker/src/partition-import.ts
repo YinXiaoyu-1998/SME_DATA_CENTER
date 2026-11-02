@@ -6,6 +6,7 @@ import { performance } from "node:perf_hooks";
 import { PARTITION_ERROR_CODES, type PartitionDatasetName } from "@smedc/domain";
 import {
   createPrismaStructuredPartitionRepository,
+  StructuredPartitionRepositoryError,
   type PartitionCandidate,
   type StructuredPartitionRepository
 } from "@smedc/db";
@@ -108,6 +109,11 @@ export function createPartitionImporter(input: {
     async process({ run, storage }: { run: ClaimedProcessingRun; storage: StorageAdapter }) {
       const job = run.partitionImport;
       if (!job) throw new Error("Partition import job is missing from the claimed run.");
+      const lease = {
+        runId: run.id,
+        workerId: run.lockedBy ?? "",
+        attemptNumber: run.attemptNumber
+      };
       const timingContext = {
         jobId: job.jobId,
         dataset: job.dataset as PartitionDatasetName,
@@ -181,6 +187,7 @@ export function createPartitionImporter(input: {
         } catch (error) {
           if (!(error instanceof StructuredPartitionExportError)) throw error;
           await repository.finishJob({
+            lease,
             orgId: run.orgId,
             jobId: job.jobId,
             status: "rejected",
@@ -203,6 +210,7 @@ export function createPartitionImporter(input: {
             `Source contains business date ${outsideDeclaredRange.businessDate} outside the declared range.`
           );
           await repository.finishJob({
+            lease,
             orgId: run.orgId,
             jobId: job.jobId,
             status: "rejected",
@@ -251,6 +259,7 @@ export function createPartitionImporter(input: {
                   enterpriseKey: job.enterpriseKey,
                   enterpriseName: job.enterpriseName,
                   dataset: job.dataset as PartitionDatasetName,
+                  orderScope: job.orderScope,
                   storeKey: partition.storeKey,
                   merchantId: partition.merchantId,
                   storeName: partition.storeName,
@@ -274,6 +283,7 @@ export function createPartitionImporter(input: {
             },
             () =>
               repository.publishSourceAtomically({
+                lease,
                 orgId: run.orgId,
                 jobId: job.jobId,
                 totalRowCount: exported.totalRowCount,
@@ -308,6 +318,27 @@ export function createPartitionImporter(input: {
             )
           );
         }
+        if (
+          error instanceof StructuredPartitionRepositoryError &&
+          ["ORDER_SCOPE_CONFLICT", "ORDER_SCOPE_REQUIRED"].includes(error.code)
+        ) {
+          await repository.finishJob({
+            lease,
+            orgId: run.orgId,
+            jobId: job.jobId,
+            status: "rejected",
+            errorCode: error.code,
+            errorSummary: error.message
+          });
+          await cleanupPartitionSource(storage, repository, job.temporaryObjectKey, timingContext);
+          totalOutcome = "rejected";
+          return "rejected" as const;
+        }
+        if (
+          error instanceof StructuredPartitionRepositoryError &&
+          error.code === "PROCESSING_LEASE_LOST"
+        )
+          throw error;
         if (error instanceof PartitionWorkerError) throw error;
         throw new PartitionWorkerError(
           "PARTITION_IMPORT_FAILED",

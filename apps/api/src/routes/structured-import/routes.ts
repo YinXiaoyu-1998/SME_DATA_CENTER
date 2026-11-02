@@ -84,6 +84,8 @@ async function parseStructuredImportUpload(
       continue;
     }
 
+    if (part.fieldname === "orderScope" || part.fieldname === "orderScopeTransition")
+      throw new ResourceAttributesError("INVALID_ORDER_SCOPE");
     const value = typeof part.value === "string" ? part.value.trim() : "";
     if (part.fieldname === "historicalSupplementReason") {
       if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
@@ -212,6 +214,12 @@ export function registerStructuredImportRoutes(
       );
     } catch (error) {
       logTiming("upload.total", importRequestStarted, { outcome: "invalid_multipart" });
+      if (error instanceof ResourceAttributesError && error.code === "INVALID_ORDER_SCOPE")
+        return validationError(
+          reply,
+          error.code,
+          "Order scope metadata is accepted only through in-store partition upload sessions."
+        );
       if (isPayloadTooLargeError(error)) {
         throw error;
       }

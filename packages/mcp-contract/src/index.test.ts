@@ -43,6 +43,58 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  prepare_order_scope_transition: {
+    enterpriseName: "Synthetic",
+    startDate: "2026-10-26",
+    endDate: "2026-10-27",
+    storeNames: ["Store A"],
+    orderScope: "settled_only",
+    sourceChecksumSha256: "a".repeat(64)
+  },
+  list_enterprise_workflows: {},
+  get_enterprise_workflow: { enterpriseKey: "enterprise", workflowType: "meituan-daily-ingestion" },
+  prepare_enterprise_workflow_change: {
+    enterpriseKey: "enterprise",
+    workflowType: "meituan-daily-ingestion",
+    expectedVersion: 0,
+    expectedIntegrationVersion: 0,
+    expectedControlVersion: 0,
+    change: { kind: "control", state: "paused", reason: "Pause for maintenance" }
+  },
+  save_enterprise_workflow: {
+    enterpriseKey: "enterprise",
+    workflowType: "meituan-daily-ingestion",
+    expectedVersion: 0,
+    expectedIntegrationVersion: 0,
+    expectedControlVersion: 0,
+    previewId: "preview-1",
+    confirmationDigest: "a".repeat(64)
+  },
+  manage_workflow_installation: {
+    workflowId: "workflow-1",
+    operation: {
+      kind: "set_state",
+      installationId: "installation-1",
+      expectedVersion: 1,
+      state: "paused",
+      reason: "Maintenance"
+    }
+  },
+  manage_workflow_run: {
+    workflowId: "workflow-1",
+    operation: {
+      kind: "renew",
+      installationId: "installation-1",
+      runId: "run-1",
+      assignmentEpoch: 1,
+      controlVersion: 1
+    }
+  },
+  record_workflow_action: {
+    workflowId: "workflow-1",
+    operation: { kind: "get", actionIds: ["action-1"] }
+  },
+  get_workflow_status: { workflowId: "workflow-1" },
   upsert_store_reviews: {
     reviews: [
       {
@@ -213,6 +265,7 @@ const validInputs = {
 } satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
+  { tool: "prepare_order_scope_transition", cases: [{ label: "missing scope", input: {} }] },
   { tool: "upsert_store_reviews", cases: [{ label: "empty batch", input: { reviews: [] } }] },
   { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
@@ -585,7 +638,15 @@ const invalidInputCases = [
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
-      "suspend_authorization_reads"
+      "suspend_authorization_reads",
+      "list_enterprise_workflows",
+      "get_enterprise_workflow",
+      "prepare_enterprise_workflow_change",
+      "save_enterprise_workflow",
+      "manage_workflow_installation",
+      "manage_workflow_run",
+      "record_workflow_action",
+      "get_workflow_status"
     ] as const
   ).map((tool) => ({
     tool,
@@ -599,6 +660,7 @@ const invalidInputCases = [
 describe("SMEDC MCP contract", () => {
   it("exports the stable business tool names without local-session tools", () => {
     expect(SMEDC_MCP_TOOL_NAMES).toEqual([
+      "prepare_order_scope_transition",
       "upsert_store_reviews",
       "query_store_reviews",
       "smedc_get_current_user",
@@ -643,7 +705,15 @@ describe("SMEDC MCP contract", () => {
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
-      "suspend_authorization_reads"
+      "suspend_authorization_reads",
+      "list_enterprise_workflows",
+      "get_enterprise_workflow",
+      "prepare_enterprise_workflow_change",
+      "save_enterprise_workflow",
+      "manage_workflow_installation",
+      "manage_workflow_run",
+      "record_workflow_action",
+      "get_workflow_status"
     ]);
     expect(
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
@@ -1580,7 +1650,15 @@ describe("current business authorization contracts", () => {
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
-      "suspend_authorization_reads"
+      "suspend_authorization_reads",
+      "list_enterprise_workflows",
+      "get_enterprise_workflow",
+      "prepare_enterprise_workflow_change",
+      "save_enterprise_workflow",
+      "manage_workflow_installation",
+      "manage_workflow_run",
+      "record_workflow_action",
+      "get_workflow_status"
     ];
     expect(SMEDC_MCP_TOOL_NAMES).toEqual(expect.arrayContaining(names));
     for (const name of names) {
@@ -1750,6 +1828,9 @@ it("uses strict store review schemas with shared semantic validation", () => {
     { enterpriseName: undefined },
     { scores: [] },
     { scores: { x: "5" } },
+    { scores: { x: Number.NaN } },
+    { scores: { x: Number.POSITIVE_INFINITY } },
+    { scores: Object.create({ x: 5 }) },
     { extra: true },
     { reviewedAt: "2026-02-30 13" }
   ])
@@ -1778,6 +1859,22 @@ it("preserves arbitrary own score keys from JSON without prototype mutation", ()
   expect(
     Object.getPrototypeOf((parsed.reviews as Array<{ scores: Record<string, number> }>)[0]!.scores!)
   ).toBe(Object.prototype);
+  expect(z.toJSONSchema(contractsByName.get("upsert_store_reviews")!.inputSchema)).toMatchObject({
+    properties: {
+      reviews: {
+        items: {
+          properties: {
+            scores: {
+              anyOf: [
+                { type: "object", additionalProperties: { type: "number" } },
+                { type: "null" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  });
   expect(
     contractsByName
       .get("upsert_store_reviews")!

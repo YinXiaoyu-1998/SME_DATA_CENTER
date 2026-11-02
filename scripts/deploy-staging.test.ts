@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ORDER_SCOPE_ROLLBACK_PROBE,
   imageReference,
   parseDeployArgs,
   releaseOpsImageReference,
@@ -148,6 +149,101 @@ describe("deploy-staging image build", () => {
 });
 
 describe("deploy-staging remote scripts", () => {
+  it("keeps the standalone rollback probe compatible with the staging RDS text protocol", () => {
+    expect(ORDER_SCOPE_ROLLBACK_PROBE).toMatch(
+      /new PrismaMariaDb\(process\.env\.DATABASE_URL,\s*\{[\s\S]*?useTextProtocol:\s*true/
+    );
+  });
+
+  it.each([
+    { label: "", used: true, allowed: false, runningIds: "aaaaaaaaaaaa" },
+    { label: "", used: true, allowed: false, runningIds: "" },
+    { label: "", used: false, allowed: true, runningIds: "aaaaaaaaaaaa" },
+    { label: "1", used: true, allowed: true, runningIds: "aaaaaaaaaaaa" },
+    { label: "", used: true, allowed: false, runningIds: "aaaaaaaaaaaa", oldTag: true }
+  ])(
+    "guards manual rollback before mutation ($label, used=$used)",
+    async ({ label, used, allowed, runningIds, oldTag }) => {
+      const root = await mkdtemp(join(tmpdir(), "smedc-scope-rollback-"));
+      const bin = join(root, "bin");
+      const log = join(root, "commands");
+      const original =
+        "SMEDC_API_IMAGE=registry/api:current\nSMEDC_WORKER_IMAGE=registry/worker:current\nSMEDC_RELEASE_OPS_IMAGE=registry/api:ops-current\n";
+      try {
+        await mkdir(bin);
+        await writeFile(join(root, "runtime.env"), original);
+        await writeFile(join(root, "docker-compose.yml"), "current compose");
+        await writeFile(join(root, "previous-docker-compose.yml"), "previous compose");
+        await writeFile(join(root, "docker-compose.yml.next"), "next compose");
+        await writeFile(
+          join(root, "previous-release.env"),
+          "SMEDC_API_IMAGE=registry/api:previous\nSMEDC_WORKER_IMAGE=registry/worker:previous\nSMEDC_RELEASE_OPS_IMAGE=registry/api:ops-previous\n"
+        );
+        const commands = {
+          docker: `printf '%s\\n' "$*" >> "$GUARD_LOG"
+if [ "$1:$2" = "image:inspect" ]; then printf '%s\\n' "$TARGET_LABEL"; fi
+if [[ "$*" == *"ps --status running -q api worker"* ]]; then printf '%s\\n' "$RUNNING_IDS"; fi
+for arg in "$@"; do
+  if [ "$arg" = "--input-type=module" ] && [ "$SCOPE_USED" = "true" ]; then exit 42; fi
+done`,
+          install: `if [ "$1" = "-d" ]; then mkdir -p "\${@: -1}"; exit 0; fi
+files=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in -o|-g|-m) shift 2 ;; *) files+=("$1"); shift ;; esac
+done
+cp "\${files[0]}" "\${files[1]}"`,
+          flock: "exit 0",
+          curl: "exit 0"
+        };
+        for (const [command, body] of Object.entries(commands)) {
+          await writeFile(join(bin, command), `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`);
+          await chmod(join(bin, command), 0o755);
+        }
+        const result = spawnSync(
+          "bash",
+          oldTag
+            ? ["-s", "--", "registry/api:old", "registry/worker:old", "registry/api:ops-old", "0"]
+            : ["-s"],
+          {
+            input: remoteScriptsForValidation()[oldTag ? 0 : 1]!.replaceAll("/opt/smedc", root),
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+              GUARD_LOG: log,
+              TARGET_LABEL: label,
+              SCOPE_USED: String(used),
+              RUNNING_IDS: runningIds
+            }
+          }
+        );
+        expect(result.status === 0, result.stderr).toBe(allowed);
+        const trace = await readFile(log, "utf8");
+        if (!allowed) {
+          expect(await readFile(join(root, "runtime.env"), "utf8")).toBe(original);
+          expect(await readFile(join(root, "docker-compose.yml"), "utf8")).toBe("current compose");
+          if (runningIds) {
+            expect(trace).toContain("stop aaaaaaaaaaaa");
+            expect(trace).toContain("start aaaaaaaaaaaa");
+            expect(trace.indexOf("stop aaaaaaaaaaaa")).toBeLessThan(
+              trace.indexOf("--input-type=module")
+            );
+            expect(trace.indexOf("--input-type=module")).toBeLessThan(
+              trace.indexOf("start aaaaaaaaaaaa")
+            );
+          } else {
+            expect(trace).not.toMatch(/(?:^|\n)(?:stop|start) /);
+          }
+          expect(trace).not.toContain("up -d api worker");
+          expect(trace).not.toContain("pull api worker");
+        }
+        if (label === "1") expect(trace).not.toContain("stop aaaaaaaaaaaa");
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  );
+
   it("keeps every remote transaction valid Bash", () => {
     for (const script of remoteScriptsForValidation()) {
       const validation = spawnSync("bash", ["-n"], { input: script, encoding: "utf8" });
@@ -250,38 +346,48 @@ cp "\${files[0]}" "\${files[1]}"
     }
   });
 
-  it("restores an existing two-image release when its first three-image rollout fails", async () => {
-    const root = await mkdtemp(join(tmpdir(), "smedc-rollout-"));
-    const fakeBin = join(root, "bin");
-    const runtimeFile = join(root, "runtime.env");
-    const composeFile = join(root, "docker-compose.yml");
-    const composeNext = join(root, "docker-compose.yml.next");
-    const dockerState = join(root, "docker-count");
-    const oldApi = "registry.example.com/smedc/api:aaaaaaaaaaaa";
-    const oldWorker = "registry.example.com/smedc/worker:aaaaaaaaaaaa";
-    const nextApi = "registry.example.com/smedc/api:bbbbbbbbbbbb";
-    const nextWorker = "registry.example.com/smedc/worker:bbbbbbbbbbbb";
-    const nextOps = "registry.example.com/smedc/api:ops-bbbbbbbbbbbb";
+  it.each([false, true])(
+    "guards automatic restoration of a two-image release after rollout failure (scope in use=%s)",
+    async (scopeUsed) => {
+      const root = await mkdtemp(join(tmpdir(), "smedc-rollout-"));
+      const fakeBin = join(root, "bin");
+      const runtimeFile = join(root, "runtime.env");
+      const composeFile = join(root, "docker-compose.yml");
+      const composeNext = join(root, "docker-compose.yml.next");
+      const dockerState = join(root, "docker-count");
+      const oldApi = "registry.example.com/smedc/api:aaaaaaaaaaaa";
+      const oldWorker = "registry.example.com/smedc/worker:aaaaaaaaaaaa";
+      const nextApi = "registry.example.com/smedc/api:bbbbbbbbbbbb";
+      const nextWorker = "registry.example.com/smedc/worker:bbbbbbbbbbbb";
+      const nextOps = "registry.example.com/smedc/api:ops-bbbbbbbbbbbb";
 
-    try {
-      await mkdir(fakeBin);
-      await writeFile(runtimeFile, `SMEDC_API_IMAGE=${oldApi}\nSMEDC_WORKER_IMAGE=${oldWorker}\n`);
-      await writeFile(composeFile, "legacy-compose\n");
-      await writeFile(composeNext, "three-image-compose\n");
-      await writeFile(
-        join(fakeBin, "docker"),
-        `#!/usr/bin/env bash
+      try {
+        await mkdir(fakeBin);
+        await writeFile(
+          runtimeFile,
+          `SMEDC_API_IMAGE=${oldApi}\nSMEDC_WORKER_IMAGE=${oldWorker}\n`
+        );
+        await writeFile(composeFile, "legacy-compose\n");
+        await writeFile(composeNext, "three-image-compose\n");
+        await writeFile(
+          join(fakeBin, "docker"),
+          `#!/usr/bin/env bash
 set -euo pipefail
 count=0
 if [ -f "$FAKE_DOCKER_STATE" ]; then count="$(<"$FAKE_DOCKER_STATE")"; fi
 count=$((count + 1))
 printf '%s\n' "$count" > "$FAKE_DOCKER_STATE"
-if [ "$count" -eq 2 ]; then exit 42; fi
+if [[ "$*" == *"--profile release pull api worker release-ops"* ]]; then exit 42; fi
+if [ "$1:$2" = "image:inspect" ] && [[ "$*" == *"bbbbbbbbbbbb"* ]]; then printf '%s\n' "1"; fi
+if [[ "$*" == *"ps --status running -q api worker"* ]]; then printf '%s\n' "aaaaaaaaaaaa"; fi
+for arg in "$@"; do
+  if [ "$arg" = "--input-type=module" ] && [ "$SCOPE_USED" = "true" ]; then exit 43; fi
+done
 `
-      );
-      await writeFile(
-        join(fakeBin, "install"),
-        `#!/usr/bin/env bash
+        );
+        await writeFile(
+          join(fakeBin, "install"),
+          `#!/usr/bin/env bash
 set -euo pipefail
 if [ "\${1:-}" = "-d" ]; then
   mkdir -p "\${@: -1}"
@@ -296,37 +402,48 @@ while [ "$#" -gt 0 ]; do
 done
 cp "\${files[0]}" "\${files[1]}"
 `
-      );
-      for (const command of ["chown", "flock"]) {
-        await writeFile(join(fakeBin, command), "#!/usr/bin/env bash\nexit 0\n");
+        );
+        for (const command of ["chown", "flock"]) {
+          await writeFile(join(fakeBin, command), "#!/usr/bin/env bash\nexit 0\n");
+        }
+        await writeFile(join(fakeBin, "curl"), "#!/usr/bin/env bash\nexit 0\n");
+        await Promise.all(
+          ["docker", "install", "chown", "flock", "curl"].map((command) =>
+            chmod(join(fakeBin, command), 0o755)
+          )
+        );
+
+        const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/smedc", root);
+        const result = spawnSync("bash", ["-s", "--", nextApi, nextWorker, nextOps, "0"], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            FAKE_DOCKER_STATE: dockerState,
+            SCOPE_USED: String(scopeUsed),
+            PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
+          },
+          input: rollout
+        });
+
+        expect(result.status, result.stderr).toBe(42);
+        expect(await readFile(composeFile, "utf8")).toBe(
+          scopeUsed ? "three-image-compose\n" : "legacy-compose\n"
+        );
+        expect(await readFile(runtimeFile, "utf8")).toContain(
+          `SMEDC_API_IMAGE=${scopeUsed ? nextApi : oldApi}\n`
+        );
+        expect(await readFile(runtimeFile, "utf8")).toContain(
+          `SMEDC_WORKER_IMAGE=${scopeUsed ? nextWorker : oldWorker}\n`
+        );
+        expect(await readFile(runtimeFile, "utf8")).toContain(
+          `SMEDC_RELEASE_OPS_IMAGE=${nextOps}\n`
+        );
+      } finally {
+        await rm(root, { recursive: true, force: true });
       }
-      await writeFile(join(fakeBin, "curl"), "#!/usr/bin/env bash\nexit 0\n");
-      await Promise.all(
-        ["docker", "install", "chown", "flock", "curl"].map((command) =>
-          chmod(join(fakeBin, command), 0o755)
-        )
-      );
-
-      const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/smedc", root);
-      const result = spawnSync("bash", ["-s", "--", nextApi, nextWorker, nextOps, "0"], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          FAKE_DOCKER_STATE: dockerState,
-          PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
-        },
-        input: rollout
-      });
-
-      expect(result.status, result.stderr).toBe(42);
-      expect(await readFile(composeFile, "utf8")).toBe("legacy-compose\n");
-      expect(await readFile(runtimeFile, "utf8")).toContain(`SMEDC_API_IMAGE=${oldApi}\n`);
-      expect(await readFile(runtimeFile, "utf8")).toContain(`SMEDC_WORKER_IMAGE=${oldWorker}\n`);
-      expect(await readFile(runtimeFile, "utf8")).toContain(`SMEDC_RELEASE_OPS_IMAGE=${nextOps}\n`);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  }, 10_000);
+    },
+    10_000
+  );
 
   it("leaves the independent website untouched during service deploy and rollback", async () => {
     const root = await mkdtemp(join(tmpdir(), "smedc-site-rollout-"));

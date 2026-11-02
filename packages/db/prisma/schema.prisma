@@ -460,6 +460,7 @@ model QuarantineCertificate {
 }
 
 model PartitionImportJob {
+  orderScope OrderScope? @map("order_scope")
   id                   String                   @id @db.VarChar(32)
   orgId                String                   @map("org_id") @db.VarChar(64)
   uploaderId           String                   @map("uploader_employee_id") @db.VarChar(32)
@@ -500,6 +501,8 @@ model PartitionImportJob {
 }
 
 model StructuredPartition {
+  version Int @default(1) @db.UnsignedInt
+  orderScope OrderScope? @map("order_scope")
   id                   String           @id @db.VarChar(32)
   orgId                String           @map("org_id") @db.VarChar(64)
   enterpriseKey        String           @map("enterprise_key") @db.VarChar(191)
@@ -1312,6 +1315,7 @@ model BrowserSession {
 }
 
 model BusinessEnterpriseIdentity {
+  integration EnterpriseIntegration?
   orgId String @map("org_id") @db.VarChar(64)
   enterpriseKey String @map("enterprise_key") @db.VarChar(128)
   enterpriseName String @map("enterprise_name") @db.VarChar(255)
@@ -1387,4 +1391,293 @@ model StoreReview {
   @@index([orgId, enterpriseKey, storeName, reviewedAt, id], map: "idx_store_reviews_store_time")
   @@index([orgId, enterpriseKey, reviewedAt, id], map: "idx_store_reviews_time")
   @@map("store_reviews")
+}
+
+// Central configuration and coordination only; schedules and execution stay on the host.
+enum OrderScope {
+  settled_only
+  all_statuses
+  legacy_unknown
+}
+
+enum EnterpriseWorkflowType {
+  meituan_daily_ingestion @map("meituan-daily-ingestion")
+  meituan_review_operations @map("meituan-review-operations")
+  weekly_business_report @map("weekly-business-report")
+}
+
+enum WorkflowControlState {
+  active
+  paused
+  revoked
+}
+
+enum WorkflowInstallationState {
+  not_installed
+  pending
+  paused
+  enabled
+  revoked
+}
+
+enum WorkflowRunState {
+  running
+  succeeded
+  partial
+  needs_attention
+  failed
+  unknown
+}
+
+enum WorkflowActionState {
+  intent
+  confirmed
+  failed
+  unknown
+}
+
+enum WorkflowMigrationStage {
+  preview
+  validated
+  imported
+  host_switched
+  verified
+}
+
+model EnterpriseIntegration {
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  version Int @default(0) @db.UnsignedInt
+  schemaVersion Int @default(1) @map("schema_version") @db.UnsignedInt
+  configuration Json
+  orderScopeRequired Boolean @default(false) @map("order_scope_required")
+  updatedBy String @map("updated_by") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  enterprise BusinessEnterpriseIdentity @relation(fields: [orgId, enterpriseKey], references: [orgId, enterpriseKey], onDelete: Restrict, onUpdate: Restrict)
+  workflows EnterpriseWorkflow[]
+  previews WorkflowChangePreview[]
+  migrations WorkflowMigration[]
+  @@id([orgId, enterpriseKey])
+  @@map("enterprise_integrations")
+}
+
+model EnterpriseWorkflow {
+  id String @id @default(cuid()) @db.VarChar(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  type EnterpriseWorkflowType
+  version Int @default(0) @db.UnsignedInt
+  controlVersion Int @default(0) @map("control_version") @db.UnsignedInt
+  controlState WorkflowControlState @default(paused) @map("control_state")
+  assignmentEpoch Int @default(0) @map("assignment_epoch") @db.UnsignedInt
+  assignedInstallationId String? @map("assigned_installation_id") @db.VarChar(64)
+  leaseRunId String? @map("lease_run_id") @db.VarChar(64)
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  integration EnterpriseIntegration @relation(fields: [orgId, enterpriseKey], references: [orgId, enterpriseKey], onDelete: Restrict, onUpdate: Restrict)
+  configurations WorkflowConfigurationVersion[]
+  authorizations WorkflowAuthorization[]
+  installations WorkflowInstallation[]
+  runs WorkflowRun[]
+  actions WorkflowAction[]
+  @@unique([orgId, id])
+  @@unique([orgId, enterpriseKey, type], map: "uq_enterprise_workflow_type")
+  @@map("enterprise_workflows")
+}
+
+model WorkflowConfigurationVersion {
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  version Int @db.UnsignedInt
+  schemaVersion Int @default(1) @map("schema_version") @db.UnsignedInt
+  configuration Json
+  createdBy String @map("created_by") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  workflow EnterpriseWorkflow @relation(fields: [orgId, workflowId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([orgId, workflowId, version])
+  @@map("workflow_configuration_versions")
+}
+
+model WorkflowChangePreview {
+  id String @id @default(cuid()) @db.VarChar(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  workflowType EnterpriseWorkflowType @map("workflow_type")
+  expectedVersion Int @map("expected_version") @db.UnsignedInt
+  expectedIntegrationVersion Int @map("expected_integration_version") @db.UnsignedInt
+  expectedControlVersion Int @map("expected_control_version") @db.UnsignedInt
+  change Json
+  confirmationDigest String @map("confirmation_digest") @db.Char(64)
+  preparedBy String @map("prepared_by") @db.VarChar(32)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  consumedAt DateTime? @map("consumed_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  integration EnterpriseIntegration @relation(fields: [orgId, enterpriseKey], references: [orgId, enterpriseKey], onDelete: Restrict, onUpdate: Restrict)
+  @@index([orgId, enterpriseKey, expiresAt])
+  @@map("workflow_change_previews")
+}
+
+model WorkflowAuthorization {
+  id String @id @default(cuid()) @db.VarChar(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  scope Json
+  configurationVersion Int @map("configuration_version") @db.UnsignedInt
+  controlVersion Int @map("control_version") @db.UnsignedInt
+  grantedBy String @map("granted_by") @db.VarChar(32)
+  grantedAt DateTime @default(now()) @map("granted_at") @db.DateTime(3)
+  revokedBy String? @map("revoked_by") @db.VarChar(32)
+  revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
+  workflow EnterpriseWorkflow @relation(fields: [orgId, workflowId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@index([orgId, workflowId, revokedAt])
+  @@map("workflow_authorizations")
+}
+
+model WorkflowInstallation {
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  installationId String @map("installation_id") @db.VarChar(64)
+  employeeId String @map("employee_id") @db.VarChar(32)
+  version Int @default(1) @db.UnsignedInt
+  deviceAlias String @map("device_alias") @db.VarChar(255)
+  host String @db.VarChar(32)
+  platform String @db.VarChar(32)
+  launcherVersion String @map("launcher_version") @db.VarChar(64)
+  workflowPackageVersion String @map("workflow_package_version") @db.VarChar(64)
+  state WorkflowInstallationState @default(pending)
+  hostSnapshot Json? @map("host_snapshot")
+  readinessChecks Json? @map("readiness_checks")
+  firstRunVerification String @default("not_run") @map("first_run_verification") @db.VarChar(32)
+  lastCheckedAt DateTime? @map("last_checked_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  workflow EnterpriseWorkflow @relation(fields: [orgId, workflowId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([orgId, workflowId, installationId])
+  @@map("workflow_installations")
+}
+
+model WorkflowRun {
+  id String @id @default(cuid()) @db.VarChar(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  installationId String @map("installation_id") @db.VarChar(64)
+  employeeId String @map("employee_id") @db.VarChar(32)
+  configurationVersion Int @map("configuration_version") @db.UnsignedInt
+  integrationVersion Int @map("integration_version") @db.UnsignedInt
+  controlVersion Int @map("control_version") @db.UnsignedInt
+  assignmentEpoch Int @map("assignment_epoch") @db.UnsignedInt
+  workflowPackageVersion String @map("workflow_package_version") @db.VarChar(64)
+  startDate DateTime @map("start_date") @db.Date
+  endDate DateTime @map("end_date") @db.Date
+  mode String @db.VarChar(32)
+  snapshot Json
+  restrictivePolicy Json? @map("restrictive_policy")
+  phase String @default("preparing") @db.VarChar(32)
+  status WorkflowRunState @default(running)
+  summary Json?
+  startedAt DateTime @default(now()) @map("started_at") @db.DateTime(3)
+  renewedAt DateTime @default(now()) @map("renewed_at") @db.DateTime(3)
+  finishedAt DateTime? @map("finished_at") @db.DateTime(3)
+  retainUntil DateTime @map("retain_until") @db.DateTime(3)
+  workflow EnterpriseWorkflow @relation(fields: [orgId, workflowId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([orgId, workflowId, id])
+  @@index([orgId, workflowId, startedAt])
+  @@index([retainUntil, status])
+  @@map("workflow_runs")
+}
+
+// Kept after run detail expiry and workflow revocation. Never cascade-delete dedup history.
+model WorkflowAction {
+  deduplicationKeys WorkflowActionDeduplication[]
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  actionId String @map("action_id") @db.VarChar(64)
+  runId String @map("run_id") @db.VarChar(64)
+  idempotencyKey String @map("idempotency_key") @db.Char(64)
+  identity Json
+  artifactHash String? @map("artifact_hash") @db.Char(64)
+  correlationMarker String? @map("correlation_marker") @db.VarChar(64)
+  state WorkflowActionState @default(intent)
+  receipt Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  confirmedAt DateTime? @map("confirmed_at") @db.DateTime(3)
+  workflow EnterpriseWorkflow @relation(fields: [orgId, workflowId], references: [orgId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([orgId, workflowId, actionId])
+  @@unique([orgId, workflowId, idempotencyKey], map: "uq_workflow_action_dedup")
+  @@index([orgId, workflowId, state])
+  @@map("workflow_actions")
+}
+
+model WorkflowMigration {
+  targetVersions Json @map("target_versions")
+  sealedAt DateTime? @map("sealed_at") @db.DateTime(3)
+  chunkCount Int @default(0) @map("chunk_count") @db.UnsignedInt
+  recordCount Int @default(0) @map("record_count") @db.UnsignedInt
+  chunksDigest String? @map("chunks_digest") @db.Char(64)
+  importedChunks Int @default(0) @map("imported_chunks") @db.UnsignedInt
+  validatedChunks Int @default(0) @map("validated_chunks") @db.UnsignedInt
+  chunks WorkflowMigrationChunk[]
+  id String @id @default(cuid()) @db.VarChar(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  sourceSnapshotHash String @map("source_snapshot_hash") @db.Char(64)
+  targetVersion Int @map("target_version") @db.UnsignedInt
+  version Int @default(1) @db.UnsignedInt
+  stage WorkflowMigrationStage @default(preview)
+  manifest Json
+  confirmationDigest String @map("confirmation_digest") @db.Char(64)
+  createdBy String @map("created_by") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  integration EnterpriseIntegration @relation(fields: [orgId, enterpriseKey], references: [orgId, enterpriseKey], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([orgId, enterpriseKey, sourceSnapshotHash, targetVersion], map: "uq_workflow_migration_source_target")
+  @@map("workflow_migrations")
+}
+
+// One email may notify several review/recipient pairs; each pair remains independently claimed.
+model WorkflowActionDeduplication {
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  key String @db.Char(64)
+  actionId String @map("action_id") @db.VarChar(64)
+  action WorkflowAction @relation(fields: [orgId, workflowId, actionId], references: [orgId, workflowId, actionId], onDelete: Restrict, onUpdate: Restrict)
+  @@id([orgId, workflowId, key])
+  @@index([orgId, workflowId, actionId])
+  @@map("workflow_action_deduplication")
+}
+
+model WorkflowMigrationChunk {
+  orgId String @map("org_id") @db.VarChar(64)
+  migrationId String @map("migration_id") @db.VarChar(64)
+  sequence Int @db.UnsignedInt
+  payload Json
+  digest String @db.Char(64)
+  recordCount Int @map("record_count") @db.UnsignedInt
+  importedAt DateTime? @map("imported_at") @db.DateTime(3)
+  migration WorkflowMigration @relation(fields: [migrationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([orgId, migrationId, sequence])
+  @@map("workflow_migration_chunks")
+}
+
+model OrderScopeTransitionPreview {
+  id String @id @db.VarChar(32)
+  orgId String @map("org_id") @db.VarChar(64)
+  actorId String @map("actor_id") @db.VarChar(32)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(191)
+  enterpriseName String @map("enterprise_name") @db.VarChar(255)
+  startDate DateTime @map("start_date") @db.Date
+  endDate DateTime @map("end_date") @db.Date
+  storeNames Json @map("store_names")
+  orderScope OrderScope @map("order_scope")
+  sourceChecksumSha256 String @map("source_checksum_sha256") @db.Char(64)
+  snapshot Json
+  confirmationDigest String @map("confirmation_digest") @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  jobId String? @unique @map("job_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  @@index([orgId, expiresAt])
+  @@map("order_scope_transition_previews")
 }

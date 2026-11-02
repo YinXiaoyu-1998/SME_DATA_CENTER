@@ -79,7 +79,7 @@
     "dotenv": "^17.4.2"
   },
   "overrides": {
-    "hono": "4.13.5",
+    "hono": "4.13.11",
     "prisma": {
       "mysql2": "3.23.1"
     },
@@ -87,7 +87,7 @@
       "deepmerge-ts": "8.0.2"
     },
     "@prisma/adapter-mariadb": {
-      "mariadb": "3.5.3"
+      "mariadb": "3.5.4"
     },
     "exceljs": {
       "uuid": "11.1.1",

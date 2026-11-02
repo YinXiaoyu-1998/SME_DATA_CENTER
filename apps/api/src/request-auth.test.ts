@@ -29,6 +29,9 @@ function minimalContext(
   authenticateOfficialAccessToken: ApiServerContext["authenticateOfficialAccessToken"]
 ): ApiServerContext {
   return {
+    workflows: () => {
+      throw new Error("unused");
+    },
     permissions: () => {
       throw new Error("unused");
     },

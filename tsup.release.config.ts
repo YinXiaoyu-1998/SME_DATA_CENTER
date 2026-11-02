@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineConfig } from "tsup";
 
 export const releaseEntries = {
@@ -26,6 +27,25 @@ export default defineConfig({
   outDir: "dist/release",
   clean: true,
   sourcemap: true,
+  metafile: true,
   splitting: false,
-  noExternal: [/^@smedc\//]
+  noExternal: [/^@smedc\//, "exceljs/lib/doc/workbook.js", "readable-stream"],
+  esbuildPlugins: [
+    {
+      name: "workbook-readable-stream",
+      setup(build) {
+        // JSZip still needs v2; the bundled workbook must resolve its own external v3.
+        build.onResolve({ filter: /^readable-stream$/ }, (args) => ({
+          path: /[\\/]node_modules[\\/]exceljs[\\/]/.test(args.importer)
+            ? "readable-stream-v3"
+            : args.path,
+          external: true
+        }));
+      }
+    }
+  ],
+  banner: {
+    js: `/*! ExcelJS document workbook source\n${readFileSync("node_modules/exceljs/LICENSE", "utf8")}\n*/
+import { createRequire as createReleaseRequire } from 'node:module'; const require = createReleaseRequire(import.meta.url);`
+  }
 });

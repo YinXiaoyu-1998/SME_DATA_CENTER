@@ -14,6 +14,7 @@ import {
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
   PERMISSION_MCP_TOOL_NAMES,
+  WORKFLOW_MCP_TOOL_NAMES,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -46,6 +47,7 @@ export const LAUNCHER_BOOTSTRAP_TOOL_NAMES = [
 export type LauncherBootstrapToolName = (typeof LAUNCHER_BOOTSTRAP_TOOL_NAMES)[number];
 // Keep the public declaration self-contained: the packaged launcher has no workspace dependencies.
 export type LauncherBusinessToolName =
+  | "prepare_order_scope_transition"
   | "smedc_get_current_user"
   | "smedc_list_skills"
   | "search_document_evidence"
@@ -90,8 +92,18 @@ export type LauncherBusinessToolName =
   | "get_evidence_document_management_status"
   | "prepare_authorization_cutover"
   | "activate_authorization_cutover"
-  | "suspend_authorization_reads";
+  | "suspend_authorization_reads"
+  | "list_enterprise_workflows"
+  | "get_enterprise_workflow"
+  | "prepare_enterprise_workflow_change"
+  | "save_enterprise_workflow"
+  | "manage_workflow_installation"
+  | "manage_workflow_run"
+  | "record_workflow_action"
+  | "get_workflow_status";
 export type LauncherToolName = LauncherBootstrapToolName | LauncherBusinessToolName;
+
+const WORKFLOW_TOOL_NAMES = new Set<string>(WORKFLOW_MCP_TOOL_NAMES);
 
 const PERMISSION_TOOL_NAMES = new Set<string>(PERMISSION_MCP_TOOL_NAMES);
 
@@ -256,7 +268,9 @@ export function registerLauncherTools(
           ? launcherUploadToolInputShape(tool)
           : LEDGER_PDF_TOOL_NAMES.has(tool.name) ||
               PERMISSION_TOOL_NAMES.has(tool.name) ||
+              WORKFLOW_TOOL_NAMES.has(tool.name) ||
               [
+                "prepare_order_scope_transition",
                 "download_cost_cards",
                 "archive_cost_card",
                 "upsert_store_reviews",
@@ -428,7 +442,9 @@ async function proxyPartitionUpload(
   const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
     (candidate) => candidate.name === "upload_structured_dataset"
   )!;
-  const parsed = z.object(launcherUploadToolInputShape(contract)).strict().safeParse(input);
+  const parsed = contract.inputSchema
+    .safeExtend({ file: launcherUploadFileInputSchema })
+    .safeParse(input);
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   const value = parsed.data as {
     file: { name: string; mediaType: string; encoding: "path"; filePath: string };
@@ -439,6 +455,8 @@ async function proxyPartitionUpload(
     idempotencyKey: string;
     confidentialityLevel?: number;
     historicalSupplementReason?: string;
+    orderScope?: "settled_only" | "all_statuses";
+    orderScopeTransition?: { previewId: string; confirmationDigest: string };
   };
   if (!value.startDate || !value.endDate) {
     return errorToolResult(
@@ -460,6 +478,8 @@ async function proxyPartitionUpload(
         endDate: value.endDate,
         idempotencyKey: value.idempotencyKey,
         confidentialityLevel: value.confidentialityLevel,
+        orderScope: value.orderScope,
+        orderScopeTransition: value.orderScopeTransition,
         historicalSupplementReason: value.historicalSupplementReason
       })) as Record<string, unknown>
     );

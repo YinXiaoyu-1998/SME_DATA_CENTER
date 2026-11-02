@@ -111,6 +111,7 @@ describe("structured partition repository boundaries", () => {
           confidentialityLevel: { lte: 1 }
         }),
         select: {
+          orderScope: true,
           businessDate: true,
           merchantId: true,
           storeName: true,

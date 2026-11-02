@@ -215,6 +215,17 @@ export function registerStructuredQueryRoutes(
             endDate: enterprise.endDate.toISOString().slice(0, 10),
             partitionCount: enterprise.partitionCount,
             totalRowCount: safeJsonInteger(enterprise.totalRowCount),
+            ...(enterprise.orderScopes
+              ? {
+                  orderScopes: enterprise.orderScopes.map((scope) => ({
+                    orderScope: scope.orderScope,
+                    startDate: scope.startDate.toISOString().slice(0, 10),
+                    endDate: scope.endDate.toISOString().slice(0, 10),
+                    partitionCount: scope.partitionCount,
+                    totalRowCount: safeJsonInteger(scope.totalRowCount)
+                  }))
+                }
+              : {}),
             stores: enterprise.stores
           }))
         };

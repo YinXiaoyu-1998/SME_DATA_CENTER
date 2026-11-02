@@ -207,3 +207,20 @@ Existing completed or pending ZIP requests for the old name expire; check their 
 prepare a fresh download after upgrading. Earlier download links remain governed by their original
 TTL. Request fingerprints are preserved for history, so a new-name operation needs a new
 idempotency key; an old key conflict is not permission to alter the stored original request.
+
+## Versioned Workflow Source Scope (Release Gated)
+
+The optional enterprise-workflow contract requires explicit `orderScope: settled_only`
+for complete settled business-day originals, with compatible launcher/service minimum `0.16.0`.
+This candidate compatibility requirement does not change the core approved installation pin.
+Until publication and rollout are verified, retain the documented published-client path and report
+workflow upload unsupported; do not omit scope to bypass the feature gate. Original bytes and
+required columns remain unchanged; a missing checkout-time column is still an error.
+
+Compatible partition results, coverage, downloads and local analysis carry `orderScope` as
+`settled_only`, `all_statuses` or historical `legacy_unknown`. Historical unknown is not a new-upload
+declaration. Different or unknown existing scope requires the service's explicit version-bound
+transition preview/confirmation; `ORDER_SCOPE_CONFLICT` cannot be bypassed by a new key or
+rewritten workbook. Creating/importing paused workflow settings alone must not activate the
+omission requirement for old tasks. Confirmed zero observations do not upload empty files,
+clear partitions, or relabel unknown history. Use the companion's current workflow recipe.

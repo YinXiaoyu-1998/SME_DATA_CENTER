@@ -1,7 +1,17 @@
+import {
+  WORKFLOW_MCP_INPUT_SCHEMAS,
+  WORKFLOW_MCP_TOOL_NAMES,
+  WORKFLOW_TOOL_READ_ONLY
+} from "./enterprise-workflows.js";
+export * from "./enterprise-workflows.js";
 import path from "node:path";
 import { z } from "zod";
 export { FILE_UPLOAD_ADMIN_REQUIRED_CODE, FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE } from "@smedc/domain";
 import {
+  declaredOrderScopeSchema,
+  orderScopeTransitionConfirmationSchema,
+  prepareOrderScopeTransitionSchema,
+  validateOrderScopeDataset,
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   PUBLIC_INPUT_LIMITS,
   STRUCTURED_DATASETS,
@@ -434,6 +444,16 @@ const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
     dataset: structuredDataset,
+    orderScopeTransition: orderScopeTransitionConfirmationSchema
+      .optional()
+      .describe(
+        "Explicit confirmation from prepare_order_scope_transition, bound to current versions and original source SHA-256."
+      ),
+    orderScope: declaredOrderScopeSchema
+      .optional()
+      .describe(
+        "Declared in-store source query scope, never a row filter or a proof inferred from order statuses. Preserve original nulls and unexpected statuses for verification. legacy_unknown is read-only historical metadata. Other datasets reject this field."
+      ),
     enterpriseName: z
       .string()
       .min(1)
@@ -468,6 +488,18 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
+    if (input.orderScopeTransition && (input.dataset !== "in_store_orders" || !input.orderScope))
+      context.addIssue({
+        code: "custom",
+        path: ["orderScopeTransition"],
+        message: "A transition requires an explicit in-store order scope."
+      });
+    if (!validateOrderScopeDataset(input.dataset, input.orderScope))
+      context.addIssue({
+        code: "custom",
+        path: ["orderScope"],
+        message: "orderScope is accepted only for in_store_orders."
+      });
     if (input.dataset === "cost_cards" && input.confidentialityLevel !== undefined)
       context.addIssue({
         code: "custom",
@@ -765,10 +797,11 @@ export const upsertStoreReviewsInputSchema = z
               .refine((v) => storeReviewTextFits(v, STORE_REVIEW_LIMITS.textChars))
               .nullable()
               .optional(),
-            // Intersect with the untouched input so Zod's record parser cannot discard
-            // own "__proto__" dimensions. Intersection uses safe object spread.
+            // Preserve own score keys that Zod's record/intersection parsers discard.
+            // Batch validation below checks plain objects, finite numbers and byte limits.
             scores: z
-              .intersection(z.record(z.string(), z.number().finite()), z.unknown())
+              .unknown()
+              .meta({ type: "object", additionalProperties: { type: "number" } })
               .nullable()
               .optional(),
             merchantReply: z
@@ -952,6 +985,7 @@ const permissionReadNames = new Set([
 ]);
 
 export const SMEDC_MCP_TOOL_NAMES = [
+  "prepare_order_scope_transition",
   "upsert_store_reviews",
   "query_store_reviews",
   "smedc_get_current_user",
@@ -978,7 +1012,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url",
-  ...PERMISSION_MCP_TOOL_NAMES
+  ...PERMISSION_MCP_TOOL_NAMES,
+  ...WORKFLOW_MCP_TOOL_NAMES
 ] as const;
 
 export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
@@ -1035,6 +1070,52 @@ export const MCP_ERROR_CODES = [
 export type McpErrorCode = (typeof MCP_ERROR_CODES)[number];
 
 export const SMEDC_MCP_TOOL_CONTRACTS = [
+  defineToolContract({
+    name: "prepare_order_scope_transition",
+    title: "Prepare order source scope transition",
+    description:
+      "Current admin previews exact existing store-day versions before replacing a different or historical unknown order source scope. No data is changed. Confirm the returned preview and digest with the original source checksum in an in_store_orders upload; stale versions fail atomically.",
+    inputSchema: prepareOrderScopeTransitionSchema,
+    inputFields: Object.keys(prepareOrderScopeTransitionSchema.shape).map((name) => ({
+      name,
+      required: true,
+      description:
+        "Exact source scope or SHA-256 of the original source bytes; dates use YYYY-MM-DD."
+    })),
+    resultShape: [
+      "previewId, confirmationDigest, expiresAt: server-bound confirmation",
+      "partitions[]: affected store/date/current source scope/version"
+    ],
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+  }),
+  ...WORKFLOW_MCP_TOOL_NAMES.map((name) =>
+    defineToolContract({
+      name,
+      title: name.replaceAll("_", " "),
+      description:
+        "Current same-organization admin enterprise workflow coordination. Requires compatible service and launcher 0.16.0+. Does not grant ordinary business reads, execute scripts, or host schedules. Preview is not authorization; mutations verify current control and expected versions.",
+      inputSchema: WORKFLOW_MCP_INPUT_SCHEMAS[name],
+      inputFields: Object.entries(WORKFLOW_MCP_INPUT_SCHEMAS[name].shape).map(
+        ([field, schema]) => ({
+          name: field,
+          required: !schema.isOptional(),
+          description:
+            "Strict workflow contract field; organization is derived from current authentication."
+        })
+      ),
+      resultShape: [
+        "workflow: current authorized configuration, versions and verified official settings entry",
+        "capabilities: compatible service version and readiness, not implied execution availability",
+        "status: bounded installation/run/action summary without credentials or business content"
+      ],
+      annotations: {
+        readOnlyHint: WORKFLOW_TOOL_READ_ONLY.has(name),
+        destructiveHint:
+          !WORKFLOW_TOOL_READ_ONLY.has(name) && name !== "prepare_enterprise_workflow_change",
+        idempotentHint: WORKFLOW_TOOL_READ_ONLY.has(name) || name === "save_enterprise_workflow"
+      }
+    })
+  ),
   defineToolContract({
     name: "smedc_get_current_user",
     title: "Get current SMEDC user",
@@ -1184,7 +1265,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       description: schema.description ?? name
     })),
     resultShape: [
-      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, error",
+      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, orderScope, error",
       "other datasets: document, processing, importBatch"
     ]
   }),
@@ -1197,7 +1278,14 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     inputFields: [
       { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
     ],
-    resultShape: ["partitionImportJobId", "status", "partitionCount", "totalRowCount", "error"]
+    resultShape: [
+      "partitionImportJobId",
+      "status",
+      "partitionCount",
+      "totalRowCount",
+      "orderScope: declared or legacy_unknown for in_store_orders; null for other datasets",
+      "error"
+    ]
   }),
   defineToolContract({
     name: "download_structured_partitions",

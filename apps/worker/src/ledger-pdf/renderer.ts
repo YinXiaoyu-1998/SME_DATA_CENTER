@@ -4,7 +4,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import ExcelJS from "exceljs";
+import { Workbook, type LedgerWorkbook, type WorkbookBuffer } from "./workbook.js";
 import sharp, { type OutputInfo } from "sharp";
 import { STRUCTURED_DATASET_REGISTRIES } from "@smedc/domain";
 import type { LedgerPrintRow, LedgerSnapshot, RenderedLedgerPdf } from "@smedc/ledger-archive";
@@ -94,7 +94,7 @@ export async function buildLedgerWorkbook(
   snapshot: LedgerSnapshot,
   certificateFiles: ReadonlyMap<string, string>,
   signal?: AbortSignal
-): Promise<ExcelJS.Workbook> {
+): Promise<LedgerWorkbook> {
   validateSnapshot(snapshot);
   checkAbort(signal);
   let actualPhotoBytes = 0;
@@ -109,7 +109,7 @@ export async function buildLedgerWorkbook(
     if (actualPhotoBytes > MAX_PHOTO_BYTES)
       fail("LEDGER_LIMIT_EXCEEDED", "Certificate images exceed input limit");
   }
-  const workbook = new ExcelJS.Workbook();
+  const workbook = new Workbook();
   const sheet = workbook.addWorksheet("食品进货台账", {
     pageSetup: {
       paperSize: 9,
@@ -225,7 +225,7 @@ export async function buildLedgerWorkbook(
     const width = normalized.info.width * scale,
       height = normalized.info.height * scale;
     const image = workbook.addImage({
-      buffer: normalized.data as unknown as ExcelJS.Buffer,
+      buffer: normalized.data as unknown as WorkbookBuffer,
       extension: "png"
     });
     attachment.addImage(image, {

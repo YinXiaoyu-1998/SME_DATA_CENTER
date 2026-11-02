@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { Prisma, PrismaClient, type PartitionDownloadRequest } from "@prisma/client";
 import {
+  effectiveOrderScope,
+  orderScopeSchema,
+  type OrderScope,
   type PartitionDatasetName,
   loadPartitionDownloadLimits,
   isPartitionDataset,
@@ -37,6 +40,7 @@ export interface PartitionDownloadLease {
 }
 /** Internal snapshot: never expose object keys or confidentiality to clients. */
 export interface PartitionDownloadEntry {
+  orderScope?: OrderScope | null;
   id: string;
   storeKey: string;
   storeName: string;
@@ -202,6 +206,9 @@ export function parsePartitionDownloadManifest(value: Prisma.JsonValue): Partiti
     entries.some((raw) => {
       if (!raw || Array.isArray(raw) || typeof raw !== "object") return true;
       return (
+        (raw["orderScope"] !== undefined &&
+          raw["orderScope"] !== null &&
+          !orderScopeSchema.safeParse(raw["orderScope"]).success) ||
         ["id", "storeKey", "storeName", "enterpriseName", "objectKey"].some(
           (key) => typeof raw[key] !== "string" || !raw[key]
         ) ||
@@ -292,7 +299,7 @@ export function createPrismaPartitionDownloadRepository(
         }
       >
     >(Prisma.sql`
-      SELECT id, store_key AS storeKey, store_name AS storeName, merchant_id AS merchantId,
+      SELECT CASE WHEN dataset = 'in_store_orders' THEN COALESCE(order_scope, 'legacy_unknown') ELSE NULL END AS orderScope, id, store_key AS storeKey, store_name AS storeName, merchant_id AS merchantId,
       enterprise_name AS enterpriseName, business_date AS businessDate, object_key AS objectKey,
       checksum_sha256 AS checksumSha256, byte_size AS byteSize, row_count AS rowCount,
       confidentiality_level AS confidentialityLevel FROM structured_partitions
@@ -335,6 +342,8 @@ export function createPrismaPartitionDownloadRepository(
       return (
         p &&
         p.dataset === scope.dataset &&
+        effectiveOrderScope(p.dataset, p.orderScope) ===
+          effectiveOrderScope(scope.dataset, e.orderScope) &&
         p.enterpriseKey === scope.enterpriseKey &&
         p.storeKey === e.storeKey &&
         p.storeName === e.storeName &&

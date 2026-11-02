@@ -227,6 +227,8 @@ integrationRun: try {
                         "apps/api/src/auth/prisma-auth-repository.integration.test.ts",
                         "apps/api/src/ledger-web/download.prisma.integration.test.ts",
                         "apps/api/src/structured-query.prisma.integration.test.ts",
+                        "apps/api/src/enterprise-workflows/lifecycle.prisma.integration.test.ts",
+                        "apps/api/src/enterprise-workflows/activation.prisma.integration.test.ts",
                         "packages/ledger-archive/src/publication.prisma.integration.test.ts",
                         "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
                         "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
@@ -257,6 +259,7 @@ integrationRun: try {
       env: {
         ...integrationEnv,
         RUN_AUTH_INTEGRATION: "1",
+        RUN_WORKFLOW_INTEGRATION: "1",
         RUN_LEDGER_PRISMA_INTEGRATION: "1",
         RUN_STRUCTURED_QUERY_PRISMA_INTEGRATION: "1",
         RUN_PARTITION_PRISMA_INTEGRATION: "1",
@@ -289,7 +292,17 @@ integrationRun: try {
           "no_implicit_grant",
           "scope_and_clearance",
           "no_legacy_order_entitlement",
-          "zip_delivery"
+          "zip_delivery",
+          ...(!takeawayOrdersOnly
+            ? [
+                "order_scope_metadata",
+                "trusted_scope_transition",
+                "stale_version_rejection",
+                "omission_compatibility_gate",
+                "missing_settlement_column_rejected",
+                "worker_lease_fencing"
+              ]
+            : [])
         ]
       })
     );
@@ -749,6 +762,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
   type Receipt = {
     partitionImportJobId: string;
     status: string;
+    orderScope: string | null;
     partitionCount: number;
     totalRowCount: number;
   };
@@ -782,6 +796,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
         businessDate: string;
         storeName: string;
         storeId: string | null;
+        orderScope: string | null;
       }>;
     }>("/v1/structured/partition-manifests", {
       method: "POST",
@@ -790,12 +805,15 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     }).then(({ partitionCount, totalRowCount, partitions }) => ({
       partitionCount,
       totalRowCount,
-      partitions: partitions.map(({ checksumSha256, businessDate, storeName, storeId }) => ({
-        checksumSha256,
-        businessDate,
-        storeName,
-        storeId
-      }))
+      partitions: partitions.map(
+        ({ checksumSha256, businessDate, storeName, storeId, orderScope }) => ({
+          orderScope,
+          checksumSha256,
+          businessDate,
+          storeName,
+          storeId
+        })
+      )
     }));
   const worker = async (expected: string) => {
     const result = parseJson<WorkerResponse>(
@@ -806,17 +824,24 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       `In-store-order worker must be ${expected}, got ${result.status}.`
     );
   };
-  const upload = async (name: string, xlsx: Buffer, key = name) => {
+  const upload = async (
+    name: string,
+    xlsx: Buffer,
+    key = name,
+    extra: Record<string, unknown> = {}
+  ) => {
     const filePath = path.join(integrationRoot, `${name}.xlsx`);
     await writeFile(filePath, xlsx);
     return call<Receipt>(
       "upload_structured_dataset",
       {
         dataset,
+        ...(!takeaway ? { orderScope: "settled_only" } : {}),
         enterpriseName,
         startDate: "20261026",
         endDate: "20261027",
         idempotencyKey: `in-store-${key}`,
+        ...extra,
         file: {
           name: `${name}.xlsx`,
           mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -827,7 +852,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       admin
     );
   };
-  const download = async () => {
+  const download = async (expectedOrderScope = "settled_only") => {
     const result = await call<Extract>("download_structured_partitions", {
       ...scope,
       startDate: "20261026",
@@ -851,6 +876,13 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       !/presignedDownloadUrl|objectKey|file:\/\//.test(localManifest),
       "Launcher local metadata must be safe."
     );
+    if (!takeaway)
+      assert(
+        JSON.parse(localManifest).files.every(
+          (file: { orderScope?: string }) => file.orderScope === expectedOrderScope
+        ),
+        "Declared order scope must survive launcher upload, publication and local download metadata."
+      );
     return { result, records };
   };
   try {
@@ -937,6 +969,27 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       published.partitionCount === 3 && published.totalRowCount === initialRowCount,
       "Two stores and source business days must yield three partitions and four rows."
     );
+    if (!takeaway) {
+      const beforeConflict = await manifest();
+      const conflicting = await upload("orders-scope-conflict", fixture.xlsx, "scope-conflict", {
+        orderScope: "all_statuses"
+      });
+      await worker("rejected");
+      const status = await call<{ error: { code: string } }>(
+        "get_partition_import_status",
+        { partitionImportJobId: conflicting.partitionImportJobId },
+        admin
+      );
+      assert(
+        status.error.code === "ORDER_SCOPE_CONFLICT",
+        "Cross-scope replacement must require a confirmed preview."
+      );
+      assertStrict.deepEqual(
+        await manifest(),
+        beforeConflict,
+        "Scope conflict must preserve the entire current source."
+      );
+    }
     await prisma.businessAuthorizationState.update({
       where: { orgId: "default-org" },
       data: { mode: "legacy", version: { increment: 1 } }
@@ -1175,13 +1228,28 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       );
     }
     const coverage = await call<{
-      enterprises: Array<{ partitionCount: number; totalRowCount: number }>;
+      enterprises: Array<{
+        partitionCount: number;
+        totalRowCount: number;
+        orderScopes?: Array<{ orderScope: string; partitionCount: number; totalRowCount: number }>;
+      }>;
     }>("describe_structured_dataset_coverage", { dataset, enterpriseName });
     assert(
       coverage.enterprises[0]?.partitionCount === 3 &&
         Number(coverage.enterprises[0]?.totalRowCount) === initialRowCount,
       "Coverage must reflect only authorized current partitions."
     );
+    if (!takeaway)
+      assertStrict.deepEqual(
+        coverage.enterprises[0]?.orderScopes?.map(
+          ({ orderScope, partitionCount, totalRowCount }) => ({
+            orderScope,
+            partitionCount,
+            totalRowCount
+          })
+        ),
+        [{ orderScope: "settled_only", partitionCount: 3, totalRowCount: initialRowCount }]
+      );
     const query = await createLauncherToolHandler(
       "query_structured_dataset",
       reader
@@ -1285,6 +1353,277 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       available,
       "The last successful complete upload wins, even when it restores older source content."
     );
+    if (!takeaway) {
+      const prepare = (
+        source = fixture.xlsx,
+        extra: Record<string, unknown> = {},
+        token = adminToken
+      ) =>
+        apiJson<{
+          previewId: string;
+          confirmationDigest: string;
+          partitions: Array<{
+            version: number;
+            orderScope: string;
+            storeName: string;
+            businessDate: string;
+          }>;
+        }>("/v1/structured/order-scope-transitions", {
+          method: "POST",
+          headers: { ...authorizationHeader(token), "content-type": "application/json" },
+          body: JSON.stringify({
+            enterpriseName,
+            startDate: scope.startDate,
+            endDate: scope.endDate,
+            storeNames: ["合成甲店", "合成乙店"],
+            orderScope: "all_statuses",
+            sourceChecksumSha256: createHash("sha256").update(source).digest("hex"),
+            ...extra
+          })
+        });
+      const confirmation = (preview: { previewId: string; confirmationDigest: string }) => ({
+        previewId: preview.previewId,
+        confirmationDigest: preview.confirmationDigest
+      });
+      await assertStrict.rejects(
+        upload("in-store-original", fixture.xlsx, "in-store-original", {
+          orderScope: "all_statuses"
+        }),
+        /IDEMPOTENCY_KEY_REUSED/
+      );
+      const preview = await prepare();
+      assert(
+        preview.partitions.length === 3 &&
+          preview.partitions.every((p) => p.version > 0 && p.orderScope === "settled_only"),
+        "Transition preview must enumerate exact current store-day versions and source scopes."
+      );
+      await assertStrict.rejects(prepare(fixture.xlsx, {}, readerToken), /UPLOAD_ADMIN_REQUIRED/);
+      await assertStrict.rejects(
+        upload("scope-wrong-source", replacement.xlsx, "scope-wrong-source", {
+          orderScope: "all_statuses",
+          orderScopeTransition: confirmation(preview)
+        }),
+        /ORDER_SCOPE_CONFLICT/
+      );
+      await assertStrict.rejects(
+        upload("scope-wrong-confirmation", fixture.xlsx, "scope-wrong-confirmation", {
+          orderScope: "all_statuses",
+          orderScopeTransition: { ...confirmation(preview), confirmationDigest: "0".repeat(64) }
+        }),
+        /ORDER_SCOPE_CONFLICT/
+      );
+      await upload("scope-new-current-version", replacement.xlsx);
+      await worker("active");
+      await assertStrict.rejects(
+        upload("scope-stale-confirmation", fixture.xlsx, "scope-stale-confirmation", {
+          orderScope: "all_statuses",
+          orderScopeTransition: confirmation(preview)
+        }),
+        /ORDER_SCOPE_CONFLICT/
+      );
+      await upload("scope-restore-before-preview", fixture.xlsx);
+      await worker("active");
+      const incompletePreview = await prepare(replacement.xlsx);
+      const incomplete = await upload(
+        "scope-incomplete-source",
+        replacement.xlsx,
+        "scope-incomplete-source",
+        { orderScope: "all_statuses", orderScopeTransition: confirmation(incompletePreview) }
+      );
+      await worker("rejected");
+      const rejectedScope = await call<{ error: { code: string } }>(
+        "get_partition_import_status",
+        { partitionImportJobId: incomplete.partitionImportJobId },
+        admin
+      );
+      assert(
+        rejectedScope.error.code === "ORDER_SCOPE_CONFLICT",
+        "A source omitting previewed store-days must never partially change scope."
+      );
+      assertStrict.deepEqual(await manifest(), available);
+
+      // A newer same-scope import queued first wins before the confirmed transition publishes.
+      await upload("scope-racing-publication", replacement.xlsx);
+      const racingPreview = await prepare();
+      const raced = await upload("scope-raced-transition", fixture.xlsx, "scope-raced-transition", {
+        orderScope: "all_statuses",
+        orderScopeTransition: confirmation(racingPreview)
+      });
+      await worker("active");
+      const changed = await manifest();
+      await worker("rejected");
+      assert(
+        (
+          await call<{ error: { code: string } }>(
+            "get_partition_import_status",
+            { partitionImportJobId: raced.partitionImportJobId },
+            admin
+          )
+        ).error.code === "ORDER_SCOPE_CONFLICT",
+        "Publication rechecks versions after upload confirmation."
+      );
+      assertStrict.deepEqual(await manifest(), changed);
+      await upload("scope-restore-after-race", fixture.xlsx);
+      await worker("active");
+
+      const previousScopeBundle = await call<{ requestId: string }>(
+        "prepare_structured_partition_download",
+        {
+          dataset,
+          enterpriseName,
+          startDate: "20261026",
+          endDate: "20261027",
+          idempotencyKey: "scope-before-transition"
+        }
+      );
+      await worker("active");
+      const acceptedPreview = await prepare();
+      const confirmed = {
+        orderScope: "all_statuses",
+        orderScopeTransition: confirmation(acceptedPreview)
+      };
+      const transitioned = await upload(
+        "scope-confirmed",
+        fixture.xlsx,
+        "scope-confirmed",
+        confirmed
+      );
+      await worker("active");
+      assert(
+        (await manifest()).partitions.every((p) => p.orderScope === "all_statuses"),
+        "Confirmed transition atomically publishes the new scope."
+      );
+      await download("all_statuses");
+      const staleBundle = await createLauncherToolHandler(
+        "download_structured_partitions",
+        reader
+      )({ requestId: previousScopeBundle.requestId });
+      assert(
+        staleBundle.isError && JSON.stringify(staleBundle).includes("PARTITION_DOWNLOAD_STALE"),
+        "Changing only source scope invalidates a previously prepared ZIP even when CSV bytes are identical."
+      );
+      const replay = await upload("scope-confirmed", fixture.xlsx, "scope-confirmed", confirmed);
+      assert(
+        replay.partitionImportJobId === transitioned.partitionImportJobId &&
+          replay.status === "published" &&
+          replay.orderScope === "all_statuses",
+        "Exact confirmation replay is idempotent."
+      );
+      await assertStrict.rejects(
+        upload("scope-preview-reuse", fixture.xlsx, "scope-preview-reuse", confirmed),
+        /ORDER_SCOPE_CONFLICT/
+      );
+      const restore = await prepare(fixture.xlsx, { orderScope: "settled_only" });
+      await upload("scope-restore-settled", fixture.xlsx, "scope-restore-settled", {
+        orderScope: "settled_only",
+        orderScopeTransition: confirmation(restore)
+      });
+      await worker("active");
+      assertStrict.deepEqual(await manifest(), available);
+
+      const missingSettlement = await createInStoreOrderIntegrationFixture(fixture.rows, [
+        "结账时间"
+      ]);
+      assert(
+        missingSettlement.headers.length === 29,
+        "Synthetic source explicitly exercises missing settlement column."
+      );
+      await upload("orders-29-columns", missingSettlement.xlsx);
+      await worker("rejected");
+      assertStrict.deepEqual(
+        await manifest(),
+        available,
+        "29-column sources must not alter any existing partition."
+      );
+
+      // Merely storing a paused integration cannot break old omission-compatible clients.
+      await prisma.enterpriseIntegration.create({
+        data: {
+          orgId: "default-org",
+          enterpriseKey,
+          updatedBy: "emp_admin",
+          configuration: {
+            schemaVersion: 1,
+            timezone: "Asia/Shanghai",
+            sourceAccounts: [],
+            storeMappings: [],
+            exclusions: []
+          }
+        }
+      });
+      const legacySource = await createInStoreOrderIntegrationFixture([
+        {
+          ...fixture.rows[0]!,
+          营业日期: "20261028",
+          订单状态: "未来来源状态",
+          结账方式: "--",
+          结账时间: "--"
+        }
+      ]);
+      const legacyWindow = { startDate: "20261028", endDate: "20261028" };
+      const legacy = await upload(
+        "orders-legacy-omission",
+        legacySource.xlsx,
+        "orders-legacy-omission",
+        { ...legacyWindow, orderScope: undefined }
+      );
+      await worker("active");
+      assert(
+        (
+          await call<{ orderScope: string }>(
+            "get_partition_import_status",
+            { partitionImportJobId: legacy.partitionImportJobId },
+            admin
+          )
+        ).orderScope === "legacy_unknown",
+        "Omitted scope is historical unknown, not inferred from row status."
+      );
+      // Simulate a rolling-upgrade writer that has not populated the new nullable column.
+      await prisma.structuredPartition.updateMany({
+        where: {
+          orgId: "default-org",
+          enterpriseKey,
+          dataset: "in_store_orders",
+          businessDate: new Date("2026-10-28")
+        },
+        data: { orderScope: null }
+      });
+      const unknown = await manifest(readerToken, {
+        startDate: "2026-10-28",
+        endDate: "2026-10-28"
+      });
+      assert(
+        unknown.partitions.length === 1 && unknown.partitions[0]!.orderScope === "legacy_unknown",
+        "Null historical partition scope reads as unknown."
+      );
+      const legacyPreview = await prepare(legacySource.xlsx, {
+        startDate: "2026-10-28",
+        endDate: "2026-10-28",
+        storeNames: ["合成甲店"],
+        orderScope: "settled_only"
+      });
+      assert(
+        legacyPreview.partitions[0]!.orderScope === "legacy_unknown",
+        "Legacy transition preview must preserve uncertainty."
+      );
+      await upload("orders-legacy-transition", legacySource.xlsx, "orders-legacy-transition", {
+        ...legacyWindow,
+        orderScope: "settled_only",
+        orderScopeTransition: confirmation(legacyPreview)
+      });
+      await worker("active");
+      await prisma.enterpriseIntegration.update({
+        where: { orgId_enterpriseKey: { orgId: "default-org", enterpriseKey } },
+        data: { orderScopeRequired: true }
+      });
+      await assertStrict.rejects(
+        upload("orders-required-omission", legacySource.xlsx, "orders-required-omission", {
+          ...legacyWindow,
+          orderScope: undefined
+        }),
+        /ORDER_SCOPE_REQUIRED/
+      );
+    }
     let preparedRequestId = "";
     await comparePartitionDownloads({
       context: {
@@ -1295,6 +1634,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       },
       scope: { ...scope, dataset },
       amountColumn: incomeColumn,
+      ...(!takeaway ? { orderScope: "settled_only" } : {}),
       expected: {
         partitionCount: 3,
         rowCount: initialRowCount,

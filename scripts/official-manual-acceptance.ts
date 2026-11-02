@@ -1275,11 +1275,10 @@ async function writeRunInvalidStructuredFixture(
 }
 
 async function writeRunDeliveryFixture(run: ReturnType<typeof runConfig>): Promise<string> {
-  // Local fixture preparation only; release-ops does not install the workbook writer.
-  const { default: ExcelJS } = await import("exceljs");
+  const { Workbook } = await import("../apps/worker/src/ledger-pdf/workbook.js");
   const destination = path.join(RUN_ROOT, run.runId, "receipt.xlsx");
   await mkdir(path.dirname(destination), { recursive: true });
-  const workbook = new ExcelJS.Workbook();
+  const workbook = new Workbook();
   workbook
     .addWorksheet("送货单")
     .addRows([
