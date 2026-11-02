@@ -88,7 +88,7 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and source recommendation are 0.15.0; source minimum
+The published, independently verified Skill pin and source recommendation are 0.16.0; source minimum
 compatibility remains 0.12.0. Launcher 0.15.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
@@ -165,11 +165,23 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.15.0 owns business/dishes/in_store_orders/takeaway_orders transfer. Historical 0.14.0 used legacy settled_orders; matching service migration is required. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.16.0 owns business/dishes/in_store_orders/takeaway_orders transfer. Historical 0.14.0 used legacy settled_orders; matching service migration is required. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 authorization mode/version, query shape, filters, limit, and retrieval configuration.
+
+### Versioned enterprise workflows (published 0.16.0, live capability gated)
+
+Published, independently verified launcher `0.16.0` includes the eight enterprise-workflow tools
+and `prepare_order_scope_transition`. The core Skill pins `0.16.0`; OAuth compatibility stays
+at `0.12.0`, and the existing in-store/takeaway feature floors stay at `0.15.0`.
+Use `list_enterprise_workflows` to establish current service capability/version and the authenticated
+enterprise settings entry. Tool discovery and installation do not activate a configuration,
+change tenant authorization, migrate host tasks or confirm order-source scope. Follow the
+[workflow reference](../../skills/smedc-mcp/references/enterprise-workflows.md) and its companion
+for versioned preview/save, assignment, run/action and migration contracts. Live recommended-version
+metadata remains a separately verified deployment fact in [staging readiness](staging-readiness.md).
 
 <a id="current-permission-and-management-tools-launcher-0110"></a>
 
@@ -219,9 +231,9 @@ and store configuration never grant content access or set a category level or te
 
 `in_store_orders` uses the existing partition upload/status/coverage/manifest/range and optional ZIP
 interfaces in published, independently verified launcher `0.15.0`. It replaces the legacy
-`settled_orders` name used by published `0.15.0`. MCP upload requires `0.15.0+` and otherwise returns
+`settled_orders` name used by published `0.14.0`. MCP upload requires `0.15.0+` and otherwise returns
 `LAUNCHER_UPGRADE_REQUIRED`; current public schemas accept only the canonical new name. The OAuth
-floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version stay `0.15.0`.
+floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version are `0.16.0`.
 Use requires verified compatible client publication, coordinated service migration and current
 category grants. [The forward migration guide](in-store-order-design.md) covers retained category
 IDs/grants/CSV objects, expired old ZIP requests and unchanged historical request fingerprints.
@@ -243,7 +255,7 @@ and [the core Skill order reference](../../skills/smedc-mcp/references/in-store-
 
 `takeaway_orders` is a fixed store-level `partition_extract` category implemented through the
 existing upload/status/coverage/manifest/range and optional ZIP interfaces. Launcher
-`0.15.0` is published and independently verified; installation pin and source recommendation are `0.15.0`, and the OAuth
+`0.15.0` is published and independently verified; installation pin and source recommendation are `0.16.0`, and the OAuth
 floor remains `0.12.0`. MCP uploads from older launchers return `LAUNCHER_UPGRADE_REQUIRED`.
 Employee use requires independent compatible-client publication verification, matching service
 rollout including `20261030010000_takeaway_orders`, and explicit current tenant category grants.
@@ -265,9 +277,9 @@ See [partition semantics](structured-partitions.md) and the [takeaway workflow](
 
 ### Filtered partition extracts and asynchronous bundles
 
-The approved launcher 0.15.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
+The approved launcher 0.16.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.15.0`. This contract is not
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.16.0`. This contract is not
 evidence of service deployment or tenant activation.
 
 For `business`/`dishes`/`in_store_orders`/`takeaway_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
@@ -392,7 +404,7 @@ timeout and signed-link TTL apply; read operations never generate PDFs.
 
 ## Cost Cards (Published Launcher, Separate Service Gate)
 
-Launcher `0.15.0` is published and independently verified and is the approved install pin
+Launcher `0.16.0` is published and independently verified and is the approved install pin
 and source recommendation. Cost-card service rollout and explicit tenant configuration remain
 separate gates; publication does not prove live deployment or acceptance. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
 
@@ -512,8 +524,8 @@ read permission is exposed. Launcher 0.15.0 is published and independently verif
 
 ## Store reviews (published 0.13.0)
 
-Launcher `0.15.0` is published and independently verified, and is the approved installation pin.
-The service source recommends `0.15.0` and requires at least `0.12.0` for OAuth issuance and refresh.
+Launcher `0.16.0` is published and independently verified, and is the approved installation pin.
+The service source recommends `0.16.0` and requires at least `0.12.0` for OAuth issuance and refresh.
 See [staging readiness](staging-readiness.md) for verified live policy and deployment evidence; publication and installation do not
 configure categories/grants or activate a tenant.
 

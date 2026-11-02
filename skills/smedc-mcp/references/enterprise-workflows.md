@@ -16,11 +16,12 @@ operator for provisioning; users sign in and set passwords on the official page.
 passwords in chat or create accounts/roles through a workaround. Current admin is required for
 workflow configuration, installation and runs; business content still needs its own grants.
 
-The versioned workflow feature requires the companion manifest's compatible launcher/service,
-including candidate minimum launcher `0.16.0`. This does not change this core skill's approved
-installation pin. Until that release is published, independently verified and approved, keep the
-existing pin and report the workflow capability unavailable. Do not substitute a candidate version,
-`latest`, raw JSON-RPC or a separate credentialed HTTP client.
+The versioned workflow feature requires the companion manifest's compatible launcher/service.
+Launcher `0.16.0` is published, independently verified and approved for installation, including
+workflow tools and explicit order scope. Install it through this core skill's exact-pin procedure;
+then verify live service capability and current administrator authorization before workflow setup.
+If capability is unavailable, report that service gap. Do not substitute `latest`, raw JSON-RPC
+or a separate credentialed HTTP client.
 
 When compatible official tools exist, call `list_enterprise_workflows` to verify live service
 capability/version and obtain the authenticated enterprise catalog and official settings entry.

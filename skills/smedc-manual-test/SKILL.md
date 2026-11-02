@@ -42,7 +42,7 @@ setup links to the human. The controller must not open setup links or type test 
 human may choose a shared throwaway password, enter it, and disclose it in the current private chat.
 The controller then deletes every account and all test data after the run.
 
-The runner uses published launcher `smedc-mcp-launcher@0.13.1`. The scenario manifest and account assignments
+The runner uses published launcher `smedc-mcp-launcher@0.16.0`. The scenario manifest and account assignments
 apply to the full lifecycle profile and map to the current account in the existing-session profile. All positive uploads
 use the clearance-0 admin: evidence, row CSV, business/dishes partitions, unchanged Delivery Ledger
 XLSX, and quarantine certificates. Employee c0/c3 upload requests explain the admin requirement
