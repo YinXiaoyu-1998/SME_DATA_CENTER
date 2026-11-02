@@ -1,5 +1,9 @@
 import { PassThrough } from "node:stream";
-import { upsertStoreReviewsInputSchema, SMEDC_MCP_TOOL_CONTRACTS } from "@smedc/mcp-contract";
+import {
+  ENTERPRISE_WORKFLOW_LAUNCHER_VERSION,
+  upsertStoreReviewsInputSchema,
+  SMEDC_MCP_TOOL_CONTRACTS
+} from "@smedc/mcp-contract";
 import { createLauncherStdioTransport } from "./server.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -29,12 +33,13 @@ describe("launcher CLI entrypoint", () => {
     expect(write).toHaveBeenCalledWith(`${LAUNCHER_VERSION}\n`);
   });
 
-  it("keeps the package, protocol server, and runtime release on 0.15.0", () => {
-    expect(LAUNCHER_VERSION).toBe("0.15.0");
+  it("keeps the package, protocol server, and runtime release on 0.16.0", () => {
+    expect(LAUNCHER_VERSION).toBe("0.16.0");
     expect(MCP_LAUNCHER_SERVER_VERSION).toBe(LAUNCHER_VERSION);
+    expect(ENTERPRISE_WORKFLOW_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
     expect(COST_CARD_LAUNCHER_VERSION).toBe("0.10.0");
-    expect(IN_STORE_ORDER_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
-    expect(TAKEAWAY_ORDER_LAUNCHER_VERSION).toBe(LAUNCHER_VERSION);
+    expect(IN_STORE_ORDER_LAUNCHER_VERSION).toBe("0.15.0");
+    expect(TAKEAWAY_ORDER_LAUNCHER_VERSION).toBe("0.15.0");
     expect(
       JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version
     ).toBe(LAUNCHER_VERSION);

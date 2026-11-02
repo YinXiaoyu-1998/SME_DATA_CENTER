@@ -1,7 +1,15 @@
+import {
+  WORKFLOW_MCP_INPUT_SCHEMAS,
+  WORKFLOW_MCP_TOOL_NAMES,
+  WORKFLOW_TOOL_READ_ONLY
+} from "./enterprise-workflows.js";
+export * from "./enterprise-workflows.js";
 import path from "node:path";
 import { z } from "zod";
 export { FILE_UPLOAD_ADMIN_REQUIRED_CODE, FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE } from "@smedc/domain";
 import {
+  declaredOrderScopeSchema,
+  validateOrderScopeDataset,
   PHASE3_RUNTIME_LIMIT_DEFAULTS,
   PUBLIC_INPUT_LIMITS,
   STRUCTURED_DATASETS,
@@ -434,6 +442,11 @@ const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
     dataset: structuredDataset,
+    orderScope: declaredOrderScopeSchema
+      .optional()
+      .describe(
+        "In-store order source scope. legacy_unknown is read-only historical metadata. Other datasets reject this field."
+      ),
     enterpriseName: z
       .string()
       .min(1)
@@ -468,6 +481,12 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
+    if (!validateOrderScopeDataset(input.dataset, input.orderScope))
+      context.addIssue({
+        code: "custom",
+        path: ["orderScope"],
+        message: "orderScope is accepted only for in_store_orders."
+      });
     if (input.dataset === "cost_cards" && input.confidentialityLevel !== undefined)
       context.addIssue({
         code: "custom",
@@ -978,7 +997,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url",
-  ...PERMISSION_MCP_TOOL_NAMES
+  ...PERMISSION_MCP_TOOL_NAMES,
+  ...WORKFLOW_MCP_TOOL_NAMES
 ] as const;
 
 export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
@@ -1035,6 +1055,34 @@ export const MCP_ERROR_CODES = [
 export type McpErrorCode = (typeof MCP_ERROR_CODES)[number];
 
 export const SMEDC_MCP_TOOL_CONTRACTS = [
+  ...WORKFLOW_MCP_TOOL_NAMES.map((name) =>
+    defineToolContract({
+      name,
+      title: name.replaceAll("_", " "),
+      description:
+        "Current same-organization admin enterprise workflow coordination. Requires compatible service and launcher 0.16.0+. Does not grant ordinary business reads, execute scripts, or host schedules. Preview is not authorization; mutations verify current control and expected versions.",
+      inputSchema: WORKFLOW_MCP_INPUT_SCHEMAS[name],
+      inputFields: Object.entries(WORKFLOW_MCP_INPUT_SCHEMAS[name].shape).map(
+        ([field, schema]) => ({
+          name: field,
+          required: !schema.isOptional(),
+          description:
+            "Strict workflow contract field; organization is derived from current authentication."
+        })
+      ),
+      resultShape: [
+        "workflow: current authorized configuration, versions and verified official settings entry",
+        "capabilities: compatible service version and readiness, not implied execution availability",
+        "status: bounded installation/run/action summary without credentials or business content"
+      ],
+      annotations: {
+        readOnlyHint: WORKFLOW_TOOL_READ_ONLY.has(name),
+        destructiveHint:
+          !WORKFLOW_TOOL_READ_ONLY.has(name) && name !== "prepare_enterprise_workflow_change",
+        idempotentHint: WORKFLOW_TOOL_READ_ONLY.has(name) || name === "save_enterprise_workflow"
+      }
+    })
+  ),
   defineToolContract({
     name: "smedc_get_current_user",
     title: "Get current SMEDC user",

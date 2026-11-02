@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.15.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.16.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1538,6 +1538,35 @@ it("proxies review tools through MCP with null, missing fields and arbitrary dim
       }
     });
     expect(read).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("rejects workflow organization overrides at the launcher MCP boundary", async () => {
+  const server = new McpServer({ name: "workflow-schema", version: "1.0.0" });
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: async () => {
+        throw new Error("Unexpected external request");
+      }
+    })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: "workflow-client", version: "1.0.0" });
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: "get_workflow_status",
+      arguments: { workflowId: "workflow-1", orgId: "foreign" }
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("Input validation error");
   } finally {
     await client.close();
     await server.close();
