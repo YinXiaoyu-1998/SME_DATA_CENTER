@@ -228,6 +228,7 @@ integrationRun: try {
                         "apps/api/src/ledger-web/download.prisma.integration.test.ts",
                         "apps/api/src/structured-query.prisma.integration.test.ts",
                         "apps/api/src/enterprise-workflows/lifecycle.prisma.integration.test.ts",
+                        "apps/api/src/enterprise-workflows/activation.prisma.integration.test.ts",
                         "packages/ledger-archive/src/publication.prisma.integration.test.ts",
                         "packages/ledger-archive/src/source-reader.prisma.integration.test.ts",
                         "apps/api/src/business-authorization-cutover.prisma.integration.test.ts",
