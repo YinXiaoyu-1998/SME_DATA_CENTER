@@ -1,8 +1,10 @@
 # 经营、菜品销售与订单当前分区契约
 
-`business`、`dishes`、`in_store_orders` 和 `takeaway_orders` 共用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。当前两个订单类别属于已发布并独立核验的 `0.15.0`；历史 `0.14.0` 使用 `settled_orders` 旧名称，批准安装 pin 和源码推荐为 `0.15.0`。现有已验证部署证据见 [staging 状态](staging-readiness.md)。
+`business`、`dishes`、`in_store_orders` 和 `takeaway_orders` 共用 launcher 临时原件直传、worker canonical CSV、OSS 当前对象和 MySQL 当前目录。当前两个订单类别属于已发布并独立核验的 `0.15.0`；历史 `0.14.0` 使用 `settled_orders` 旧名称，批准安装 pin 和源码推荐为已发布并独立核验的 `0.16.0`。现有已验证部署证据见 [staging 状态](staging-readiness.md)。
 
 使用新订单类别前须独立核验兼容客户端发布、匹配服务及 `20261030010000_takeaway_orders` / `20261030020000_in_store_orders` 前向迁移与当前授权。店内订单命名迁移保留类别/授权/当前 CSV，旧 ZIP 失效后重新准备；协调停写和 worker 升级要求见[命名迁移](in-store-order-design.md)。无新增环境变量、明细表或对象存储设施。
+
+版本化企业工作流的店内订单原件使用显式 `orderScope: settled_only`，要求兼容的 `0.16.0` launcher 和实时服务能力。范围元数据可为 `settled_only`、`all_statuses` 或历史 `legacy_unknown`；历史未知不能作为新上传声明。不同或未知范围须经过服务端版本绑定的预览/确认；保存暂停配置不会启用旧任务的范围要求。具体操作见[订单范围 reference](../../skills/smedc-mcp/references/in-store-orders.md#versioned-workflow-source-scope-release-gated)。
 
 ## 身份与权威数据
 
@@ -22,7 +24,7 @@ OSS canonical CSV 是权威业务数据，MySQL 保存当前指针、行数、�
 
 ## 订单来源边界
 
-`in_store_orders` 使用“店内订单明细”完整单日或多日来源快照，包含待制作、未结账、已结账、已撤单、已退单全部状态，不能按结账状态筛掉记录；未知与空状态按来源文本保留，不从时间或支付信息推导。上传方保证业务完整性，服务不能从文件名、标题或筛选说明证明完整。仅替换文件中实际出现的门店日，整份空数据拒绝；重复行/订单号不去重。按来源营业日分区，跨午夜不调整；本来源无商户号，机构编码不代替 merchantId。
+`in_store_orders` 使用“店内订单明细”在声明范围内的完整单日或多日来源快照。日常企业工作流声明 `settled_only` 并提供完整已结账来源；只有明确完整的全部状态来源才声明 `all_statuses`，覆盖待制作、未结账、已结账、已撤单、已退单及其他来源状态。历史 `legacy_unknown` 不是新上传声明；获准的切换前兼容省略只记录未知范围，不能推断其完整性。`order_status` 独立保留来源状态文本；未知与空状态按来源文本保留，不从时间或支付信息推导。上传方保证业务完整性，服务不能从文件名、标题或筛选说明证明完整。仅替换文件中实际出现的门店日，整份空数据拒绝；重复行/订单号不去重。按来源营业日分区，跨午夜不调整；本来源无商户号，机构编码不代替 merchantId。
 
 全部 30 个输入列必需，允许重排；仅门店和营业日期必填。未结账/撤单等行可以没有结账时间及支付信息，仍是有效来源记录。可空日期/时间/数值中的 `--` 转空，普通文本/编号保留。结账方式保留原文及有序 `{method, amount, marker}` JSON 数组，重复项不合并，退款/找零/撤销找零保留符号与标记，兼容半角和全角括号；空白/`--` 派生 JSON null。非空解析失败或出现不支持的标记时整份拒绝，错误指出源行、从 1 开始的支付项序号和失败原因。金额不补零、不推净额或跨字段对账。字段及员工操作见[订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)。
 

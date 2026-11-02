@@ -34,7 +34,7 @@ cordis profile, and the user-editable layer of that profile is `cordis.patch.yml
 `command` must be an absolute path resolved for the current user, for example on macOS:
 
 ```
-$HOME/Library/Application Support/SMEDC/launcher/versions/0.15.0/node_modules/.bin/smedc-mcp-launcher
+$HOME/Library/Application Support/SMEDC/launcher/versions/0.16.0/node_modules/.bin/smedc-mcp-launcher
 ```
 
 Use the same versioned launcher directory that `SKILL.md` installs into. Do not point
