@@ -43,6 +43,14 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  prepare_order_scope_transition: {
+    enterpriseName: "Synthetic",
+    startDate: "2026-10-26",
+    endDate: "2026-10-27",
+    storeNames: ["Store A"],
+    orderScope: "settled_only",
+    sourceChecksumSha256: "a".repeat(64)
+  },
   list_enterprise_workflows: {},
   get_enterprise_workflow: { enterpriseKey: "enterprise", workflowType: "meituan-daily-ingestion" },
   prepare_enterprise_workflow_change: {
@@ -257,6 +265,7 @@ const validInputs = {
 } satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
 
 const invalidInputCases = [
+  { tool: "prepare_order_scope_transition", cases: [{ label: "missing scope", input: {} }] },
   { tool: "upsert_store_reviews", cases: [{ label: "empty batch", input: { reviews: [] } }] },
   { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
@@ -651,6 +660,7 @@ const invalidInputCases = [
 describe("SMEDC MCP contract", () => {
   it("exports the stable business tool names without local-session tools", () => {
     expect(SMEDC_MCP_TOOL_NAMES).toEqual([
+      "prepare_order_scope_transition",
       "upsert_store_reviews",
       "query_store_reviews",
       "smedc_get_current_user",

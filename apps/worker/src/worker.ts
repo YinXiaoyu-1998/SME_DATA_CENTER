@@ -65,6 +65,7 @@ export interface ClaimedProcessingRun {
     endDate?: string;
   };
   partitionImport?: {
+    orderScope?: import("@smedc/domain").OrderScope | null;
     jobId: string;
     dataset: PartitionDatasetName;
     enterpriseKey: string;
@@ -1703,6 +1704,7 @@ function toClaimedProcessingRun(
           partitionImport: {
             jobId: run.partitionImportJob.id,
             dataset: run.partitionImportJob.dataset,
+            orderScope: run.partitionImportJob.orderScope,
             enterpriseKey: run.partitionImportJob.enterpriseKey,
             enterpriseName: run.partitionImportJob.enterpriseName,
             confidentialityLevel: run.partitionImportJob.confidentialityLevel,

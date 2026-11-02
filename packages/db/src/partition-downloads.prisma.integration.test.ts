@@ -1527,8 +1527,21 @@ suite("partition download persistence", () => {
       where: { id: "download_source" },
       data: { status: "processing" }
     });
+    const run = await prisma.processingRun.create({
+      data: {
+        orgId,
+        partitionImportJobId: "download_source",
+        jobKey: "partition-download-publication-source",
+        jobType: "structured_partition_import",
+        status: "running",
+        attemptNumber: 1,
+        lockedBy: "fixture-worker",
+        lockedUntil: new Date(Date.now() + 120_000)
+      }
+    });
     const source = createPrismaStructuredPartitionRepository({ prisma });
     const insertion = source.publishSourceAtomically({
+      lease: { runId: run.id, workerId: "fixture-worker", attemptNumber: 1 },
       orgId,
       jobId: "download_source",
       totalRowCount: 1n,

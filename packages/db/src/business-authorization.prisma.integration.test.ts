@@ -1172,6 +1172,7 @@ suite("authoritative publication and original lineage", () => {
     const permissions = createBusinessAuthorizationRepository({ prisma });
     const partitions = createPrismaStructuredPartitionRepository({ prisma });
     const date = "2026-08-19";
+    const leases = new Map<string, { runId: string; workerId: string; attemptNumber: number }>();
     const storeName = "Historical exact store";
     const reserve = async (reason?: string) => {
       const jobId = nextId();
@@ -1199,6 +1200,16 @@ suite("authoritative publication and original lineage", () => {
       });
       await partitions.queueCompletedUpload({ orgId: publicationOrg, jobId, temporaryObjectKey });
       expect(await partitions.markJobProcessing(publicationOrg, jobId)).toBe(true);
+      const run = await prisma.processingRun.update({
+        where: { partitionImportJobId: jobId },
+        data: {
+          status: "running",
+          lockedBy: "fixture-worker",
+          attemptNumber: 1,
+          lockedUntil: new Date(Date.now() + 120_000)
+        }
+      });
+      leases.set(jobId, { runId: run.id, workerId: "fixture-worker", attemptNumber: 1 });
       return jobId;
     };
     const candidate = (id: string): PartitionCandidate => ({
@@ -1219,6 +1230,7 @@ suite("authoritative publication and original lineage", () => {
     });
     const publish = (jobId: string, value: PartitionCandidate) =>
       partitions.publishSourceAtomically({
+        lease: leases.get(jobId)!,
         orgId: publicationOrg,
         jobId,
         totalRowCount: 1n,

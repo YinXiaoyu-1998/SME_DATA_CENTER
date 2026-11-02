@@ -1,4 +1,4 @@
-import type { PartitionDatasetName } from "@smedc/domain";
+import { effectiveOrderScope, type PartitionDatasetName } from "@smedc/domain";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -105,6 +105,7 @@ export async function buildPartitionDownload(input: {
         storeName: entry.storeName,
         rowCount: entry.rowCount,
         byteSize: entry.byteSize,
+        orderScope: effectiveOrderScope(current.scope.dataset, entry.orderScope),
         checksumSha256: entry.checksumSha256
       }))
     };

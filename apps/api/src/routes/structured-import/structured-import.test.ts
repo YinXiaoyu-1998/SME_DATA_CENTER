@@ -219,6 +219,26 @@ describe("structured imports", () => {
     });
   }
 
+  it("rejects order scope fields on the row-import HTTP surface", async () => {
+    const { app, storagePutCalls } = await buildStructuredImportTestServer();
+    const multipart = createMultipartPayload([
+      { name: "dataset", value: "vip" },
+      { name: "orderScope", value: "settled_only" }
+    ]);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/structured/imports",
+      headers: {
+        authorization: `Bearer ${await accessTokenFor(adminEmployee)}`,
+        "content-type": multipart.contentType
+      },
+      payload: multipart.body
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("INVALID_ORDER_SCOPE");
+    expect(storagePutCalls()).toBe(0);
+  });
+
   it("forwards explicit historical intent and returns reservation validation errors before storage", async () => {
     const { app, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer();

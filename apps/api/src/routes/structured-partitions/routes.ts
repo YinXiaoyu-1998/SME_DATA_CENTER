@@ -9,6 +9,12 @@ import {
 } from "../../file-upload-authorization.js";
 import {
   PARTITION_ERROR_CODES,
+  validateOrderScopeDataset,
+  effectiveOrderScope,
+  prepareOrderScopeTransitionSchema,
+  orderScopeTransitionConfirmationSchema,
+  type OrderScopeTransitionConfirmation,
+  type DeclaredOrderScope,
   canEmployeeAccessDocument,
   isPartitionDataset,
   normalizeEnterpriseIdentity,
@@ -32,6 +38,8 @@ const PART_URL_PAGE_SIZE = 100;
 interface CreateUploadBody {
   historicalSupplementReason?: string;
   dataset?: string;
+  orderScope?: DeclaredOrderScope;
+  orderScopeTransition?: OrderScopeTransitionConfirmation;
   enterpriseName?: string;
   startDate?: string;
   endDate?: string;
@@ -63,6 +71,57 @@ export function registerStructuredPartitionRoutes(
     uploadAuthorizationAudit: () => UploadAuthorizationAuditRepository;
   }
 ): void {
+  app.post("/v1/structured/order-scope-transitions", async (request, reply) => {
+    if (!(await dependencies.auth.authenticate(request, reply))) return;
+    const employee = dependencies.auth.employee(request);
+    const allowed = await authorizeFileUpload({
+      employee,
+      uploadSurface: "structured_dataset",
+      audit: dependencies.createBusinessRequestAudit(request),
+      auditRepository: dependencies.uploadAuthorizationAudit,
+      logAuditFailure: (context) => request.log.error(context, "upload denial audit failed")
+    });
+    if (!allowed) return reply.code(403).send(fileUploadAdminRequiredResponse(request));
+    const parsed = prepareOrderScopeTransitionSchema.safeParse(request.body);
+    if (!parsed.success)
+      return validationError(
+        reply,
+        "INVALID_ORDER_SCOPE_TRANSITION",
+        "Provide an exact enterprise, store set, date range, declared scope and source checksum."
+      );
+    const repository = dependencies.partitions();
+    if (!repository.prepareOrderScopeTransition)
+      return reply
+        .code(503)
+        .send(
+          errorResponse(
+            "ORDER_SCOPE_TRANSITION_UNAVAILABLE",
+            "Order scope transitions are unavailable."
+          )
+        );
+    try {
+      return reply.code(201).send(
+        await repository.prepareOrderScopeTransition({
+          ...parsed.data,
+          orgId: employee.orgId,
+          actorId: employee.id
+        })
+      );
+    } catch (error) {
+      if (error instanceof StructuredPartitionRepositoryError)
+        return reply.code(409).send(errorResponse(error.code, error.message));
+      if (error instanceof ResourceAttributesError)
+        return reply
+          .code(403)
+          .send(
+            errorResponse(
+              error.code,
+              "Current administrator and registered enterprise/store scope are required."
+            )
+          );
+      throw error;
+    }
+  });
   app.post<{ Body: CreateUploadBody }>(
     "/v1/structured/partition-uploads",
     async (request, reply) => {
@@ -96,6 +155,8 @@ export function registerStructuredPartitionRoutes(
           orgId: employee.orgId,
           uploaderId: employee.id,
           dataset: parsed.value.dataset,
+          orderScope: parsed.value.orderScope,
+          orderScopeTransition: parsed.value.orderScopeTransition,
           enterpriseKey: parsed.value.enterpriseKey,
           enterpriseName: parsed.value.enterpriseName,
           confidentialityLevel: parsed.value.confidentialityLevel,
@@ -265,15 +326,25 @@ export function registerStructuredPartitionRoutes(
             )
           );
       }
-      return reply.code(202).send(
-        publicJob(
-          await repository.queueCompletedUpload({
-            orgId: employee.orgId,
-            jobId: job.id,
-            temporaryObjectKey: job.temporaryObjectKey
-          })
-        )
-      );
+      try {
+        return reply.code(202).send(
+          publicJob(
+            await repository.queueCompletedUpload({
+              orgId: employee.orgId,
+              jobId: job.id,
+              temporaryObjectKey: job.temporaryObjectKey
+            })
+          )
+        );
+      } catch (error) {
+        if (error instanceof StructuredPartitionRepositoryError)
+          return reply.code(409).send(errorResponse(error.code, error.message));
+        if (error instanceof ResourceAttributesError)
+          return reply
+            .code(403)
+            .send(errorResponse(error.code, "A current administrator is required."));
+        throw error;
+      }
     }
   );
 
@@ -369,6 +440,7 @@ export function registerStructuredPartitionRoutes(
     const storage = dependencies.storage();
     const partitions = await Promise.all(
       rows.map(async (row) => ({
+        orderScope: effectiveOrderScope(parsed.value.dataset, row.orderScope),
         businessDate: row.businessDate.toISOString().slice(0, 10),
         storeId: row.merchantId,
         storeName: row.storeName,
@@ -425,6 +497,22 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
     return invalid(
       "INVALID_PARTITION_UPLOAD",
       "dataset must be business, dishes, in_store_orders, or takeaway_orders."
+    );
+  if (!validateOrderScopeDataset(body.dataset, body.orderScope))
+    return invalid(
+      "INVALID_ORDER_SCOPE",
+      "Declare settled_only or all_statuses only for in_store_orders."
+    );
+  const transition = orderScopeTransitionConfirmationSchema
+    .optional()
+    .safeParse(body.orderScopeTransition);
+  if (
+    !transition.success ||
+    (transition.data && (body.dataset !== "in_store_orders" || body.orderScope === undefined))
+  )
+    return invalid(
+      "INVALID_ORDER_SCOPE_TRANSITION",
+      "Transition confirmation requires a declared in-store source scope and server preview identity."
     );
   const enterpriseName = body.enterpriseName;
   if (typeof enterpriseName !== "string")
@@ -501,6 +589,8 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
     value: {
       ...body,
       dataset: body.dataset,
+      orderScope: body.orderScope as DeclaredOrderScope | undefined,
+      orderScopeTransition: transition.data,
       ...enterprise,
       enterpriseName: enterprise.enterpriseName,
       originalFileName: originalFileName.trim(),
@@ -672,6 +762,7 @@ function publicJob(
   return {
     partitionImportJobId: job.id,
     dataset: job.dataset,
+    orderScope: effectiveOrderScope(job.dataset, job.orderScope),
     enterpriseName: job.enterpriseName,
     status: job.status,
     totalRowCount: safeJsonInteger(job.totalRowCount),

@@ -125,7 +125,8 @@ export async function createCostCardIntegrationFixture() {
 
 /** A tiny original in-store-order export, independent of the runtime field registry. */
 export async function createInStoreOrderIntegrationFixture(
-  overrides?: Array<Record<string, string>>
+  overrides?: Array<Record<string, string>>,
+  excludedHeaders: string[] = []
 ) {
   const headers = [
     "门店",
@@ -158,7 +159,7 @@ export async function createInStoreOrderIntegrationFixture(
     "预定用餐时间",
     "会员",
     "整单备注"
-  ];
+  ].filter((header) => !excludedHeaders.includes(header));
   const base = {
     门店: "合成甲店",
     机构编码: "0007",
@@ -360,6 +361,7 @@ export async function comparePartitionDownloads(input: {
     endDate: string;
   };
   amountColumn: string;
+  orderScope?: string;
   expected: { partitionCount: number; rowCount: number; amountCents: number };
   build: (requestId: string) => Promise<void>;
 }) {
@@ -411,6 +413,18 @@ export async function comparePartitionDownloads(input: {
     const bundleTiming = performance.now() - bundleStart;
     const newRequests = { ...requests, transferOperations: bundled.partitionCount ? 1 : 0 };
     const newSummary = await summarizeExtract(bundled, input.amountColumn);
+    if (input.orderScope)
+      for (const extract of [legacy, bundled]) {
+        const manifest = JSON.parse(
+          await readFile(path.join(extract.localDirectory, "manifest.json"), "utf8")
+        );
+        assert(
+          manifest.files.every(
+            (file: { orderScope?: string }) => file.orderScope === input.orderScope
+          ),
+          "Both range and ZIP local metadata must preserve the declared source scope."
+        );
+      }
     assert.deepEqual(
       newSummary,
       oldSummary,
