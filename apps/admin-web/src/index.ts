@@ -5,3 +5,5 @@ export {
   renderPermissionsMessage
 } from "./pages.js";
 export { browserPageStyles } from "./styles.js";
+
+export { renderWorkflowPage } from "./workflow-pages.js";

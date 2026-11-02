@@ -173,6 +173,9 @@ async function fixture() {
     ]),
     listDocuments: vi.fn(async () => ({ documents: [], nextCursor: null }))
   };
+  const workflows = {
+    execute: vi.fn(async (_tool: string, input: unknown, actor: unknown) => ({ input, actor }))
+  };
   const app = Fastify({ logger: false });
   apps.push(app);
   registerApiErrorHandler(app);
@@ -182,6 +185,7 @@ async function fixture() {
     browserSessions: sessions,
     permissions: () => permissions,
     metadata: () => metadata,
+    workflows: () => workflows as never,
     publicOrigin: origin
   });
   await app.ready();
@@ -195,6 +199,7 @@ async function fixture() {
     principals,
     permissionsRepository,
     metadata,
+    workflows,
     cookie,
     advance: (ms: number) => {
       now = new Date(now.getTime() + ms);
@@ -515,4 +520,95 @@ describe("enterprise-bound browser permission management", () => {
     );
     expect((await app.inject(request)).statusCode).toBe(409);
   });
+});
+
+it("keeps workflow pages and operations bound to the URL organization with current session, CSRF and shared login", async () => {
+  const { app, cookie, secretA, secretB, principals, workflows } = await fixture();
+  const path = "/admin/permissions/org_a/workflows/business-a";
+  const anonymous = await app.inject({ url: path });
+  expect(anonymous.statusCode).toBe(303);
+  expect(anonymous.headers.location).toBe("/admin/permissions/org_a/login?workflow=business-a");
+  const denied = await app.inject({ url: path, headers: { cookie: cookie(secretB) } });
+  expect(denied.statusCode).toBe(403);
+  expect(denied.body).not.toContain("企业甲保密名称");
+  const page = await app.inject({ url: path, headers: { cookie: cookie(secretA) } });
+  expect(page.statusCode).toBe(200);
+  expect(page.body).toContain("自动任务");
+  expect(page.headers["cache-control"]).toBe("no-store");
+  expect(page.headers["content-security-policy"]).toContain("connect-src 'self'");
+  const operation = "/admin/permissions/org_a/api/workflows/list_enterprise_workflows";
+  for (const headers of [
+    { cookie: cookie(secretA), origin },
+    { cookie: cookie(secretB), origin, "x-csrf-token": csrfTokenForSecret(secretB) },
+    {
+      cookie: cookie(secretA),
+      origin: "https://foreign.invalid",
+      "x-csrf-token": csrfTokenForSecret(secretA)
+    }
+  ])
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: operation,
+          headers,
+          payload: { enterpriseKey: "business-a" }
+        })
+      ).statusCode
+    ).toBe(403);
+  expect(workflows.execute).not.toHaveBeenCalled();
+  const accepted = await app.inject({
+    method: "POST",
+    url: operation,
+    headers: { cookie: cookie(secretA), origin, "x-csrf-token": csrfTokenForSecret(secretA) },
+    payload: { enterpriseKey: "business-a" }
+  });
+  expect(accepted.statusCode).toBe(200);
+  expect(accepted.json()).toMatchObject({
+    input: { enterpriseKey: "business-a" },
+    actor: { id: "admin_a", orgId: "org_a" }
+  });
+  principals.get("identity_a")!.role = "employee";
+  expect((await app.inject({ url: path, headers: { cookie: cookie(secretA) } })).statusCode).toBe(
+    403
+  );
+  principals.get("identity_a")!.role = "admin";
+  principals.get("identity_a")!.disabled = true;
+  expect(
+    (
+      await app.inject({
+        method: "POST",
+        url: operation,
+        headers: { cookie: cookie(secretA), origin, "x-csrf-token": csrfTokenForSecret(secretA) },
+        payload: {}
+      })
+    ).statusCode
+  ).toBe(401);
+});
+
+it("returns workflow sign-in to a bounded local entry and still denies B login at A workflow entry", async () => {
+  const { app } = await fixture();
+  const url = "/admin/permissions/org_a/login?workflow=business-a";
+  const login = await app.inject({ url });
+  expect(login.body).toContain('action="/admin/permissions/org_a/login?workflow=business-a"');
+  const loginCookie = cookiePair(login.headers["set-cookie"], "__Host-smedc_login");
+  const csrfToken = login.body.match(/name="csrfToken" value="([^"]+)"/)![1]!;
+  const wrong = await app.inject({
+    method: "POST",
+    url,
+    headers: { cookie: loginCookie, origin },
+    payload: { csrfToken, email: "b@example.invalid", password: "synthetic password" }
+  });
+  expect(wrong.statusCode).toBe(403);
+  const accepted = await app.inject({
+    method: "POST",
+    url,
+    headers: { cookie: loginCookie, origin },
+    payload: { csrfToken, email: "a@example.invalid", password: "synthetic password" }
+  });
+  expect(accepted.headers.location).toBe("/admin/permissions/org_a/workflows/business-a");
+  const invalid = await app.inject({
+    url: "/admin/permissions/org_a/login?workflow=https%3A%2F%2Fforeign.invalid"
+  });
+  expect(invalid.body).not.toContain('action="https://');
 });

@@ -4,7 +4,8 @@ import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import {
   renderPermissionsLogin,
   renderPermissionsMessage,
-  renderPermissionsPage
+  renderPermissionsPage,
+  renderWorkflowPage
 } from "../../../admin-web/src/index.js";
 import type { AuthCore } from "../auth/auth-core.js";
 import {
@@ -26,6 +27,8 @@ import {
   respondBusinessAuthorizationError
 } from "../routes/business-authorization.js";
 import { createRequestAuditContext } from "../request-audit-context.js";
+import { registerEnterpriseWorkflowRoutes } from "../enterprise-workflows/routes.js";
+import type { EnterpriseWorkflowService } from "../enterprise-workflows/service.js";
 import type { PermissionsUiMetadata } from "./metadata.js";
 
 const LOGIN_COOKIE = "__Host-smedc_login";
@@ -36,6 +39,7 @@ export interface AdminPermissionsRoutesOptions {
   permissions: () => BusinessAuthorizationService;
   metadata: () => PermissionsUiMetadata;
   publicOrigin: string;
+  workflows?: () => EnterpriseWorkflowService;
 }
 function browserAudit(request: FastifyRequest) {
   const context = createRequestAuditContext(request, "browser_auth");
@@ -68,6 +72,25 @@ export function registerAdminPermissionsRoutes(
 ): void {
   const principals = new WeakMap<FastifyRequest, BrowserPrincipal>();
   const path = (orgId: string) => `/admin/permissions/${encodeURIComponent(orgId)}`;
+  const workflowReturn = (request: FastifyRequest): string | undefined => {
+    const value = (request.query as { workflow?: unknown }).workflow;
+    return typeof value === "string" &&
+      value.length <= 128 &&
+      !Array.from(value).some(
+        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127
+      )
+      ? value
+      : undefined;
+  };
+  const loginTarget = (request: FastifyRequest, orgId: string) => {
+    const workflow = workflowReturn(request);
+    return (
+      path(orgId) +
+      (workflow === undefined
+        ? ""
+        : "/workflows" + (workflow ? "/" + encodeURIComponent(workflow) : ""))
+    );
+  };
   const validOrgId = (orgId: string) => /^[A-Za-z0-9_-]{1,64}$/.test(orgId);
   const matchesTenant = (principal: BrowserPrincipal, orgId: string) =>
     validOrgId(orgId) && principal.orgId === orgId && principal.role === "admin";
@@ -123,7 +146,10 @@ export function registerAdminPermissionsRoutes(
     const principal = await principalFor(request);
     if (principal)
       return matchesTenant(principal, request.params.orgId)
-        ? reply.header("cache-control", "no-store").code(303).redirect(path(principal.orgId))
+        ? reply
+            .header("cache-control", "no-store")
+            .code(303)
+            .redirect(loginTarget(request, principal.orgId))
         : denied(reply);
     if (!validOrgId(request.params.orgId)) return denied(reply);
     const secret = randomBytes(24).toString("base64url");
@@ -132,7 +158,8 @@ export function registerAdminPermissionsRoutes(
       renderPermissionsLogin({
         nonce,
         orgId: request.params.orgId,
-        csrfToken: csrfTokenForSecret(secret)
+        csrfToken: csrfTokenForSecret(secret),
+        ...(workflowReturn(request) !== undefined ? { workflow: workflowReturn(request)! } : {})
       })
     );
   });
@@ -164,6 +191,9 @@ export function registerAdminPermissionsRoutes(
             nonce,
             orgId: request.params.orgId,
             csrfToken: csrfTokenForSecret(secret),
+            ...(workflowReturn(request) !== undefined
+              ? { workflow: workflowReturn(request)! }
+              : {}),
             error: "invalid"
           })
         );
@@ -174,6 +204,9 @@ export function registerAdminPermissionsRoutes(
             nonce,
             orgId: request.params.orgId,
             csrfToken: csrfTokenForSecret(secret),
+            ...(workflowReturn(request) !== undefined
+              ? { workflow: workflowReturn(request)! }
+              : {}),
             error: "invalid"
           })
         );
@@ -200,7 +233,7 @@ export function registerAdminPermissionsRoutes(
           hostOnlyCookie(BROWSER_SESSION_COOKIE, issued, BROWSER_SESSION_SECONDS)
         ])
         .code(303)
-        .redirect(path(principal.orgId));
+        .redirect(loginTarget(request, principal.orgId));
     }
   );
   app.post<{ Params: { orgId: string }; Body: Record<string, unknown> }>(
@@ -229,6 +262,48 @@ export function registerAdminPermissionsRoutes(
         .redirect(`${path(principal.orgId)}/login`);
     }
   );
+  if (options.workflows) {
+    for (const suffix of ["/workflows", "/workflows/:enterpriseKey"]) {
+      app.get<{ Params: { orgId: string; enterpriseKey?: string } }>(
+        `${routeBase}${suffix}`,
+        async (request, reply) => {
+          const principal = await principalFor(request);
+          if (!principal)
+            return reply
+              .header("cache-control", "no-store")
+              .code(303)
+              .redirect(
+                `${path(request.params.orgId)}/login?workflow=${encodeURIComponent(request.params.enterpriseKey ?? "")}`
+              );
+          if (!matchesTenant(principal, request.params.orgId)) return denied(reply);
+          if (
+            request.params.enterpriseKey &&
+            !(await options.metadata().listEnterprises(principal.orgId)).some(
+              (enterprise) => enterprise.enterpriseKey === request.params.enterpriseKey
+            )
+          )
+            return denied(reply);
+          return page(reply, (nonce) =>
+            renderWorkflowPage({
+              nonce,
+              orgId: principal.orgId,
+              ...(request.params.enterpriseKey
+                ? { enterpriseKey: request.params.enterpriseKey }
+                : {}),
+              organizationName: principal.organizationName,
+              employeeName: principal.displayName,
+              csrfToken: csrfTokenForSecret(sharedSecret(request)!)
+            })
+          );
+        }
+      );
+    }
+    registerEnterpriseWorkflowRoutes(app, {
+      auth: { authenticate, employee: (request) => principals.get(request)! },
+      workflows: options.workflows,
+      basePath: `${routeBase}/api/workflows`
+    });
+  }
   registerBusinessAuthorizationRoutes(app, {
     auth: { authenticate, employee: (request) => principals.get(request)! },
     permissions: options.permissions,
