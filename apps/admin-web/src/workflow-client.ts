@@ -111,7 +111,7 @@ export const workflowClientSource = String.raw`
  async function commit(change) {
   const view = controller.state.views[controller.state.selected];
   const before = change.kind === "configuration" ? view?.configuration : change.kind === "integration" ? (view?.integration || Object.values(controller.state.views).find(current => current.integration)?.integration)?.configuration : change.kind === "authorization" ? { authorizations: view?.authorizations || [] } : { state: view?.controlState || "paused" };
-  const pending = controller.commit(change, preview => dialog(el("div", {}, pair("confirmHelp", "p"), heading("before", "h3"), summary(before), heading("after", "h3"), summary(preview.change.kind === "authorization" ? { grant: preview.change.grant, revokedScopes: (view?.authorizations || []).filter(a => preview.change.revokeAuthorizationIds.includes(a.authorizationId)).map(a => a.scope) } : preview.change.configuration || preview.change), el("p", {}, pair("expires"), ": " + new Date(preview.expiresAt).toLocaleString()))));
+  const pending = controller.commit(change, preview => dialog(el("div", {}, pair("confirmHelp", "p"), heading("before", "h3"), summary(before), heading("after", "h3"), summary(preview.change.kind === "authorization" ? { grant: preview.change.grant, revokedScopes: (view?.authorizations || []).filter(a => preview.change.revokeAuthorizationIds.includes(a.authorizationId)).map(a => a.scope) } : preview.change.configuration || preview.change), preview.impact ? el("section", {}, heading("impact", "h3"), summary(preview.impact)) : null, el("p", {}, pair("expires"), ": " + new Date(preview.expiresAt).toLocaleString()))));
   updateButtons();
   try { if (await pending) { notice("saved"); render(); } } finally { updateButtons(); }
  }

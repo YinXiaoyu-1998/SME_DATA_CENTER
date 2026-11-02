@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import {
   workflowActionIdentitySchema,
+  workflowLivePolicyAllows,
+  type WorkflowLivePolicy,
   workflowActionReceiptSchema,
   workflowAuthorizationScopeSchema,
   workflowSourceIdentityKey,
@@ -126,11 +128,14 @@ export async function authorizeAction(
   auth: AuthorizationSnapshot,
   workflow: Workflow,
   snapshot: WorkflowRunSnapshot,
-  intent: WorkflowActionIntent
+  intent: WorkflowActionIntent,
+  livePolicy: WorkflowLivePolicy
 ) {
   if (auth.mode !== "enabled") fail("WORKFLOW_PERMISSION_DENIED");
   const identity = intent.identity;
   const config = snapshot.configuration;
+  if (!workflowLivePolicyAllows(livePolicy, identity, config.type))
+    fail("WORKFLOW_PERMISSION_DENIED");
   const stores = identity.kind === "review_publish" ? [identity.storeName] : identity.storeNames;
   if (config.type === "meituan-review-operations") {
     const ignored = (source: Parameters<typeof workflowSourceIdentityKey>[0], feedbackId: string) =>
@@ -513,7 +518,7 @@ export async function actionOperation(
   if (op.kind === "intent") {
     const bound = await requireBinding(tx, actor, workflow, op, now);
     for (const intent of op.actions) {
-      await authorizeAction(tx, actor, auth, workflow, bound.snapshot, intent);
+      await authorizeAction(tx, actor, auth, workflow, bound.snapshot, intent, bound.livePolicy);
       if (intent.identity.kind === "email") {
         const checks = z
           .array(workflowReadinessCheckSchema)
@@ -586,10 +591,18 @@ export async function actionOperation(
       await verifyServiceReceipt(tx, actor, workflow, identity, receipt);
     if (receipt.evidence === "launcher_transfer") {
       const bound = await requireBinding(tx, actor, workflow, op, now);
-      await authorizeAction(tx, actor, auth, workflow, bound.snapshot, {
-        actionId: action.actionId,
-        identity
-      });
+      await authorizeAction(
+        tx,
+        actor,
+        auth,
+        workflow,
+        bound.snapshot,
+        {
+          actionId: action.actionId,
+          identity
+        },
+        bound.livePolicy
+      );
       const proof = receipt.launcherTransfer;
       if (
         identity.kind !== "download" ||

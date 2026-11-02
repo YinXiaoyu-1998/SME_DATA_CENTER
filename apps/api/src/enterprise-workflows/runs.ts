@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
   WORKFLOW_CAPABILITY_VERSION,
+  workflowLivePolicy,
+  intersectWorkflowLivePolicy,
+  workflowLivePolicySchema,
   WORKFLOW_LIMITS,
   workflowRunSnapshotSchema,
   workflowRunSummarySchema,
@@ -97,19 +100,45 @@ export async function requireBinding(
     (workflow.leaseRunId !== run.id || !workflow.leaseExpiresAt || workflow.leaseExpiresAt <= now)
   )
     fail("WORKFLOW_BUSY");
-  return { run, snapshot: workflowRunSnapshotSchema.parse(run.snapshot), installation: install };
+  const snapshot = workflowRunSnapshotSchema.parse(run.snapshot);
+  const current = await configuration(tx, workflow);
+  if (!current) fail("WORKFLOW_CONFIGURATION_REQUIRED");
+  const source = await integration(tx, workflow);
+  const livePolicy = workflowLivePolicy(current, source.configuration);
+  const stores = await tx.businessStore.findMany({
+    where: { orgId: actor.orgId, enterpriseKey: workflow.enterpriseKey, retired: false },
+    select: { name: true }
+  });
+  livePolicy.stores = livePolicy.stores.filter((name) =>
+    stores.some((store) => store.name === name)
+  );
+  const original = workflowLivePolicy(snapshot.configuration, snapshot.integration);
+  const previous =
+    run.restrictivePolicy === null
+      ? original
+      : workflowLivePolicySchema.parse(run.restrictivePolicy);
+  return {
+    run,
+    snapshot,
+    installation: install,
+    livePolicy: intersectWorkflowLivePolicy(previous, livePolicy)
+  };
 }
 export const runView = (run: {
   id: string;
   snapshot: unknown;
   summary: unknown;
   [key: string]: unknown;
-}) => ({
-  ...run,
-  runId: run.id,
-  snapshot: workflowRunSnapshotSchema.parse(run.snapshot),
-  summary: run.summary === null ? null : workflowRunSummarySchema.parse(run.summary)
-});
+}) => {
+  const publicRun = { ...run };
+  delete publicRun.restrictivePolicy;
+  return {
+    ...publicRun,
+    runId: run.id,
+    snapshot: workflowRunSnapshotSchema.parse(run.snapshot),
+    summary: run.summary === null ? null : workflowRunSummarySchema.parse(run.summary)
+  };
+};
 export async function runOperation(
   tx: Tx,
   actor: Actor,

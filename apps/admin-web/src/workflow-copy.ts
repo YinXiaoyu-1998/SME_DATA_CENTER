@@ -1,4 +1,7 @@
 export const workflowCopy: Record<string, { zh: string; en: string }> = {
+  impact: { zh: "变更影响", en: "Change impact" },
+  affectedWorkflows: { zh: "受影响任务", en: "Affected tasks" },
+  workflowType: { zh: "任务类型", en: "Task type" },
   installHelp: {
     zh: "保存业务设置后，请在自己的 Codex 安装所选自动任务并运行准备检查。来源登录、邮件连接与文件验证在执行电脑完成。",
     en: "After saving settings, install the selected task in your Codex and run preparation checks. Source sign-in, mail connections and file verification happen on the execution computer."

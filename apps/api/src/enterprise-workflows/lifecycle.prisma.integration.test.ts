@@ -1547,6 +1547,32 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           ]
         }
       });
+      // Incomplete drafts remain editable, but cannot become active with a selected unmapped channel.
+      await change({
+        kind: "configuration",
+        configuration: { ...reviewConfig, channels: ["meituan", "dianping"] }
+      });
+      const incompleteExpected = {
+        expectedVersion: current.version,
+        expectedIntegrationVersion: current.integration.version,
+        expectedControlVersion: current.controlVersion
+      };
+      const incompletePreview = (
+        await call("prepare_enterprise_workflow_change", {
+          ...reviewSelector,
+          ...incompleteExpected,
+          change: { kind: "control", state: "active", reason: "Must refuse incomplete channels" }
+        })
+      ).json();
+      const incompleteActivation = await call("save_enterprise_workflow", {
+        ...reviewSelector,
+        ...incompleteExpected,
+        previewId: incompletePreview.previewId,
+        confirmationDigest: incompletePreview.confirmationDigest
+      });
+      expect(incompleteActivation.statusCode).toBe(409);
+      expect(incompleteActivation.json().error.code).toBe("WORKFLOW_SOURCE_MAPPING_CONFLICT");
+      await change({ kind: "configuration", configuration: reviewConfig });
       await change({
         kind: "authorization",
         grant: [
@@ -1613,6 +1639,19 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         checks,
         firstRunVerification: "not_run"
       });
+      await change({
+        kind: "configuration",
+        configuration: { ...reviewConfig, channels: ["meituan", "dianping"] }
+      });
+      const missingChannelReady = await install({
+        kind: "prepare_takeover",
+        installationId: "review-mac",
+        expectedAssignmentEpoch: 0,
+        oldHostState: "paused"
+      });
+      expect(missingChannelReady.statusCode).toBe(409);
+      expect(missingChannelReady.json().error.code).toBe("WORKFLOW_SOURCE_MAPPING_CONFLICT");
+      await change({ kind: "configuration", configuration: reviewConfig });
       const preview = (
         await install({
           kind: "prepare_takeover",
@@ -1963,6 +2002,183 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         actions: [makeIntent("email-remainder", recipients.slice(2), true)]
       });
       expect(remainder.json().actions[0].permitted).toBe(true);
+      const publishIntent = {
+        actionId: "live-publication-check",
+        artifactHash: "a".repeat(64),
+        correlationMarker: "live-publication-check",
+        identity: {
+          kind: "review_publish",
+          storeName: "Store A",
+          source,
+          feedbackId: "live-feedback",
+          purpose: "customer_reply"
+        }
+      };
+      const check = (intent: unknown, liveBinding = binding) =>
+        call("manage_workflow_run", {
+          workflowId,
+          operation: { kind: "check_actions", ...liveBinding, actions: [intent] }
+        });
+      expect((await check(publishIntent)).statusCode).toBe(200);
+      const ignoredLater = {
+        ...publishIntent,
+        actionId: "ignored-later",
+        identity: { ...publishIntent.identity, feedbackId: "ignored-later" }
+      };
+      expect((await check(ignoredLater)).statusCode).toBe(200);
+      await change({
+        kind: "configuration",
+        configuration: {
+          ...reviewConfig,
+          ignoredReviewIdentities: [
+            ...reviewConfig.ignoredReviewIdentities,
+            {
+              source,
+              feedbackId: "ignored-later",
+              reason: "Explicit new exclusion",
+              purpose: "exclude_source_record"
+            }
+          ]
+        }
+      });
+      binding.controlVersion = current.controlVersion;
+      expect(
+        (
+          await call("manage_workflow_run", {
+            workflowId,
+            operation: { kind: "resume", ...binding }
+          })
+        ).statusCode
+      ).toBe(200);
+      expect((await check(ignoredLater)).statusCode).toBe(403);
+      await change({ kind: "configuration", configuration: reviewConfig });
+      expect((await check(ignoredLater)).statusCode).toBe(403);
+      const oldControl = current.controlVersion;
+      await change({
+        kind: "configuration",
+        configuration: {
+          ...reviewConfig,
+          publication: { enabled: false, storeNames: [] },
+          draftNotification: { ...reviewConfig.draftNotification, recipients: recipients.slice(1) }
+        }
+      });
+      expect(current.controlVersion).toBe(oldControl + 1);
+      expect((await check(publishIntent)).statusCode).toBe(409);
+      binding.controlVersion = current.controlVersion;
+      const resumed = await call("manage_workflow_run", {
+        workflowId,
+        operation: { kind: "resume", ...binding }
+      });
+      expect(resumed.statusCode, resumed.body).toBe(200);
+      expect(resumed.json().snapshot).toEqual(started.json().snapshot);
+      expect((await check(publishIntent)).statusCode).toBe(403);
+      expect(
+        (await check(makeIntent("removed-recipient", recipients.slice(0, 1)))).statusCode
+      ).toBe(403);
+      const blockedIntent = makeIntent("removed-recipient-intent", recipients.slice(0, 1));
+      expect(
+        (await action({ kind: "intent", ...binding, actions: [blockedIntent] })).statusCode
+      ).toBe(403);
+      expect(
+        (await action({ kind: "get", actionIds: [blockedIntent.actionId] })).json().actions
+      ).toEqual([]);
+      expect(
+        (await check(makeIntent("retained-recipient", recipients.slice(1, 2)))).statusCode
+      ).toBe(200);
+      await change({
+        kind: "configuration",
+        configuration: { ...reviewConfig, tone: "Updated next round" }
+      });
+      expect(current.controlVersion).toBe(binding.controlVersion);
+      // Re-expansion never restores a removed capability/recipient to this unfinished run.
+      expect((await check(publishIntent)).statusCode).toBe(403);
+      expect(
+        (await check(makeIntent("restored-recipient", recipients.slice(0, 1)))).statusCode
+      ).toBe(403);
+      const originalIntegration = (await call("get_enterprise_workflow", reviewSelector)).json()
+        .integration.configuration;
+      const expected = () => ({
+        expectedVersion: current.version,
+        expectedIntegrationVersion: current.integration.version,
+        expectedControlVersion: current.controlVersion
+      });
+      const impactPreview = (
+        await call("prepare_enterprise_workflow_change", {
+          ...reviewSelector,
+          ...expected(),
+          change: {
+            kind: "integration",
+            configuration: { ...originalIntegration, storeMappings: [] }
+          }
+        })
+      ).json();
+      expect(impactPreview.impact).toEqual({
+        affectedWorkflows: [
+          { workflowType: "meituan-daily-ingestion", storeNames: ["Store A"] },
+          { workflowType: "meituan-review-operations", storeNames: ["Store A"] }
+        ]
+      });
+      expect((await check(makeIntent("preview-only", recipients.slice(1, 2)))).statusCode).toBe(
+        200
+      );
+      const daily = (await call("get_enterprise_workflow", selector)).json();
+      const dailyExpected = {
+        expectedVersion: daily.version,
+        expectedIntegrationVersion: daily.integration.version,
+        expectedControlVersion: daily.controlVersion
+      };
+      const dailyPreview = (
+        await call("prepare_enterprise_workflow_change", {
+          ...selector,
+          ...dailyExpected,
+          change: { kind: "configuration", configuration: daily.configuration }
+        })
+      ).json();
+      expect(
+        (
+          await call("save_enterprise_workflow", {
+            ...selector,
+            ...dailyExpected,
+            previewId: dailyPreview.previewId,
+            confirmationDigest: dailyPreview.confirmationDigest
+          })
+        ).statusCode
+      ).toBe(200);
+      expect(
+        (
+          await call("save_enterprise_workflow", {
+            ...reviewSelector,
+            ...expected(),
+            previewId: impactPreview.previewId,
+            confirmationDigest: impactPreview.confirmationDigest
+          })
+        ).statusCode
+      ).toBe(409);
+      await change({
+        kind: "integration",
+        configuration: {
+          ...originalIntegration,
+          storeMappings: originalIntegration.storeMappings.filter(
+            (m: { source: { product: string } }) => m.source.product !== "meituan_reviews"
+          )
+        }
+      });
+      binding.controlVersion = current.controlVersion;
+      expect(
+        (
+          await call("manage_workflow_run", {
+            workflowId,
+            operation: { kind: "resume", ...binding }
+          })
+        ).statusCode
+      ).toBe(200);
+      expect((await check(makeIntent("removed-source", recipients.slice(1, 2)))).statusCode).toBe(
+        403
+      );
+      await change({ kind: "integration", configuration: originalIntegration });
+      expect((await check(makeIntent("restored-source", recipients.slice(1, 2)))).statusCode).toBe(
+        403
+      );
       await change({ kind: "control", state: "paused", reason: "Stop external actions" });
       const lateReceipt = {
         ...receipt,
@@ -1994,6 +2210,58 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
             operation: { kind: "release", ...binding }
           })
         ).statusCode
+      ).toBe(200);
+      await change({ kind: "control", state: "active", reason: "Explicit resume after pause" });
+      expect(
+        (
+          await call("manage_workflow_run", {
+            workflowId,
+            operation: { kind: "resume", ...binding }
+          })
+        ).statusCode
+      ).toBe(409);
+      binding.controlVersion = current.controlVersion;
+      const reactivated = await call("manage_workflow_run", {
+        workflowId,
+        operation: { kind: "resume", ...binding }
+      });
+      expect(reactivated.statusCode, reactivated.body).toBe(200);
+      expect(reactivated.json().snapshot).toEqual(started.json().snapshot);
+      const summary = {
+        phase: "finished",
+        status: "partial",
+        observations: [],
+        unresolved: [],
+        cleanup: "retained"
+      };
+      expect(
+        (
+          await call("manage_workflow_run", {
+            workflowId,
+            operation: { kind: "finish", ...binding, summary }
+          })
+        ).statusCode
+      ).toBe(200);
+      const nextRun = await call("manage_workflow_run", {
+        workflowId,
+        operation: {
+          kind: "start",
+          installationId: binding.installationId,
+          assignmentEpoch: binding.assignmentEpoch,
+          expectedConfigurationVersion: current.version,
+          expectedIntegrationVersion: current.integration.version,
+          expectedControlVersion: current.controlVersion,
+          workflowPackageVersion: "1.0.0",
+          window,
+          mode: "scheduled"
+        }
+      });
+      expect(nextRun.statusCode, nextRun.body).toBe(200);
+      const nextBinding = { ...binding, runId: nextRun.json().runId };
+      expect((await check(publishIntent, nextBinding)).statusCode).toBe(200);
+      expect(
+        (await check(makeIntent("new-run-recipient", recipients.slice(0, 1)), nextBinding))
+          .statusCode
       ).toBe(200);
     });
     it("allows admin configuration but requires current business grants before a report reads data", async () => {

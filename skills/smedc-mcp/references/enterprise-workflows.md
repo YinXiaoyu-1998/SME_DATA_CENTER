@@ -35,6 +35,12 @@ server previews plus expected configuration/integration/control versions. Read t
 schemas; do not invent operations or arbitrary payload fields. The companion owns the bounded
 installation, lease, action, recovery and migration recipes.
 
+Shared mapping previews identify affected task types and stores; a dependent configuration change
+requires a fresh preview. After pause/reactivation or explicit takeover, resume the original run ID
+with the current verified assignment/control binding returned by the service. Its original window
+and snapshot remain fixed. Restrictive settings apply before the next new action and accumulate
+for unfinished runs; later expansion applies to a new run. Follow the companion's recovery recipe.
+
 First release supports macOS, Codex standalone local cron, IAB and authorized Gmail. Lack of
 Meituan login does not block basic SMEDC. Lack of Gmail does not block local report generation.
 Preparation checks and first real-run verification are separate; do not send test mail or publish

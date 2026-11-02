@@ -1,5 +1,10 @@
+import { z } from "zod";
 import {
   ENTERPRISE_WORKFLOW_CAPABILITY,
+  workflowLivePolicy,
+  intersectWorkflowLivePolicy,
+  workflowLivePolicySchema,
+  workflowRunSnapshotSchema,
   enterpriseIntegrationSchema,
   workflowConfigurationSchema,
   workflowChangeSchema,
@@ -124,13 +129,111 @@ export async function validateConfiguration(
   await validateStores(tx, workflow, config.storeNames);
   if (source && config.type !== "weekly-business-report") {
     const product = config.type === "meituan-daily-ingestion" ? "meituan_erp" : "meituan_reviews";
+    const channels = config.type === "meituan-review-operations" ? config.channels : ["erp"];
     if (
-      config.storeNames.some(
-        (store) =>
-          !source.storeMappings.some((m) => m.storeName === store && m.source.product === product)
+      config.storeNames.some((store) =>
+        channels.some(
+          (channel) =>
+            !source.storeMappings.some(
+              (m) =>
+                m.storeName === store &&
+                m.source.product === product &&
+                m.source.channel === channel
+            )
+        )
       )
     )
       fail("WORKFLOW_SOURCE_MAPPING_CONFLICT");
+  }
+}
+const impactSchema = z
+  .object({
+    affectedWorkflows: z
+      .array(z.object({ workflowType: z.string(), storeNames: z.array(z.string()) }).strict())
+      .max(3)
+  })
+  .strict();
+const previewEnvelopeSchema = z
+  .object({
+    change: workflowChangeSchema,
+    dependencies: z
+      .array(
+        z
+          .object({ workflowId: z.string(), version: z.number(), controlVersion: z.number() })
+          .strict()
+      )
+      .max(3),
+    impact: impactSchema
+  })
+  .strict();
+async function integrationImpact(
+  tx: Tx,
+  workflow: Workflow,
+  before: EnterpriseIntegrationConfiguration,
+  after: EnterpriseIntegrationConfiguration
+) {
+  const dependents = await tx.enterpriseWorkflow.findMany({
+    where: { orgId: workflow.orgId, enterpriseKey: workflow.enterpriseKey },
+    orderBy: { type: "asc" }
+  });
+  const dependencies = dependents.map((w) => ({
+    workflowId: w.id,
+    version: w.version,
+    controlVersion: w.controlVersion
+  }));
+  const affectedWorkflows = [];
+  for (const dependent of dependents) {
+    const config = await configuration(tx, dependent);
+    if (!config) continue;
+    const oldPolicy = workflowLivePolicy(config, before);
+    const nextPolicy = intersectWorkflowLivePolicy(oldPolicy, workflowLivePolicy(config, after));
+    const storeNames = [
+      ...new Set(
+        oldPolicy.sources
+          .filter(
+            (s) =>
+              !nextPolicy.sources.some(
+                (t) => t.binding === s.binding && t.storeName === s.storeName
+              )
+          )
+          .map((s) => s.storeName)
+      )
+    ].sort();
+    if (storeNames.length)
+      affectedWorkflows.push({ workflowType: publicType(dependent.type), storeNames });
+  }
+  return { dependencies, impact: { affectedWorkflows } };
+}
+// Persist only narrowing limits separately; business snapshots and evidence remain untouched.
+async function restrictRuns(
+  tx: Tx,
+  workflow: Workflow,
+  before: WorkflowConfiguration,
+  after: WorkflowConfiguration,
+  oldSource: EnterpriseIntegrationConfiguration,
+  newSource: EnterpriseIntegrationConfiguration
+) {
+  const oldPolicy = workflowLivePolicy(before, oldSource);
+  const nextPolicy = workflowLivePolicy(after, newSource);
+  if (hash(oldPolicy) === hash(intersectWorkflowLivePolicy(oldPolicy, nextPolicy))) return;
+  await tx.enterpriseWorkflow.update({
+    where: { id: workflow.id },
+    data: { controlVersion: { increment: 1 } }
+  });
+  const runs = await tx.workflowRun.findMany({
+    where: { orgId: workflow.orgId, workflowId: workflow.id, finishedAt: null }
+  });
+  for (const run of runs) {
+    const snapshot = workflowRunSnapshotSchema.parse(run.snapshot);
+    const original = workflowLivePolicy(snapshot.configuration, snapshot.integration);
+    const previous =
+      run.restrictivePolicy === null
+        ? original
+        : workflowLivePolicySchema.parse(run.restrictivePolicy);
+    await tx.workflowRun.update({
+      where: { id: run.id },
+      data: { restrictivePolicy: json(intersectWorkflowLivePolicy(previous, nextPolicy)) }
+    });
   }
 }
 export async function prepareChange(
@@ -151,7 +254,12 @@ export async function prepareChange(
       input.change.configuration.storeMappings.map((m) => m.storeName)
     );
   const previewId = id();
-  const confirmationDigest = hash({ previewId, actor, input });
+  const context =
+    input.change.kind === "integration"
+      ? await integrationImpact(tx, workflow, shared.configuration, input.change.configuration)
+      : null;
+  const preparedChange = context ? { change: input.change, ...context } : input.change;
+  const confirmationDigest = hash({ previewId, actor, input, preparedChange });
   const expiresAt = new Date(now.getTime() + 15 * 60000);
   await tx.workflowChangePreview.create({
     data: {
@@ -162,14 +270,24 @@ export async function prepareChange(
       expectedVersion: workflow.version,
       expectedIntegrationVersion: shared.version,
       expectedControlVersion: workflow.controlVersion,
-      change: json(input.change),
+      change: json(preparedChange),
       confirmationDigest,
       preparedBy: actor.id,
       expiresAt
     }
   });
-  await audit(tx, actor, "prepare_change", workflow.id, { previewId, kind: input.change.kind });
-  return { ...input, previewId, confirmationDigest, expiresAt: expiresAt.toISOString() };
+  await audit(tx, actor, "prepare_change", workflow.id, {
+    previewId,
+    kind: input.change.kind,
+    ...(context ? { impact: context.impact } : {})
+  });
+  return {
+    ...input,
+    previewId,
+    confirmationDigest,
+    expiresAt: expiresAt.toISOString(),
+    ...(context ? { impact: context.impact } : {})
+  };
 }
 export function checkVersions(
   workflow: Workflow,
@@ -212,11 +330,40 @@ export async function saveChange(
     }
   });
   if (!preview) fail("WORKFLOW_VERSION_CONFLICT");
-  const parsedChange = workflowChangeSchema.safeParse(preview.change);
+  const envelope = previewEnvelopeSchema.safeParse(preview.change);
+  const parsedChange = workflowChangeSchema.safeParse(
+    envelope.success ? envelope.data.change : preview.change
+  );
   if (!parsedChange.success) fail("WORKFLOW_VERSION_CONFLICT");
   const change = parsedChange.data;
+  let impact: z.infer<typeof impactSchema> | undefined;
+  if (change.kind === "integration") {
+    if (!envelope.success) fail("WORKFLOW_VERSION_CONFLICT");
+    const current = await integrationImpact(
+      tx,
+      workflow,
+      shared.configuration,
+      change.configuration
+    );
+    if (
+      hash(current) !==
+      hash({ dependencies: envelope.data.dependencies, impact: envelope.data.impact })
+    )
+      fail("WORKFLOW_VERSION_CONFLICT");
+    impact = current.impact;
+  }
   if (change.kind === "configuration") {
     await validateConfiguration(tx, workflow, change.configuration);
+    const previous = await configuration(tx, workflow);
+    if (previous)
+      await restrictRuns(
+        tx,
+        workflow,
+        previous,
+        change.configuration,
+        shared.configuration,
+        shared.configuration
+      );
     await tx.workflowConfigurationVersion.create({
       data: {
         orgId: actor.orgId,
@@ -236,6 +383,22 @@ export async function saveChange(
       workflow,
       change.configuration.storeMappings.map((m) => m.storeName)
     );
+    const dependents = await tx.enterpriseWorkflow.findMany({
+      where: { orgId: actor.orgId, enterpriseKey: workflow.enterpriseKey },
+      orderBy: { id: "asc" }
+    });
+    for (const dependent of dependents) {
+      const config = await configuration(tx, dependent);
+      if (config)
+        await restrictRuns(
+          tx,
+          dependent,
+          config,
+          config,
+          shared.configuration,
+          change.configuration
+        );
+    }
     const updated = await tx.enterpriseIntegration.updateMany({
       where: { orgId: actor.orgId, enterpriseKey: workflow.enterpriseKey, version: shared.version },
       data: {
@@ -299,6 +462,10 @@ export async function saveChange(
     });
   }
   await tx.workflowChangePreview.update({ where: { id: preview.id }, data: { consumedAt: now } });
-  await audit(tx, actor, "save_change", workflow.id, { previewId: preview.id, kind: change.kind });
+  await audit(tx, actor, "save_change", workflow.id, {
+    previewId: preview.id,
+    kind: change.kind,
+    ...(impact ? { impact } : {})
+  });
   return view(tx, await tx.enterpriseWorkflow.findUniqueOrThrow({ where: { id: workflow.id } }));
 }

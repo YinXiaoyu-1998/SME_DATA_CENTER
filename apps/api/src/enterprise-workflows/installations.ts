@@ -7,7 +7,7 @@ import {
 import { ENTERPRISE_WORKFLOW_LAUNCHER_VERSION, type WorkflowMcpInputs } from "@smedc/mcp-contract";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 import { audit, fail, hash, id, json, type Actor, type Tx, type Workflow } from "./repository.js";
-import { configuration, integration } from "./configuration.js";
+import { configuration, integration, validateConfiguration } from "./configuration.js";
 // Call only after readiness and assignment are checked in the locked workflow transaction.
 async function activateOrderScope(tx: Tx, workflow: Workflow) {
   const config = await configuration(tx, workflow);
@@ -68,6 +68,12 @@ export async function requireReady(
   const row = await getInstallation(tx, actor, workflow, installationId, allowRevoked);
   const config = await configuration(tx, workflow);
   if (!config) fail("WORKFLOW_CONFIGURATION_REQUIRED");
+  await validateConfiguration(
+    tx,
+    workflow,
+    config,
+    (await integration(tx, workflow)).configuration
+  );
   if (
     !launcherVersionAtLeast(row.launcherVersion, ENTERPRISE_WORKFLOW_LAUNCHER_VERSION) ||
     row.workflowPackageVersion !== WORKFLOW_CAPABILITY_VERSION
