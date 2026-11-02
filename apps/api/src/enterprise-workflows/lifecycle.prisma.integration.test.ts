@@ -160,6 +160,10 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         configuration,
         integration: { orderScopeRequired: false }
       });
+      expect(
+        (await call("get_workflow_status", { workflowId: saved.json().workflowId })).json()
+          .possibleMissedWindow
+      ).toBe(false);
       const stale = await call("save_enterprise_workflow", {
         ...selector,
         ...expected,
@@ -315,6 +319,9 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(200);
+      expect((await call("get_workflow_status", { workflowId })).json().possibleMissedWindow).toBe(
+        false
+      );
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(
         new Date()
       );
@@ -789,6 +796,79 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       expect((await action({ kind: "get", actionIds: ["receipt-upload"] })).body).not.toContain(
         "Synthetic item"
       );
+    });
+
+    it("reports only elapsed gaps under a confirmed enabled local schedule", async () => {
+      const originalClock = testClock;
+      const state = (
+        await call("get_enterprise_workflow", { ...selector, enterpriseKey: "receipt-enterprise" })
+      ).json();
+      const workflowId = state.workflowId;
+      const status = async () => (await call("get_workflow_status", { workflowId })).json();
+      const originalHost = (await status()).installations[0].hostSnapshot;
+      const host = async (cron: string, enabled: boolean) => {
+        const recorded = await call("manage_workflow_installation", {
+          workflowId,
+          operation: {
+            kind: "record_host",
+            installationId: "receipt-mac",
+            hostSnapshot: { ...originalHost, cron, state: enabled ? "enabled" : "paused" }
+          }
+        });
+        expect(recorded.statusCode, recorded.body).toBe(200);
+      };
+      try {
+        await host("0 3 * * *", true);
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(
+          originalClock
+        );
+        const afterDays = (days: number) =>
+          new Date(
+            new Date(Date.parse(today + "T00:00:00Z") + days * 86400000)
+              .toISOString()
+              .slice(0, 10) + "T02:00:00+08:00"
+          );
+        testClock = afterDays(1);
+        // Today's3am trigger has not occurred; do not guess a missed run from today's date.
+        expect((await status()).possibleMissedWindow).toBe(false);
+        testClock = afterDays(2);
+        expect((await status()).possibleMissedWindow).toBe(true);
+        await host("0 3 * * *", false);
+        expect((await status()).possibleMissedWindow).toBe(false);
+        await host("0 3 1 * *", true); // Unsupported monthly timing is unknown, not missed.
+        expect((await status()).possibleMissedWindow).toBe(false);
+        for (const cron of [
+          "RRULE:FREQ=WEEKLY;BYHOUR=3;BYMINUTE=45;BYDAY=SU,MO,TU,WE,TH,FR,SA",
+          "RRULE:FREQ=DAILY;BYHOUR=0,8,11,17,21;BYMINUTE=0,30;BYSECOND=0;BYSETPOS=1,4,5,7,9"
+        ]) {
+          await host(cron, true);
+          expect((await status()).possibleMissedWindow).toBe(true);
+        }
+        const expected = {
+          expectedVersion: state.version,
+          expectedIntegrationVersion: state.integration.version,
+          expectedControlVersion: state.controlVersion
+        };
+        const preview = (
+          await call("prepare_enterprise_workflow_change", {
+            ...selector,
+            enterpriseKey: "receipt-enterprise",
+            ...expected,
+            change: { kind: "control", state: "paused", reason: "Synthetic gap pause" }
+          })
+        ).json();
+        const paused = await call("save_enterprise_workflow", {
+          ...selector,
+          enterpriseKey: "receipt-enterprise",
+          ...expected,
+          previewId: preview.previewId,
+          confirmationDigest: preview.confirmationDigest
+        });
+        expect(paused.statusCode, paused.body).toBe(200);
+        expect((await status()).possibleMissedWindow).toBe(false);
+      } finally {
+        testClock = originalClock;
+      }
     });
 
     it("imports every sealed migration page and retains all 101 durable completed actions", async () => {
@@ -2170,6 +2250,21 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         ).statusCode
       ).toBe(403);
       testClock = new Date(testClock.getTime() + 91 * 86400000);
+      const weeklyHost = (await call("get_workflow_status", { workflowId })).json().installations[0]
+        .hostSnapshot;
+      const observedSchedule = await install({
+        kind: "record_host",
+        installationId: "weekly-mac",
+        hostSnapshot: {
+          ...weeklyHost,
+          state: "enabled",
+          cron: "RRULE:FREQ=WEEKLY;BYHOUR=5;BYMINUTE=30;BYDAY=MO"
+        }
+      });
+      expect(observedSchedule.statusCode, observedSchedule.body).toBe(200);
+      expect((await call("get_workflow_status", { workflowId })).json().possibleMissedWindow).toBe(
+        true
+      );
       const daily = (await call("get_enterprise_workflow", selector)).json();
       const retained = (await call("get_workflow_status", { workflowId: daily.workflowId })).json();
       expect(
