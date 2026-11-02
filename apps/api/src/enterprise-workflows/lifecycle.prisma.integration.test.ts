@@ -243,7 +243,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         host: "codex",
         platform: "macos",
         launcherVersion: "0.16.0",
-        workflowPackageVersion: "1.0.0"
+        workflowPackageVersion: "1.0.3"
       };
       expect((await install({ kind: "register", installation })).statusCode).toBe(200);
       expect((await install({ kind: "register", installation })).json()).toMatchObject({
@@ -301,13 +301,34 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(409);
+      for (const version of ["1.1.0", "2.0.0", "1.0.3-rc.1"]) {
+        await install({
+          kind: "register",
+          installation: { ...installation, workflowPackageVersion: version }
+        });
+        const rejected = await install({
+          kind: "prepare_takeover",
+          installationId: "mac-a",
+          expectedAssignmentEpoch: 0,
+          oldHostState: "paused"
+        });
+        expect(rejected.statusCode).toBe(409);
+        expect(rejected.json().error.code).toBe("WORKFLOW_VERSION_INCOMPATIBLE");
+      }
+      await install({ kind: "register", installation });
+      await install({
+        kind: "record_checks",
+        installationId: "mac-a",
+        checks,
+        firstRunVerification: "not_run"
+      });
       const takeover = await install({
         kind: "prepare_takeover",
         installationId: "mac-a",
         expectedAssignmentEpoch: 0,
         oldHostState: "paused"
       });
-      expect(takeover.statusCode).toBe(200);
+      expect(takeover.statusCode, takeover.body).toBe(200);
       expect(
         (
           await install({
@@ -335,10 +356,16 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         expectedConfigurationVersion: 1,
         expectedIntegrationVersion: current.integration.version,
         expectedControlVersion: current.controlVersion,
-        workflowPackageVersion: "1.0.0",
+        workflowPackageVersion: "1.0.3",
         window: { startDate: previous, endDate: previous },
         mode: "scheduled"
       };
+      const mismatched = await call("manage_workflow_run", {
+        workflowId,
+        operation: { ...start, workflowPackageVersion: "1.0.2" }
+      });
+      expect(mismatched.statusCode).toBe(409);
+      expect(mismatched.json().error.code).toBe("WORKFLOW_VERSION_INCOMPATIBLE");
       const racing = await Promise.all([
         call("manage_workflow_run", { workflowId, operation: start }),
         call("manage_workflow_run", { workflowId, operation: start })
@@ -346,12 +373,35 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       expect(racing.map((response) => response.statusCode).sort()).toEqual([200, 409]);
       const run = racing.find((response) => response.statusCode === 200)!;
       expect(run.json()).toMatchObject({
-        snapshot: { configurationVersion: 1, configuration },
+        snapshot: { configurationVersion: 1, configuration, workflowPackageVersion: "1.0.3" },
         assignmentEpoch: 1
       });
       expect((await call("manage_workflow_run", { workflowId, operation: start })).statusCode).toBe(
         409
       );
+      await install({
+        kind: "register",
+        installation: { ...installation, workflowPackageVersion: "1.0.4" }
+      });
+      const changedPackage = await call("manage_workflow_run", {
+        workflowId,
+        operation: {
+          kind: "renew",
+          installationId: "mac-a",
+          runId: run.json().runId,
+          assignmentEpoch: 1,
+          controlVersion: current.controlVersion
+        }
+      });
+      expect(changedPackage.statusCode).toBe(409);
+      expect(changedPackage.json().error.code).toBe("WORKFLOW_VERSION_INCOMPATIBLE");
+      await install({ kind: "register", installation });
+      await install({
+        kind: "record_checks",
+        installationId: "mac-a",
+        checks,
+        firstRunVerification: "not_run"
+      });
       await change({
         kind: "configuration",
         configuration: { ...configuration, datasets: ["business", "dishes"] }
@@ -603,7 +653,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
               host: "codex",
               platform: "macos",
               launcherVersion: "0.16.0",
-              workflowPackageVersion: "1.0.0",
+              workflowPackageVersion: "1.0.3",
               hostSnapshot: {
                 host: "codex",
                 platform: "macos",
@@ -674,7 +724,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           expectedConfigurationVersion: current.version,
           expectedIntegrationVersion: current.integration.version,
           expectedControlVersion: current.controlVersion,
-          workflowPackageVersion: "1.0.0",
+          workflowPackageVersion: "1.0.3",
           window,
           mode: "scheduled"
         }
@@ -1329,7 +1379,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
             expectedConfigurationVersion: current.version,
             expectedIntegrationVersion: current.integration.version,
             expectedControlVersion: current.controlVersion,
-            workflowPackageVersion: "1.0.0",
+            workflowPackageVersion: "1.0.3",
             window: previousRun.snapshot.window,
             mode: "backfill",
             backfillConfirmationDigest: "0".repeat(64)
@@ -1348,7 +1398,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
               host: "codex",
               platform: "macos",
               launcherVersion: "0.16.0",
-              workflowPackageVersion: "1.0.0",
+              workflowPackageVersion: "1.0.3",
               hostSnapshot: {
                 host: "codex",
                 platform: "macos",
@@ -1448,7 +1498,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         expectedConfigurationVersion: current.version,
         expectedIntegrationVersion: current.integration.version,
         expectedControlVersion: current.controlVersion,
-        workflowPackageVersion: "1.0.0",
+        workflowPackageVersion: "1.0.3",
         window,
         mode: "backfill",
         backfillConfirmationDigest: backfill.json().confirmationDigest
@@ -1601,7 +1651,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           host: "codex",
           platform: "macos",
           launcherVersion: "0.16.0",
-          workflowPackageVersion: "1.0.0",
+          workflowPackageVersion: "1.0.3",
           hostSnapshot: {
             host: "codex",
             platform: "macos",
@@ -1683,7 +1733,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           expectedConfigurationVersion: current.version,
           expectedIntegrationVersion: current.integration.version,
           expectedControlVersion: current.controlVersion,
-          workflowPackageVersion: "1.0.0",
+          workflowPackageVersion: "1.0.3",
           window,
           mode: "scheduled"
         }
@@ -2251,7 +2301,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           expectedConfigurationVersion: current.version,
           expectedIntegrationVersion: current.integration.version,
           expectedControlVersion: current.controlVersion,
-          workflowPackageVersion: "1.0.0",
+          workflowPackageVersion: "1.0.3",
           window,
           mode: "scheduled"
         }
@@ -2339,7 +2389,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           host: "codex",
           platform: "macos",
           launcherVersion: "0.16.0",
-          workflowPackageVersion: "1.0.0",
+          workflowPackageVersion: "1.0.3",
           hostSnapshot: {
             host: "codex",
             platform: "macos",
@@ -2396,7 +2446,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         expectedConfigurationVersion: current.version,
         expectedIntegrationVersion: current.integration.version,
         expectedControlVersion: current.controlVersion,
-        workflowPackageVersion: "1.0.0",
+        workflowPackageVersion: "1.0.3",
         window: weeklyPlannerFixture.reportWindow,
         mode: "scheduled"
       };
