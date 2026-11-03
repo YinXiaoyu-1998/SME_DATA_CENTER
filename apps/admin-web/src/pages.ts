@@ -1,6 +1,8 @@
 import { browserPageStyles } from "./styles.js";
 import { permissionsClientSource } from "./client.js";
 import { permissionsCopy } from "./copy.js";
+import { workflowCopy } from "./workflow-copy.js";
+import { workflowClientSource } from "./workflow-client.js";
 export interface LocalizedText {
   zh: string;
   en: string;
@@ -98,12 +100,74 @@ export function renderPermissionsMessage(options: {
     `<main class="login"><section class="panel"><h1>${localized(title)}</h1><p>${localized(message)}</p></section></main>`
   );
 }
+export const settingsNavigationSource = String.raw`
+(() => {
+ const nav = document.getElementById("settings-navigation");
+ const links = [...nav.querySelectorAll("a")];
+ const permissions = links[0];
+ function show(path) {
+   const current = path === permissions.pathname ? permissions : links[1];
+   for (const link of links) {
+     const active = link === current;
+     document.getElementById(link.dataset.settingsPanel).hidden = !active;
+     if (active) link.setAttribute("aria-current", "page");
+     else link.removeAttribute("aria-current");
+   }
+ }
+ for (const link of links) link.addEventListener("click", event => {
+   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+   event.preventDefault();
+   if (location.pathname !== link.pathname) history.pushState(null, "", link.href);
+   show(location.pathname);
+ });
+ window.addEventListener("popstate", () => show(location.pathname));
+})();`;
+
+function settingsConfig(nonce: string, id: string, value: object): string {
+  return `<script nonce="${nonce}" type="application/json" id="${id}">${JSON.stringify(value).replace(/</g, "\\u003c")}</script>`;
+}
+
 export function renderPermissionsPage(
-  options: PageOptions & { organizationName: string; employeeName: string }
+  options: PageOptions & {
+    organizationName: string;
+    employeeName: string;
+    workflows?: { active?: boolean; enterpriseKey?: string };
+  }
 ): string {
+  const base = `/admin/permissions/${encodeURIComponent(options.orgId)}`;
+  const active = Boolean(options.workflows?.active);
+  const enterpriseKey = options.workflows?.enterpriseKey;
+  const workflowPath = `${base}/workflows${enterpriseKey ? "/" + encodeURIComponent(enterpriseKey) : ""}`;
+  const permissionsTitle = { zh: "权限设置", en: "Permissions" };
+  const navigation = options.workflows
+    ? `<nav id="settings-navigation" class="settings-navigation" aria-label="管理设置" data-aria-zh="管理设置" data-aria-en="Admin settings"><a href="${base}" data-settings-panel="permissions-settings"${active ? "" : ' aria-current="page"'}>${localized(permissionsTitle)}</a><a href="${workflowPath}" data-settings-panel="workflow-settings"${active ? ' aria-current="page"' : ""}>${localized(workflowCopy.title!)}</a></nav>`
+    : "";
+  const workflowPanel = options.workflows
+    ? `<section id="workflow-settings" aria-labelledby="workflow-settings-title"${active ? "" : " hidden"}><h2 id="workflow-settings-title">${localized(workflowCopy.title!)}</h2><p>${localized(workflowCopy.intro!)}</p><div id="workflow-notice" role="alert" hidden></div><div id="workflows-app" aria-busy="true"><p role="status">${localized(workflowCopy.loading!)}</p></div></section>`
+    : "";
   return shell(
-    { nonce: options.nonce, title: { zh: "权限设置 · SMEDC", en: "Permissions · SMEDC" } },
-    `<main><h1>${localized({ zh: "权限设置", en: "Permissions" })}</h1><p class="identity">${escapeHtml(options.organizationName)} · ${escapeHtml(options.employeeName)}</p><p><a href="/admin/permissions/${escapeHtml(encodeURIComponent(options.orgId))}/workflows">${localized({ zh: "自动任务", en: "Automatic tasks" })}</a></p><div id="permission-global-status" role="alert" hidden></div><section id="permissions-app" class="panel"><p role="status">${localized({ zh: "正在读取配置…", en: "Loading configuration…" })}</p></section><form method="post" action="/admin/permissions/${escapeHtml(encodeURIComponent(options.orgId))}/logout"><input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken)}"><button class="secondary" type="submit">${localized({ zh: "退出网页登录", en: "Sign out of browser" })}</button></form></main><script nonce="${options.nonce}" type="application/json" id="smedc-ui-config">${JSON.stringify({ orgId: options.orgId, csrfToken: options.csrfToken, copy: permissionsCopy }).replace(/</g, "\\u003c")}</script>`,
-    permissionsClientSource
+    {
+      nonce: options.nonce,
+      title: options.workflows
+        ? { zh: "管理设置 · SMEDC", en: "Admin settings · SMEDC" }
+        : { zh: "权限设置 · SMEDC", en: "Permissions · SMEDC" }
+    },
+    `<main><h1>${localized(options.workflows ? { zh: "管理设置", en: "Admin settings" } : permissionsTitle)}</h1><p class="identity">${escapeHtml(options.organizationName)} · ${escapeHtml(options.employeeName)}</p>${navigation}<section id="permissions-settings" aria-labelledby="permissions-settings-title"${active ? " hidden" : ""}><h2 id="permissions-settings-title"${options.workflows ? "" : " hidden"}>${localized(permissionsTitle)}</h2><div id="permission-global-status" role="alert" hidden></div><section id="permissions-app" class="panel"><p role="status">${localized({ zh: "正在读取配置…", en: "Loading configuration…" })}</p></section></section>${workflowPanel}<form method="post" action="${base}/logout"><input type="hidden" name="csrfToken" value="${escapeHtml(options.csrfToken)}"><button type="submit" class="secondary">${localized({ zh: "退出网页登录", en: "Sign out of browser" })}</button></form></main>` +
+      settingsConfig(options.nonce, "smedc-ui-config", {
+        orgId: options.orgId,
+        csrfToken: options.csrfToken,
+        copy: permissionsCopy
+      }) +
+      (options.workflows
+        ? settingsConfig(options.nonce, "workflow-config", {
+            orgId: options.orgId,
+            enterpriseKey,
+            csrfToken: options.csrfToken,
+            copy: workflowCopy
+          })
+        : ""),
+    options.workflows
+      ? [settingsNavigationSource, permissionsClientSource, workflowClientSource].join("\n")
+      : permissionsClientSource
   );
 }

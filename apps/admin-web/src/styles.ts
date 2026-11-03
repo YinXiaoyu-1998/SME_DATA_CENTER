@@ -33,6 +33,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .check{display:flex;gap:.5rem;align-items:center;font-weight:400}
 .check input{flex:none}
 .subpanel{padding:1rem;border:1px solid #dbe3df;border-radius:8px;margin:.75rem 0}
+.settings-navigation{display:flex;gap:.5rem;border-bottom:1px solid #c4d3cb;margin:1.25rem 0}
+.settings-navigation a{color:#365d50;padding:.65rem .95rem;text-decoration:none;border-bottom:3px solid transparent}
+.settings-navigation a:hover{background:#eaf2ed}
+.settings-navigation a[aria-current=page]{color:#22584a;border-bottom-color:#22584a;font-weight:700}
+#workflow-settings .tabs button[aria-current=page]{background:#22584a;color:#fff}
+#workflow-settings .summary dt{font-weight:600;margin-top:.7rem}
+#workflow-settings .summary dd{margin-left:1rem;overflow-wrap:anywhere}
+#workflow-settings fieldset{border:1px solid #c4d3cb;border-radius:6px;margin:.8rem 0;min-width:0}
 .tabs{display:flex;flex-wrap:wrap;gap:.4rem}
 .tabs button{background:transparent;color:#365d50;border-color:#c4d3cb}
 .tabs button[aria-selected=true]{background:#22584a;color:white}
