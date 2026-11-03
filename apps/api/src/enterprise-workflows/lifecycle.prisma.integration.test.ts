@@ -554,8 +554,124 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         (await action({ kind: "record_receipts", ...binding, receipts: [publishedReceipt] }))
           .statusCode
       ).toBe(200);
+      // A replacement host knows the run ID, but has none of the local action IDs.
+      const recoveryIds = ["cold-failed", "cold-intent", "cold-unknown", "cold-other-run"];
+      try {
+        for (const [index, actionId] of recoveryIds.slice(0, 3).entries()) {
+          expect(
+            (
+              await action({
+                kind: "intent",
+                ...binding,
+                actions: [
+                  {
+                    actionId,
+                    identity: { ...intent.identity, sourceHash: String(index + 1).repeat(64) }
+                  }
+                ]
+              })
+            ).statusCode
+          ).toBe(200);
+        }
+        expect(
+          (
+            await action({
+              kind: "record_receipts",
+              ...binding,
+              receipts: [
+                {
+                  actionId: "cold-failed",
+                  state: "failed",
+                  evidence: "request_rejected",
+                  reason: "Synthetic no-commit rejection",
+                  verifiedAt: testClock.toISOString()
+                },
+                {
+                  actionId: "cold-unknown",
+                  state: "unknown",
+                  evidence: "transport_unknown",
+                  verifiedAt: testClock.toISOString()
+                }
+              ]
+            })
+          ).statusCode
+        ).toBe(200);
+        await prisma.workflowAction.create({
+          data: {
+            orgId: actor.orgId,
+            workflowId: state.workflowId,
+            actionId: "cold-other-run",
+            runId: "different-run",
+            idempotencyKey: "9".repeat(64),
+            identity: { ...intent.identity, sourceHash: "9".repeat(64) },
+            state: "confirmed"
+          }
+        });
+        const refs: Array<{ actionId: string; runId: string; state: string }> = [];
+        let actionCursor: string | undefined;
+        do {
+          const page = (
+            await call("get_workflow_status", {
+              workflowId: state.workflowId,
+              runId: run.runId,
+              limit: 2,
+              ...(actionCursor ? { actionCursor } : {})
+            })
+          ).json();
+          expect(page.runActionRefs).toHaveLength(actionCursor === "cold-unknown" ? 1 : 2);
+          for (const ref of page.runActionRefs) {
+            expect(Object.keys(ref).sort()).toEqual(["actionId", "runId", "state", "updatedAt"]);
+            expect(ref.runId).toBe(run.runId);
+            refs.push(ref);
+          }
+          actionCursor = page.nextRunActionCursor ?? undefined;
+        } while (actionCursor);
+        expect(refs.map((ref) => [ref.actionId, ref.state])).toEqual([
+          ["accepted-upload", "confirmed"],
+          ["cold-failed", "failed"],
+          ["cold-intent", "intent"],
+          ["cold-unknown", "unknown"],
+          ["upload-action", "confirmed"]
+        ]);
+        const recovered = (
+          await action({ kind: "get", actionIds: refs.map((ref) => ref.actionId) })
+        ).json();
+        expect(
+          recovered.actions.find(
+            (item: { actionId: string }) => item.actionId === "accepted-upload"
+          ).receipt.jobId
+        ).toBe("synthetic_import_job");
+        const ordinaryStatus = (
+          await call("get_workflow_status", { workflowId: state.workflowId })
+        ).json();
+        expect(ordinaryStatus.runActionRefs).toBeUndefined();
+        expect(
+          ordinaryStatus.pendingActions.every((ref: { state: string }) =>
+            ["intent", "unknown"].includes(ref.state)
+          )
+        ).toBe(true);
+        expect(
+          (
+            await call("get_workflow_status", {
+              workflowId: state.workflowId,
+              runId: "missing-run"
+            })
+          ).json().runActionRefs
+        ).toEqual([]);
+      } finally {
+        await prisma.workflowActionDeduplication.deleteMany({
+          where: { orgId: actor.orgId, workflowId: state.workflowId, actionId: { in: recoveryIds } }
+        });
+        await prisma.workflowAction.deleteMany({
+          where: { orgId: actor.orgId, workflowId: state.workflowId, actionId: { in: recoveryIds } }
+        });
+      }
       await prisma.employee.update({ where: { id: actor.id }, data: { role: "employee" } });
       expect((await action({ kind: "get", actionIds: ["upload-action"] })).statusCode).toBe(403);
+      expect(
+        (await call("get_workflow_status", { workflowId: state.workflowId, runId: run.runId }))
+          .statusCode
+      ).toBe(403);
       await prisma.employee.update({ where: { id: actor.id }, data: { role: "admin" } });
     });
 
@@ -1435,6 +1551,19 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       expect(saved.version).toBe(state.version + 1);
       const status = await mcp("get_workflow_status", { workflowId: state.workflowId });
       const run = status.runs[0];
+      const recoveredStatus = await mcp("get_workflow_status", {
+        workflowId: state.workflowId,
+        runId: run.runId
+      });
+      expect(recoveredStatus.runActionRefs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            actionId: "upload-action",
+            state: "confirmed",
+            runId: run.runId
+          })
+        ])
+      );
       expect(
         (
           await mcp("manage_workflow_run", {

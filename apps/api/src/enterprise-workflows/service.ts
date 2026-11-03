@@ -208,6 +208,21 @@ export function createEnterpriseWorkflowService(options: {
             take: limit + 1,
             select: { actionId: true, runId: true, state: true, updatedAt: true }
           });
+          // A fresh host knows the frozen run, but may have lost every local action ID.
+          // Keep this index separate from the workflow-wide unresolved-action stream.
+          const runActions = input.runId
+            ? await tx.workflowAction.findMany({
+                where: {
+                  orgId: actor.orgId,
+                  workflowId: workflow.id,
+                  runId: input.runId,
+                  ...(input.actionCursor ? { actionId: { gt: input.actionCursor } } : {})
+                },
+                orderBy: { actionId: "asc" },
+                take: limit + 1,
+                select: { actionId: true, runId: true, state: true, updatedAt: true }
+              })
+            : undefined;
           const expectedWindow = scheduledWindow(workflow.type, now);
           let possibleMissedWindow = false;
           if (workflow.controlState === "active" && workflow.assignedInstallationId) {
@@ -260,6 +275,13 @@ export function createEnterpriseWorkflowService(options: {
             possibleMissedWindow,
             pendingActions: actions.slice(0, limit),
             nextActionCursor: actions.length > limit ? actions[limit - 1]!.actionId : null,
+            ...(runActions
+              ? {
+                  runActionRefs: runActions.slice(0, limit),
+                  nextRunActionCursor:
+                    runActions.length > limit ? runActions[limit - 1]!.actionId : null
+                }
+              : {}),
             ...(await migrationSummaries(tx, actor, workflow, input.migrationCursor, limit)),
             installations: await tx.workflowInstallation.findMany({
               where: { orgId: actor.orgId, workflowId: workflow.id },
