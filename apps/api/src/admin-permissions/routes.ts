@@ -136,6 +136,7 @@ export function registerAdminPermissionsRoutes(
       renderPermissionsPage({
         nonce,
         orgId: principal.orgId,
+        ...(options.workflows ? { workflows: {} } : {}),
         organizationName: principal.organizationName,
         employeeName: principal.displayName,
         csrfToken: csrfTokenForSecret(sharedSecret(request)!)

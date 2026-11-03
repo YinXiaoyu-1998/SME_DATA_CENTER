@@ -534,6 +534,15 @@ it("keeps workflow pages and operations bound to the URL organization with curre
   const page = await app.inject({ url: path, headers: { cookie: cookie(secretA) } });
   expect(page.statusCode).toBe(200);
   expect(page.body).toContain("自动任务");
+  expect(page.body).toContain('data-settings-panel="workflow-settings" aria-current="page"');
+  expect(page.body).toContain('id="permissions-app"');
+  const settings = await app.inject({
+    url: "/admin/permissions/org_a",
+    headers: { cookie: cookie(secretA) }
+  });
+  expect(settings.statusCode).toBe(200);
+  expect(settings.body).toContain('data-settings-panel="permissions-settings" aria-current="page"');
+  expect(settings.body).toContain('id="workflows-app"');
   expect(page.headers["cache-control"]).toBe("no-store");
   expect(page.headers["content-security-policy"]).toContain("connect-src 'self'");
   const operation = "/admin/permissions/org_a/api/workflows/list_enterprise_workflows";
