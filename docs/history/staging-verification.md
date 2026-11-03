@@ -2,6 +2,14 @@
 
 本文件保留当时验证证据，不说明当前部署、权限或操作授权。当前状态见 [staging-readiness](../implementation/staging-readiness.md)。旧路径/版本仅为历史引用。
 
+## 2026-11-03：工作流冷恢复动作索引发布
+
+经本轮明确批准，[PR #315](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/pull/315) 合并为 `856ae837a2e8caeeba59cac98557b2c3b296a0a3`；[main 门禁 41581973665](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41581973665) 和 [canonical 部署 41582809062](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41582809062) 均成功。部署记录包含新索引迁移 `20261103043000_workflow_run_action_inventory`、同 SHA 镜像及既有健康／readiness／fixture smoke 检查。
+
+本地同一实现树通过格式、lint、类型检查及 1,679 项单元测试；208 项 opt-in 测试跳过。新增恢复断言先在真实 MySQL 生命周期路径复现缺少动作索引，再随修复与原九项场景一起通过。main 的 MySQL/Qdrant＋fake-provider 门禁通过；外部 provider 手工门禁跳过，不据此声称通过。现有登录的官方 MCP 已只读核实 `runActionRefs` 和 `nextRunActionCursor` 可用；没有把真实企业配置或回执明细写入仓库。
+
+配套包 [PR #66](https://github.com/YinXiaoyu-1998/smedc-companion-skills/pull/66) / [#67](https://github.com/YinXiaoyu-1998/smedc-companion-skills/pull/67) 提供宿主 Goal 接续、固定轮次恢复、执行队列及回执恢复；核心 [PR #97](https://github.com/YinXiaoyu-1998/smedc-mcp-skill/pull/97) 同步使用说明。companion 为 `1.0.6`，launcher 与批准 pin 保持 `0.16.0`；输入契约、凭据、环境变量和业务执行归属均不变。文件更新与真实任务冷启动、首次业务周期、通知适用性和历史去重仍须分别核验，发布成功不代替这些验收。
+
 ## 2026-11-03：工作流包补丁兼容发布
 
 [部署 run 41489846084](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41489846084) 和 [main 门禁 41488451295](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/actions/runs/41488451295) 对应 `e51f3f1858ea18816d5cdf0e079f46a9f05a1cbb`，于北京时间 01:23 完成。服务不再将 companion 包版本与协议 `1.0.0` 做精确相等比较，接受稳定 `1.0.x`，保留安装与运行快照的精确包版本约束。公开 health 正常、readyz 404，fixture-only smoke 通过。后续同机任务 ID 修复的当前发布证据见 [staging-readiness](../implementation/staging-readiness.md)；本记录不宣称真实任务已切换或首轮已通过。
