@@ -41,6 +41,23 @@ server previews plus expected configuration/integration/control versions. Read t
 schemas; do not invent operations or arbitrary payload fields. The companion owns the bounded
 installation, lease, action, recovery and migration recipes.
 
+Cold recovery must discover previous actions before deciding what remains. On a compatible
+service, `get_workflow_status` with the original `workflowId` and `runId` also returns
+`runActionRefs` (actionId/runId/state/updatedAt for all action states) and
+`nextRunActionCursor`. Use `limit` up to 100; pass that cursor back as `actionCursor` with
+the same workflow/run to read the next page. Retrieve the discovered IDs in bounded
+`record_workflow_action` `get` calls and persist the returned minimal receipts. A missing
+`runActionRefs` field means this recovery capability has not been deployed, not an empty run.
+The existing workflow-wide `pendingActions`/`nextActionCursor` stream remains separate;
+do not mix its cursor or scope with the per-run inventory. Confirmed and unknown actions
+remain non-replayable after local state loss. Durable action history may outlive the run
+detail, but it does not authorize resuming an expired or finished run.
+
+This inventory is an additive server response on the existing strict input contract;
+the approved launcher `0.16.0` forwards it without a new tool or transport. Verify the
+matching service response before relying on it. It carries no original files, review bodies,
+report content or credentials, and does not grant ordinary business reads.
+
 Host task IDs are local to each computer. An explicit same-computer migration updates the existing
 task ID and verifies its readback; another computer uses IDs returned by its own host, never an old
 ID as an update target. Migration stages rely on the assigned installation, advanced assignment

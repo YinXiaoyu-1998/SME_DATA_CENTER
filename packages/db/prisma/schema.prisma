@@ -1608,6 +1608,7 @@ model WorkflowAction {
   @@id([orgId, workflowId, actionId])
   @@unique([orgId, workflowId, idempotencyKey], map: "uq_workflow_action_dedup")
   @@index([orgId, workflowId, state])
+  @@index([orgId, workflowId, runId, actionId], map: "ix_workflow_actions_run_inventory")
   @@map("workflow_actions")
 }
 
