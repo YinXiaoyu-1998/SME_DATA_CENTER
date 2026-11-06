@@ -1,6 +1,8 @@
 # SMEDC 网页前端迁移实施计划
 
-更新：2026-11-06。状态：**已决策，未实现、未部署**。
+更新：2026-11-06。状态：**后端已实现（B1–B6），前端在建，未部署**。
+
+已落地：契约内核与 `contract.json`、`SMEDC_API_ORIGIN`/`SMEDC_WEB_ORIGIN` 拆分、`/api/web/v1/session`、权限/自动任务/台账共 40 条接口迁移、删除 `apps/admin-web` 与全部页面路由。前端仓 `SMEDC_FRONTEND` 已有脚手架、契约同步与 API 客户端、应用骨架。E2E、发布通道与线上切换仍未开始。
 权威规格：[Issue #319](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/319)。本文只记录最终决策与分批实施边界；规格冲突处以本文的决策记录为准，并回写 Issue。
 
 ## 1. 目标与终态

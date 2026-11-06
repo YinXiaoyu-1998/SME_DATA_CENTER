@@ -37,7 +37,7 @@
 | /opt/smedc/current-release.env        | 发布程序记录已验证镜像引用               |
 | /opt/smedc/previous-release.env       | 发布程序保存回滚镜像/Compose 对应状态    |
 
-环境变量以 [env-inventory](env-inventory.md) 和当前 Compose/发布脚本为准。API、worker、release-ops 使用一致 DATABASE_URL、存储、Qdrant collection/检索版本及所需 provider 配置。检索版本与 collection 必须匹配；不得复制历史测试 collection 或旧 Qdrant tag。
+环境变量以 [env-inventory](env-inventory.md) 和当前 Compose/发布脚本为准。网页与机器客户端已拆成两个 origin：`SMEDC_API_ORIGIN`（issuer、令牌、MCP host 守卫）与 `SMEDC_WEB_ORIGIN`（浏览器 Origin 校验、生成的网页链接）。两者都必填，改名或缺失会让 API 启动失败。app 站点的 nginx 与静态产物不属于本仓库发布流程。API、worker、release-ops 使用一致 DATABASE_URL、存储、Qdrant collection/检索版本及所需 provider 配置。检索版本与 collection 必须匹配；不得复制历史测试 collection 或旧 Qdrant tag。
 
 GitHub staging secrets：ACR_PASSWORD、STAGING_CURSOR_SIGNING_SECRET、STAGING_SSH_PRIVATE_KEY；非秘密 variables：ACR_REGISTRY、ACR_NAMESPACE、ACR_USERNAME、STAGING_HOST、STAGING_SSH_USER、STAGING_PUBLIC_URL。CI 使用独立受限非交互 SSH key，并以已提交 known_hosts 严格检查主机。
 

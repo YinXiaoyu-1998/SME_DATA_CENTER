@@ -1,381 +1,499 @@
-import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import {
-  renderPermissionsLogin,
-  renderPermissionsMessage,
-  renderPermissionsPage,
-  renderWorkflowPage
-} from "../../../admin-web/src/index.js";
+  normalizeEnterpriseIdentity,
+  validateBusinessGrant,
+  validateBusinessScope,
+  type BusinessGrant,
+  type BusinessScopeItem
+} from "@smedc/domain";
+import { WORKFLOW_MCP_TOOL_NAMES, type WorkflowMcpInputs } from "@smedc/mcp-contract";
+import {
+  getWebApiRoute,
+  permissionAccountUpdateBody,
+  permissionCategoryCreateBody,
+  permissionCategoryUpdateBody,
+  permissionCutoverBody,
+  permissionDimensionCreateBody,
+  permissionDimensionUpdateBody,
+  permissionDimensionValueCreateBody,
+  permissionDocumentQuery,
+  permissionDocumentUpdateBody,
+  permissionEnterpriseDeclareBody,
+  permissionEnterprisePreviewBody,
+  permissionStoreBody,
+  permissionVersionBody,
+  webApiErrorBody
+} from "@smedc/web-api-contract";
 import type { AuthCore } from "../auth/auth-core.js";
 import {
   BROWSER_SESSION_COOKIE,
-  BROWSER_SESSION_SECONDS,
   type BrowserPrincipal,
   type BrowserSessions
 } from "../auth/browser-session.js";
-import {
-  cookieValue,
-  csrfTokenForSecret,
-  hostOnlyCookie,
-  matchesCsrfToken
-} from "../auth/http-contract.js";
-import { authPageHeaders } from "../auth/pages.js";
+import { cookieValue, matchesCsrfToken } from "../auth/http-contract.js";
 import type { BusinessAuthorizationService } from "../business-authorization.js";
-import {
-  registerBusinessAuthorizationRoutes,
-  respondBusinessAuthorizationError
-} from "../routes/business-authorization.js";
-import { createRequestAuditContext } from "../request-audit-context.js";
-import { registerEnterpriseWorkflowRoutes } from "../enterprise-workflows/routes.js";
+import { respondBusinessAuthorizationError } from "../routes/business-authorization.js";
 import type { EnterpriseWorkflowService } from "../enterprise-workflows/service.js";
+import { registerWebApiRoute, type WebApiContext } from "../web-api/register.js";
 import type { PermissionsUiMetadata } from "./metadata.js";
 
-const LOGIN_COOKIE = "__Host-smedc_login";
-const routeBase = "/admin/permissions/:orgId";
 export interface AdminPermissionsRoutesOptions {
+  /** 登录本身已迁到会话接口，这里只保留构造参数以便装配层不变。 */
   auth: Pick<AuthCore, "verifyLogin">;
   browserSessions: BrowserSessions;
   permissions: () => BusinessAuthorizationService;
   metadata: () => PermissionsUiMetadata;
-  publicOrigin: string;
+  webOrigin: string;
   workflows?: () => EnterpriseWorkflowService;
 }
-function browserAudit(request: FastifyRequest) {
-  const context = createRequestAuditContext(request, "browser_auth");
-  return { requestId: context.requestId, sourceIp: context.sourceIp, launcherVersion: null };
+
+const MESSAGES: Record<string, string> = {
+  BROWSER_ACCESS_DENIED: "当前账号无权访问该企业的权限设置。",
+  INVALID_PERMISSION_CONFIGURATION: "权限配置无效。",
+  CATEGORY_NOT_FOUND: "业务类别不存在。",
+  INVALID_ENTERPRISE_NAME: "企业名称无效。"
+};
+
+const fail = (reply: FastifyReply, status: number, code: string) =>
+  reply.code(status).send(webApiErrorBody(code, MESSAGES[code] ?? "请求无法完成，请刷新后重试。"));
+
+/** Prisma 的 bigint 与 Date 在 Fastify 序列化前先归一，响应契约校验看到的就是线上形状。 */
+function jsonSafe(value: unknown): unknown {
+  if (value === undefined) return value;
+  return JSON.parse(
+    JSON.stringify(value, (_key, item: unknown) =>
+      typeof item === "bigint" ? item.toString() : item
+    )
+  );
 }
-function page(reply: FastifyReply, render: (nonce: string) => string) {
-  const nonce = randomBytes(18).toString("base64url");
-  const headers = authPageHeaders(nonce);
-  // Native same-origin form POSTs need a non-opaque Origin for the strict write check.
-  headers["referrer-policy"] = "same-origin";
-  headers["content-security-policy"] += "; connect-src 'self'";
-  return reply
-    .headers({ ...headers })
-    .type("text/html; charset=utf-8")
-    .send(render(nonce));
-}
-function denied(reply: FastifyReply) {
-  return page(reply.code(403), (nonce) => renderPermissionsMessage({ nonce, kind: "denied" }));
-}
-function failure(reply: FastifyReply, status: number, code: string) {
-  return reply
-    .header("cache-control", "no-store")
-    .header("x-content-type-options", "nosniff")
-    .code(status)
-    .send({ error: { code } });
-}
+
+const workflowRouteIds: Record<keyof WorkflowMcpInputs, string> = {
+  list_enterprise_workflows: "workflows.listEnterpriseWorkflows",
+  get_enterprise_workflow: "workflows.getEnterpriseWorkflow",
+  prepare_enterprise_workflow_change: "workflows.prepareEnterpriseWorkflowChange",
+  save_enterprise_workflow: "workflows.saveEnterpriseWorkflow",
+  manage_workflow_installation: "workflows.manageWorkflowInstallation",
+  manage_workflow_run: "workflows.manageWorkflowRun",
+  record_workflow_action: "workflows.recordWorkflowAction",
+  get_workflow_status: "workflows.getWorkflowStatus"
+};
+
+/**
+ * 企业内管理员面的浏览器接口。
+ * 会话来自共享浏览器 Cookie，写校验是同源 Origin + CSRF；组织与角色取自会话而不是 URL。
+ */
 export function registerAdminPermissionsRoutes(
   app: FastifyInstance,
   options: AdminPermissionsRoutesOptions
 ): void {
-  const principals = new WeakMap<FastifyRequest, BrowserPrincipal>();
-  const path = (orgId: string) => `/admin/permissions/${encodeURIComponent(orgId)}`;
-  const workflowReturn = (request: FastifyRequest): string | undefined => {
-    const value = (request.query as { workflow?: unknown }).workflow;
-    return typeof value === "string" &&
-      value.length <= 128 &&
-      !Array.from(value).some(
-        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127
-      )
-      ? value
-      : undefined;
-  };
-  const loginTarget = (request: FastifyRequest, orgId: string) => {
-    const workflow = workflowReturn(request);
-    return (
-      path(orgId) +
-      (workflow === undefined
-        ? ""
-        : "/workflows" + (workflow ? "/" + encodeURIComponent(workflow) : ""))
-    );
-  };
-  const validOrgId = (orgId: string) => /^[A-Za-z0-9_-]{1,64}$/.test(orgId);
-  const matchesTenant = (principal: BrowserPrincipal, orgId: string) =>
-    validOrgId(orgId) && principal.orgId === orgId && principal.role === "admin";
   const sharedSecret = (request: FastifyRequest) =>
     cookieValue(request.headers.cookie, BROWSER_SESSION_COOKIE);
-  const principalFor = (request: FastifyRequest) =>
+  const authenticate = async (request: FastifyRequest) =>
     options.browserSessions.authenticate(sharedSecret(request));
-  const validWrite = (request: FastifyRequest, secret: string, csrf: unknown) =>
-    request.headers.origin === options.publicOrigin &&
-    typeof csrf === "string" &&
-    matchesCsrfToken(secret, csrf);
-  async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
-    reply.header("cache-control", "no-store").header("x-content-type-options", "nosniff");
-    const principal = await principalFor(request);
-    if (!principal) {
-      failure(reply, 401, "BROWSER_SIGN_IN_REQUIRED");
-      return false;
-    }
-    const orgId = (request.params as { orgId: string }).orgId;
-    if (!matchesTenant(principal, orgId)) {
-      failure(reply, 403, "BROWSER_ACCESS_DENIED");
-      return false;
-    }
-    if (
-      request.method !== "GET" &&
-      !validWrite(request, sharedSecret(request)!, request.headers["x-csrf-token"])
-    ) {
-      failure(reply, 403, "BROWSER_SECURITY_CHECK_FAILED");
-      return false;
-    }
-    principals.set(request, principal);
-    return true;
+  const verifyWrite = (request: FastifyRequest, principal: BrowserPrincipal | null): boolean => {
+    if (request.headers.origin !== options.webOrigin || principal === null) return false;
+    const secret = sharedSecret(request);
+    const csrf = request.headers["x-csrf-token"];
+    return secret !== null && typeof csrf === "string" && matchesCsrfToken(secret, csrf);
+  };
+  // URL 只用来定位企业：跨组织与普通员工一律 403，且不返回对方任何元数据。
+  const tenantAdmin = (principal: BrowserPrincipal, orgId: string) =>
+    principal.orgId === orgId && principal.role === "admin";
+  const orgIdOf = (params: Record<string, unknown>) => String(params["orgId"] ?? "");
+
+  interface PermissionContext {
+    principal: BrowserPrincipal;
+    orgId: string;
+    params: Record<string, unknown>;
+    query: Record<string, unknown>;
+    body: unknown;
+    reply: FastifyReply;
   }
-  app.get<{ Params: { orgId: string } }>(routeBase, async (request, reply) => {
-    const principal = await principalFor(request);
-    if (!principal)
-      return reply
-        .header("cache-control", "no-store")
-        .code(303)
-        .redirect(`${path(request.params.orgId)}/login`);
-    if (!matchesTenant(principal, request.params.orgId)) return denied(reply);
-    return page(reply, (nonce) =>
-      renderPermissionsPage({
-        nonce,
-        orgId: principal.orgId,
-        ...(options.workflows ? { workflows: {} } : {}),
-        organizationName: principal.organizationName,
-        employeeName: principal.displayName,
-        csrfToken: csrfTokenForSecret(sharedSecret(request)!)
-      })
-    );
-  });
-  app.get<{ Params: { orgId: string } }>(`${routeBase}/login`, async (request, reply) => {
-    const principal = await principalFor(request);
-    if (principal)
-      return matchesTenant(principal, request.params.orgId)
-        ? reply
-            .header("cache-control", "no-store")
-            .code(303)
-            .redirect(loginTarget(request, principal.orgId))
-        : denied(reply);
-    if (!validOrgId(request.params.orgId)) return denied(reply);
-    const secret = randomBytes(24).toString("base64url");
-    reply.header("set-cookie", hostOnlyCookie(LOGIN_COOKIE, secret, 600));
-    return page(reply, (nonce) =>
-      renderPermissionsLogin({
-        nonce,
-        orgId: request.params.orgId,
-        csrfToken: csrfTokenForSecret(secret),
-        ...(workflowReturn(request) !== undefined ? { workflow: workflowReturn(request)! } : {})
-      })
-    );
-  });
-  app.post<{ Params: { orgId: string }; Body: Record<string, unknown> }>(
-    `${routeBase}/login`,
-    async (request, reply) => {
-      const secret = cookieValue(request.headers.cookie, LOGIN_COOKIE);
-      const body = request.body;
-      if (
-        !secret ||
-        !body ||
-        !validOrgId(request.params.orgId) ||
-        !validWrite(request, secret, body["csrfToken"])
-      )
-        return page(reply.code(403), (nonce) =>
-          renderPermissionsMessage({ nonce, kind: "expired" })
-        );
-      const email = body["email"],
-        password = body["password"];
-      if (
-        typeof email !== "string" ||
-        email.length > 320 ||
-        typeof password !== "string" ||
-        !password.length ||
-        Array.from(password.normalize("NFC")).length > 128
-      )
-        return page(reply.code(400), (nonce) =>
-          renderPermissionsLogin({
-            nonce,
-            orgId: request.params.orgId,
-            csrfToken: csrfTokenForSecret(secret),
-            ...(workflowReturn(request) !== undefined
-              ? { workflow: workflowReturn(request)! }
-              : {}),
-            error: "invalid"
-          })
-        );
-      const identity = await options.auth.verifyLogin(email, password, browserAudit(request));
-      if (!identity.ok)
-        return page(reply.code(401), (nonce) =>
-          renderPermissionsLogin({
-            nonce,
-            orgId: request.params.orgId,
-            csrfToken: csrfTokenForSecret(secret),
-            ...(workflowReturn(request) !== undefined
-              ? { workflow: workflowReturn(request)! }
-              : {}),
-            error: "invalid"
-          })
-        );
-      // The URL never selects another tenant or grants administrative authority.
-      if (identity.orgId !== request.params.orgId) return denied(reply);
-      const issued = await options.browserSessions.issue(
-        identity,
-        sharedSecret(request),
-        browserAudit(request)
-      );
-      const principal = await options.browserSessions.authenticate(issued);
-      if (!issued || !principal)
-        return page(reply.code(401), (nonce) =>
-          renderPermissionsMessage({ nonce, kind: "expired" })
-        );
-      if (!matchesTenant(principal, request.params.orgId)) {
-        await options.browserSessions.logout(issued);
-        return denied(reply);
-      }
-      return reply
-        .header("cache-control", "no-store")
-        .header("set-cookie", [
-          hostOnlyCookie(LOGIN_COOKIE, "deleted", 0),
-          hostOnlyCookie(BROWSER_SESSION_COOKIE, issued, BROWSER_SESSION_SECONDS)
-        ])
-        .code(303)
-        .redirect(loginTarget(request, principal.orgId));
-    }
-  );
-  app.post<{ Params: { orgId: string }; Body: Record<string, unknown> }>(
-    `${routeBase}/logout`,
-    async (request, reply) => {
-      const secret = sharedSecret(request);
-      const principal = await principalFor(request);
-      if (!principal)
-        return page(
-          reply
-            .code(401)
-            .header("set-cookie", hostOnlyCookie(BROWSER_SESSION_COOKIE, "deleted", 0)),
-          (nonce) => renderPermissionsMessage({ nonce, kind: "expired" })
-        );
-      if (
-        !matchesTenant(principal, request.params.orgId) ||
-        !secret ||
-        !validWrite(request, secret, request.body?.["csrfToken"])
-      )
-        return denied(reply);
-      await options.browserSessions.logout(secret);
-      return reply
-        .header("cache-control", "no-store")
-        .header("set-cookie", hostOnlyCookie(BROWSER_SESSION_COOKIE, "deleted", 0))
-        .code(303)
-        .redirect(`${path(principal.orgId)}/login`);
-    }
-  );
-  if (options.workflows) {
-    for (const suffix of ["/workflows", "/workflows/:enterpriseKey"]) {
-      app.get<{ Params: { orgId: string; enterpriseKey?: string } }>(
-        `${routeBase}${suffix}`,
-        async (request, reply) => {
-          const principal = await principalFor(request);
-          if (!principal)
-            return reply
-              .header("cache-control", "no-store")
-              .code(303)
-              .redirect(
-                `${path(request.params.orgId)}/login?workflow=${encodeURIComponent(request.params.enterpriseKey ?? "")}`
-              );
-          if (!matchesTenant(principal, request.params.orgId)) return denied(reply);
-          if (
-            request.params.enterpriseKey &&
-            !(await options.metadata().listEnterprises(principal.orgId)).some(
-              (enterprise) => enterprise.enterpriseKey === request.params.enterpriseKey
-            )
-          )
-            return denied(reply);
-          return page(reply, (nonce) =>
-            renderWorkflowPage({
-              nonce,
-              orgId: principal.orgId,
-              ...(request.params.enterpriseKey
-                ? { enterpriseKey: request.params.enterpriseKey }
-                : {}),
-              organizationName: principal.organizationName,
-              employeeName: principal.displayName,
-              csrfToken: csrfTokenForSecret(sharedSecret(request)!)
-            })
-          );
+
+  function permissionRoute(
+    id: string,
+    handler: (context: PermissionContext) => Promise<unknown>
+  ): void {
+    registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute(id), {
+      authenticate,
+      verifyWrite,
+      handler: async (context: WebApiContext<BrowserPrincipal>) => {
+        const principal = context.principal;
+        if (!principal) throw new Error(`route ${id} requires a session`);
+        const orgId = orgIdOf(context.params);
+        if (!tenantAdmin(principal, orgId)) {
+          fail(context.reply, 403, "BROWSER_ACCESS_DENIED");
+          return null;
         }
-      );
-    }
-    registerEnterpriseWorkflowRoutes(app, {
-      auth: { authenticate, employee: (request) => principals.get(request)! },
-      workflows: options.workflows,
-      basePath: `${routeBase}/api/workflows`
+        try {
+          const result = await handler({
+            principal,
+            orgId,
+            params: context.params,
+            query: context.query,
+            body: context.body,
+            reply: context.reply
+          });
+          // 已发出的错误响应不再参与成功契约校验。
+          return context.reply.sent ? null : jsonSafe(result);
+        } catch (error) {
+          return respondBusinessAuthorizationError(error, context.reply);
+        }
+      }
     });
   }
-  registerBusinessAuthorizationRoutes(app, {
-    auth: { authenticate, employee: (request) => principals.get(request)! },
-    permissions: options.permissions,
-    adminBase: `${routeBase}/api`,
-    selfPath: `${routeBase}/api/me`
-  });
-  async function actor(request: FastifyRequest, reply: FastifyReply) {
-    if (!(await authenticate(request, reply))) return null;
-    return options.permissions().current(principals.get(request)!, true);
-  }
-  app.get<{ Params: { orgId: string } }>(`${routeBase}/api/enterprises`, async (request, reply) => {
-    const current = await actor(request, reply);
-    if (!current) return;
+
+  const service = () => options.permissions();
+  /** 写入口统一先取当前快照：它同时完成账号可用性与管理员校验。 */
+  const current = (context: PermissionContext) =>
+    service().current({ id: context.principal.id, orgId: context.orgId }, true);
+
+  permissionRoute("permissions.me.read", async ({ principal, orgId }) => {
+    const card = await service().permissionCard({ id: principal.id, orgId });
     return {
-      authorizationVersion: current.authorizationVersion,
-      enterprises: await options.metadata().listEnterprises(current.orgId)
+      ...card,
+      categories: card.categories.filter((category) =>
+        card.grants.some((grant) => grant.categoryIds.includes(category.id))
+      )
     };
   });
-  app.post<{ Params: { orgId: string }; Body: { name?: unknown; expectedVersion?: unknown } }>(
-    `${routeBase}/api/enterprises`,
-    async (request, reply) => {
-      try {
-        const current = await actor(request, reply);
-        if (!current) return;
-        const { name, expectedVersion } = request.body ?? {};
-        if (typeof name !== "string" || typeof expectedVersion !== "string")
-          return failure(reply, 400, "INVALID_ENTERPRISE_NAME");
-        return await options.permissions().repository.declareEnterpriseIdentity({
-          orgId: current.orgId,
-          actorId: current.employeeId,
-          expectedVersion,
-          name
-        });
-      } catch (error) {
-        return respondBusinessAuthorizationError(error, reply);
-      }
-    }
-  );
-  app.post<{ Params: { orgId: string }; Body: { name?: unknown } }>(
-    `${routeBase}/api/enterprises/preview`,
-    async (request, reply) => {
-      const current = await actor(request, reply);
-      if (!current) return;
-      const name = request.body?.name;
-      if (typeof name !== "string" || !name.trim() || name.length > 255)
-        return failure(reply, 400, "INVALID_ENTERPRISE_NAME");
-      const normalized = normalizeEnterpriseIdentity(name);
-      if (normalized.enterpriseKey.length > 128)
-        return failure(reply, 400, "INVALID_ENTERPRISE_NAME");
-      return normalized;
-    }
-  );
-  app.get<{ Params: { orgId: string }; Querystring: { search?: unknown; cursor?: unknown } }>(
-    `${routeBase}/api/documents`,
-    async (request, reply) => {
-      const current = await actor(request, reply);
-      if (!current) return;
-      const { search, cursor } = request.query;
-      if (
-        (search !== undefined && (typeof search !== "string" || search.length > 256)) ||
-        (cursor !== undefined &&
-          (typeof cursor !== "string" || !/^[A-Za-z0-9_-]{1,32}$/.test(cursor)))
+
+  permissionRoute("permissions.accounts.list", async (context) => {
+    const actor = await current(context);
+    return {
+      accounts: await service().repository.listAccounts(actor.orgId, actor.employeeId)
+    };
+  });
+
+  permissionRoute("permissions.accounts.read", async (context) => {
+    const actor = await current(context);
+    return service().repository.loadAuthorizationSnapshot(
+      String(context.params["employeeId"]),
+      actor.orgId
+    );
+  });
+
+  permissionRoute("permissions.accounts.update", async (context) => {
+    const actor = await current(context);
+    const body = permissionAccountUpdateBody.parse(context.body);
+    const grants = body.grants as BusinessGrant[];
+    if (
+      grants.some(
+        (grant) =>
+          grant.orgId !== actor.orgId || validateBusinessGrant(grant, actor.categories).length > 0
       )
-        return failure(reply, 400, "INVALID_DOCUMENT_QUERY");
-      return {
-        authorizationVersion: current.authorizationVersion,
-        ...(await options.metadata().listDocuments(current.orgId, {
-          ...(typeof search === "string" && search ? { search } : {}),
-          ...(typeof cursor === "string" ? { cursor } : {})
-        }))
-      };
+    )
+      return fail(context.reply, 400, "INVALID_PERMISSION_CONFIGURATION");
+    return service().repository.configureAccount({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      employeeId: String(context.params["employeeId"]),
+      expectedVersion: body.expectedVersion,
+      clearance: body.clearance,
+      grants
+    });
+  });
+
+  permissionRoute("permissions.stores.list", async (context) => {
+    const actor = await current(context);
+    return {
+      authorizationVersion: actor.authorizationVersion,
+      stores: await service().repository.listStores(actor.orgId)
+    };
+  });
+
+  permissionRoute("permissions.stores.upsert", async (context) => {
+    const actor = await current(context);
+    const body = permissionStoreBody.parse(context.body);
+    return service().repository.putStore({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      ...(body.enterpriseKey !== undefined ? { enterpriseKey: body.enterpriseKey } : {}),
+      ...(body.enterpriseName !== undefined ? { enterpriseName: body.enterpriseName } : {}),
+      name: body.name,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    });
+  });
+
+  permissionRoute("permissions.categories.list", async (context) => {
+    const actor = await current(context);
+    return {
+      authorizationVersion: actor.authorizationVersion,
+      categories: await service().repository.listCategories(actor.orgId)
+    };
+  });
+
+  permissionRoute("permissions.categories.create", async (context) => {
+    const actor = await current(context);
+    const body = permissionCategoryCreateBody.parse(context.body);
+    return service().repository.configureCategory({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      id: body.id,
+      name: body.name,
+      kind: "evidence",
+      confidentialityLevel: null,
+      ownerships: body.ownerships,
+      requiredDimensionIds: body.requiredDimensionIds,
+      createOnly: true,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    });
+  });
+
+  permissionRoute("permissions.categories.update", async (context) => {
+    const actor = await current(context);
+    const body = permissionCategoryUpdateBody.parse(context.body);
+    const id = String(context.params["id"]);
+    const existing = (await service().repository.listCategories(actor.orgId)).find(
+      (category) => category.id === id
+    );
+    if (!existing) return fail(context.reply, 404, "CATEGORY_NOT_FOUND");
+    const shared = {
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      id,
+      name: body.name,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    };
+    // 固定类别只允许调密级；证据类别只允许调归属与必需维度。
+    if (existing.kind === "fixed") {
+      if (!("confidentialityLevel" in body))
+        return fail(context.reply, 400, "INVALID_PERMISSION_CONFIGURATION");
+      return service().repository.configureCategory({
+        ...shared,
+        kind: "fixed",
+        key: existing.key!,
+        confidentialityLevel: body.confidentialityLevel,
+        ownerships: [existing.allowStore ? "store" : "group"],
+        requiredDimensionIds: existing.dimensions.map((dimension) => dimension.dimensionId)
+      });
     }
-  );
+    if (!("ownerships" in body))
+      return fail(context.reply, 400, "INVALID_PERMISSION_CONFIGURATION");
+    return service().repository.configureCategory({
+      ...shared,
+      kind: "evidence",
+      confidentialityLevel: null,
+      ownerships: body.ownerships,
+      requiredDimensionIds: body.requiredDimensionIds,
+      createOnly: false
+    });
+  });
+
+  permissionRoute("permissions.categories.initialize", async (context) => {
+    const actor = await current(context);
+    const body = permissionVersionBody.parse(context.body);
+    return service().repository.initializeFixedCategories({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion
+    });
+  });
+
+  permissionRoute("permissions.dimensions.list", async (context) => {
+    const actor = await current(context);
+    return {
+      authorizationVersion: actor.authorizationVersion,
+      dimensions: await service().repository.listDimensions(actor.orgId)
+    };
+  });
+
+  permissionRoute("permissions.dimensions.create", async (context) => {
+    const actor = await current(context);
+    const body = permissionDimensionCreateBody.parse(context.body);
+    return service().repository.defineDimension({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      id: body.id,
+      name: body.name,
+      createOnly: true,
+      updateOnly: false,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    });
+  });
+
+  permissionRoute("permissions.dimensions.update", async (context) => {
+    const actor = await current(context);
+    const body = permissionDimensionUpdateBody.parse(context.body);
+    return service().repository.defineDimension({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      id: String(context.params["id"]),
+      name: body.name,
+      createOnly: false,
+      updateOnly: true,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    });
+  });
+
+  permissionRoute("permissions.dimensions.valueCreate", async (context) => {
+    const actor = await current(context);
+    const body = permissionDimensionValueCreateBody.parse(context.body);
+    return service().repository.defineDimensionValue({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      id: body.id,
+      dimensionId: String(context.params["dimensionId"]),
+      name: body.name,
+      createOnly: true,
+      updateOnly: false,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    });
+  });
+
+  permissionRoute("permissions.dimensions.valueUpdate", async (context) => {
+    const actor = await current(context);
+    const body = permissionDimensionUpdateBody.parse(context.body);
+    return service().repository.defineDimensionValue({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      id: String(context.params["id"]),
+      dimensionId: String(context.params["dimensionId"]),
+      name: body.name,
+      createOnly: false,
+      updateOnly: true,
+      ...(body.retired !== undefined ? { retired: body.retired } : {})
+    });
+  });
+
+  permissionRoute("permissions.documents.list", async (context) => {
+    const actor = await current(context);
+    const query = permissionDocumentQuery.parse(context.query);
+    return {
+      authorizationVersion: actor.authorizationVersion,
+      ...(await options.metadata().listDocuments(actor.orgId, {
+        ...(query.search ? { search: query.search } : {}),
+        ...(query.cursor !== undefined ? { cursor: query.cursor } : {})
+      }))
+    };
+  });
+
+  permissionRoute("permissions.documents.update", async (context) => {
+    const actor = await current(context);
+    const body = permissionDocumentUpdateBody.parse(context.body);
+    const category = actor.categories.find(
+      (rule) => rule.id === body.categoryId && rule.kind === "evidence"
+    );
+    if (!category || !body.scopes.every((scope) => validateBusinessScope(scope, category)))
+      return fail(context.reply, 400, "INVALID_PERMISSION_CONFIGURATION");
+    return service().repository.configureEvidenceDocument({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      documentId: String(context.params["documentId"]),
+      categoryId: body.categoryId,
+      fileConfidentialityLevel: body.fileConfidentialityLevel,
+      scopes: body.scopes as BusinessScopeItem[],
+      ...(body.historicalSupplementReason !== undefined
+        ? { historicalSupplementReason: body.historicalSupplementReason }
+        : {})
+    });
+  });
+
+  permissionRoute("permissions.enterprises.list", async (context) => {
+    const actor = await current(context);
+    return {
+      authorizationVersion: actor.authorizationVersion,
+      enterprises: await options.metadata().listEnterprises(actor.orgId)
+    };
+  });
+
+  permissionRoute("permissions.enterprises.declare", async (context) => {
+    const actor = await current(context);
+    const body = permissionEnterpriseDeclareBody.parse(context.body);
+    return service().repository.declareEnterpriseIdentity({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      name: body.name
+    });
+  });
+
+  permissionRoute("permissions.enterprises.preview", async (context) => {
+    await current(context);
+    const body = permissionEnterprisePreviewBody.parse(context.body);
+    const identity = normalizeEnterpriseIdentity(body.name);
+    if (identity.enterpriseKey.length > 128)
+      return fail(context.reply, 400, "INVALID_ENTERPRISE_NAME");
+    return identity;
+  });
+
+  permissionRoute("permissions.cutover.read", async (context) => {
+    const actor = await current(context);
+    return service().prepareAuthorizationCutover(actor.orgId);
+  });
+
+  permissionRoute("permissions.cutover.activate", async (context) => {
+    const actor = await current(context);
+    const body = permissionCutoverBody.parse(context.body);
+    return service().activateAuthorizationCutover(actor, body.expectedVersion, true);
+  });
+
+  permissionRoute("permissions.cutover.suspend", async (context) => {
+    const actor = await current(context);
+    const body = permissionCutoverBody.parse(context.body);
+    return service().repository.suspendAuthorizationReads({
+      orgId: actor.orgId,
+      actorId: actor.employeeId,
+      expectedVersion: body.expectedVersion,
+      confirm: true
+    });
+  });
+
+  if (!options.workflows) return;
+  const workflows = options.workflows;
+  for (const tool of WORKFLOW_MCP_TOOL_NAMES) {
+    registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute(workflowRouteIds[tool]), {
+      authenticate,
+      verifyWrite,
+      handler: async ({ principal, params, body, reply }) => {
+        if (!principal) throw new Error(`route for ${tool} requires a session`);
+        const orgId = orgIdOf(params);
+        if (!tenantAdmin(principal, orgId)) {
+          fail(reply, 403, "BROWSER_ACCESS_DENIED");
+          return null;
+        }
+        try {
+          // 服务层继续负责管理员复核、版本校验与审计归属。
+          const result = await workflows().execute(tool, body as WorkflowMcpInputs[typeof tool], {
+            id: principal.id,
+            orgId
+          });
+          return jsonSafe(result);
+        } catch (error) {
+          return respondWorkflowError(error, reply);
+        }
+      }
+    });
+  }
+}
+
+/** 自动任务错误码映射与服务层一致：权限 403、配置缺失 404、其余状态冲突 409。 */
+function respondWorkflowError(error: unknown, reply: FastifyReply) {
+  const code = error instanceof Error ? error.message : "";
+  if (code.startsWith("WORKFLOW_"))
+    return fail(
+      reply,
+      /ADMIN_REQUIRED|PERMISSION_DENIED/.test(code)
+        ? 403
+        : /CONFIGURATION_REQUIRED/.test(code)
+          ? 404
+          : 409,
+      code
+    );
+  if (
+    typeof error === "object" &&
+    error &&
+    "code" in error &&
+    ["P2002", "P2034"].includes(String(error.code))
+  )
+    return fail(reply, 409, "WORKFLOW_VERSION_CONFLICT");
+  throw error;
 }

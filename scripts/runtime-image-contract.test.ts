@@ -110,9 +110,13 @@ describe("runtime image contracts", () => {
     expect(step).toContain("smedc-release-ops:ci node node_modules/prisma/build/index.js version");
   });
 
-  it("passes the public origin to release operations", () => {
-    expect(composeService("release-ops")).toContain(
-      "SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"
+  it("passes both public origins to release operations", () => {
+    const service = composeService("release-ops");
+    expect(service).toContain(
+      "SMEDC_API_ORIGIN: ${SMEDC_API_ORIGIN:-https://api.smedatacenter.xyz}"
+    );
+    expect(service).toContain(
+      "SMEDC_WEB_ORIGIN: ${SMEDC_WEB_ORIGIN:-https://app.smedatacenter.xyz}"
     );
   });
 

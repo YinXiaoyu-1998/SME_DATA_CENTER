@@ -58,10 +58,10 @@ describe("official OAuth HTTP contract", () => {
       smedc_launcher_recommended_version: "0.16.0"
     });
     expect(() => oauthMetadata("http://api.smedatacenter.xyz")).toThrow(
-      "public origin must be canonical HTTPS"
+      "SMEDC_API_ORIGIN must use HTTPS"
     );
     expect(() => oauthMetadata("https://api.smedatacenter.xyz/path")).toThrow(
-      "public origin must be canonical HTTPS"
+      "SMEDC_API_ORIGIN must not include a path, query, or fragment"
     );
   });
 });

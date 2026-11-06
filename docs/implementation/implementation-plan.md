@@ -18,7 +18,7 @@
 | 成本卡 | 原件校验、逐卡 CSV 与 MySQL 目录、受权本地下载、归档/恢复 | [成本卡设计](cost-card-design.md) |
 | 门店评价 | 平台评价事实批量同步、replyStatus 与可选 feedbackId、受权查询 | [API 契约](api-contract.md#store-reviews-launcher-0110) |
 | 企业权限 | 当前账号密级及完整业务 grant、类别/维度/门店配置、本人权限卡、版本化管理与审计 | [权限设计](business-related-authorization-design.md) |
-| 企业管理入口 | 企业专属 UI、共享浏览器身份、默认中文/English、内部代办 CLI | [入驻流程](tenant-onboarding.md) |
+| 企业管理入口 | 企业专属 URL、共享浏览器身份、默认中文/English、内部代办 CLI；网页本体在独立前端仓 `SMEDC_FRONTEND`，后端只提供 `/api/web/v1` 与会话 | [入驻流程](tenant-onboarding.md)、[前端迁移](web-frontend-migration.md) |
 | 企业自动任务 | 版本化配置、安装归属、运行租约/动作回执及显式订单来源范围；宿主调度与业务执行属于 companion | [工作流边界](../../skills/smedc-mcp/references/enterprise-workflows.md) |
 | 发布与运维 | main 质量门禁、不可变镜像、GitHub staging Environment、前向迁移、镜像回滚 | [部署手册](staging-deploy-runbook.md) |
 
