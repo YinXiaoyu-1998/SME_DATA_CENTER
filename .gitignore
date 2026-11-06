@@ -9,3 +9,5 @@ coverage/
 dist/
 *.tsbuildinfo
 .worktrees/
+test-results/
+playwright-report/
