@@ -67,10 +67,13 @@ function namespaceDefs(schema: Record<string, unknown>, prefix: string): Record<
 }
 
 function describeRoute(route: WebApiRoute): WebApiContractRoute {
+  // 前缀里带路由 id：前端生成器把全部路由的 $defs 并进一个作用域，
+  // 只按 part 区分仍会撞名（每条路由都从 __schema0 起）。
+  const scope = `${route.id.replace(/[^A-Za-z0-9]/g, "_")}_`;
   const request: WebApiContractRoute["request"] = {
-    ...(route.params ? { params: namespaceDefs(toJsonSchema(route.params), "p_") } : {}),
-    ...(route.query ? { query: namespaceDefs(toJsonSchema(route.query), "q_") } : {}),
-    ...(route.body ? { body: namespaceDefs(toJsonSchema(route.body), "b_") } : {})
+    ...(route.params ? { params: namespaceDefs(toJsonSchema(route.params), `p_${scope}`) } : {}),
+    ...(route.query ? { query: namespaceDefs(toJsonSchema(route.query), `q_${scope}`) } : {}),
+    ...(route.body ? { body: namespaceDefs(toJsonSchema(route.body), `b_${scope}`) } : {})
   };
 
   return {
@@ -80,7 +83,7 @@ function describeRoute(route: WebApiRoute): WebApiContractRoute {
     auth: route.auth,
     summary: route.summary,
     request,
-    response: namespaceDefs(toJsonSchema(route.response), "r_"),
+    response: namespaceDefs(toJsonSchema(route.response), `r_${scope}`),
     errors: [...route.errors].sort()
   };
 }
