@@ -83,7 +83,8 @@ async function build() {
   registerApiErrorHandler(app);
   registerOfficialAuthRoutes(app, {
     auth,
-    publicOrigin: "https://api.smedatacenter.xyz"
+    apiOrigin: "https://api.smedatacenter.xyz",
+    webOrigin: "https://app.smedatacenter.xyz"
   });
   apps.push(app);
   await app.ready();
@@ -376,9 +377,9 @@ describe("device authorization endpoints", () => {
     expect(response.json()).toMatchObject({
       device_code: "eh_dc_devicecode",
       user_code: "ABCDEFGH",
-      verification_uri: "https://api.smedatacenter.xyz/oauth/device/verify",
+      verification_uri: "https://app.smedatacenter.xyz/oauth/device/verify",
       verification_uri_complete:
-        "https://api.smedatacenter.xyz/oauth/device/verify?user_code=ABCDEFGH",
+        "https://app.smedatacenter.xyz/oauth/device/verify?user_code=ABCDEFGH",
       expires_in: 600,
       interval: 5
     });

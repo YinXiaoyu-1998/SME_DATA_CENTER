@@ -107,7 +107,11 @@ integration("small authenticated partition comparison", () => {
       partitionDownloadAuditRepository: createPrismaPartitionDownloadAuditRepository(databaseUrl),
       storageAdapter: storage,
       cursorSigningSecret: "synthetic-comparison-cursor-secret",
-      runtimeEnv: { DATABASE_URL: databaseUrl, SMEDC_PUBLIC_ORIGIN: "https://example.invalid" },
+      runtimeEnv: {
+        DATABASE_URL: databaseUrl,
+        SMEDC_API_ORIGIN: "https://example.invalid",
+        SMEDC_WEB_ORIGIN: "https://example.invalid"
+      },
       logger: false
     });
     app.get<{ Params: { capability: string } }>(

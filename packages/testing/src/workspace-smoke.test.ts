@@ -13,6 +13,7 @@ const expectedWorkspaceNames = [
   "@smedc/storage",
   "@smedc/structured-ingestion",
   "@smedc/testing",
+  "@smedc/web-api-contract",
   "@smedc/worker",
   "smedc-mcp-launcher"
 ];

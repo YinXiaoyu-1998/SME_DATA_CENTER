@@ -108,7 +108,7 @@ describe("auth operator CLI", () => {
       },
       {
         repository,
-        publicOrigin: "https://api.example.com",
+        webOrigin: "https://api.example.com",
         stdout: (line) => stdout.push(line),
         now: () => new Date("2026-07-24T00:00:00.000Z")
       }
@@ -140,7 +140,7 @@ describe("auth operator CLI", () => {
       { kind: "reset-password", employeeId: "employee-new" },
       {
         repository,
-        publicOrigin: "https://api.example.com",
+        webOrigin: "https://api.example.com",
         stdout: (line) => stdout.push(line)
       }
     );
@@ -166,7 +166,7 @@ describe("auth operator CLI", () => {
       },
       {
         repository,
-        publicOrigin: "https://api.example.com",
+        webOrigin: "https://api.example.com",
         stdout: (line) => stdout.push(line),
         now: () => new Date("2026-07-30T00:00:00.000Z")
       }

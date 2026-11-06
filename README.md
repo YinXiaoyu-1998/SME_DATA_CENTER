@@ -35,7 +35,8 @@ DATABASE_URL="mysql://smedc:smedc_local_password@localhost:3306/smedc"
 STORAGE_DRIVER="local"
 LOCAL_STORAGE_ROOT="./.data/storage"
 CURSOR_SIGNING_SECRET="replace-with-local-development-cursor-secret"
-SMEDC_PUBLIC_ORIGIN="https://api.smedatacenter.xyz"
+SMEDC_API_ORIGIN="https://api.smedatacenter.xyz"
+SMEDC_WEB_ORIGIN="https://app.smedatacenter.xyz"
 MAX_UPLOAD_BYTES="52428800"
 ```
 

@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { canonicalApiOrigin } from "../config/origins.js";
 import { BROWSER_SESSION_COOKIE, BROWSER_SESSION_SECONDS } from "./browser-session.js";
 
 export const OAUTH_CLIENT_ID = "smedc-desktop-launcher";
@@ -68,8 +69,8 @@ export function matchesCsrfToken(transactionSecret: string, suppliedToken: strin
   return expected.byteLength === supplied.byteLength && timingSafeEqual(expected, supplied);
 }
 
-export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMetadata {
-  const issuer = canonicalHttpsOrigin(publicOrigin);
+export function oauthMetadata(apiOrigin: string): OAuthAuthorizationServerMetadata {
+  const issuer = canonicalApiOrigin(apiOrigin);
 
   return {
     issuer,
@@ -86,24 +87,4 @@ export function oauthMetadata(publicOrigin: string): OAuthAuthorizationServerMet
 
 export function isValidDeviceUserCode(value: unknown): value is string {
   return typeof value === "string" && DEVICE_USER_CODE_PATTERN.test(value);
-}
-
-function canonicalHttpsOrigin(value: string): string {
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.pathname !== "/" ||
-      url.search ||
-      url.hash ||
-      (url.port && url.port !== "443")
-    ) {
-      throw new Error();
-    }
-    return url.origin;
-  } catch {
-    throw new Error("public origin must be canonical HTTPS");
-  }
 }

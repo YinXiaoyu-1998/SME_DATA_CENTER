@@ -16,6 +16,7 @@
     "argon2": "^0.45.1",
     "dotenv": "17.4.2",
     "fastify": "5.12.7",
-    "@smedc/ledger-archive": "0.0.0"
+    "@smedc/ledger-archive": "0.0.0",
+    "@smedc/web-api-contract": "0.0.0"
   }
 }

@@ -179,14 +179,19 @@ async function fixture() {
   const app = Fastify({ logger: false });
   apps.push(app);
   registerApiErrorHandler(app);
-  registerOfficialAuthRoutes(app, { auth, browserSessions: sessions, publicOrigin: origin });
+  registerOfficialAuthRoutes(app, {
+    auth,
+    browserSessions: sessions,
+    apiOrigin: origin,
+    webOrigin: origin
+  });
   module!.registerAdminPermissionsRoutes(app, {
     auth,
     browserSessions: sessions,
     permissions: () => permissions,
     metadata: () => metadata,
     workflows: () => workflows as never,
-    publicOrigin: origin
+    webOrigin: origin
   });
   await app.ready();
   const cookie = (secret: string) => `${BROWSER_SESSION_COOKIE}=${secret}`;

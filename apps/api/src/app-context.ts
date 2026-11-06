@@ -181,7 +181,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
         prisma,
         disconnect: () => prisma.$disconnect(),
         setupUrl: (orgId, enterpriseKey) =>
-          `${environment["SMEDC_PUBLIC_ORIGIN"] ?? ""}/admin/permissions/${encodeURIComponent(orgId)}/workflows${enterpriseKey ? `/${encodeURIComponent(enterpriseKey)}` : ""}`
+          `${environment["SMEDC_WEB_ORIGIN"] ?? ""}/admin/permissions/${encodeURIComponent(orgId)}/workflows${enterpriseKey ? `/${encodeURIComponent(enterpriseKey)}` : ""}`
       });
     }
     return workflowService;

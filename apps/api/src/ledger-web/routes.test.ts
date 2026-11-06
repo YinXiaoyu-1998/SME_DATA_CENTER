@@ -175,7 +175,7 @@ async function fixture() {
   module!.registerLedgerWebRoutes(app, {
     auth,
     browserSessions: sessions,
-    publicOrigin: origin,
+    webOrigin: origin,
     ledgerPdfDeliveryEnabled: true,
     delivery: () => delivery
   });
