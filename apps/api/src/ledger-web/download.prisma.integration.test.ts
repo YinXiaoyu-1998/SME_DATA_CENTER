@@ -54,10 +54,12 @@ it.skipIf(!enabled)(
     }
     const storage = new HttpFixtureStorage({ root: join(scratch, "storage") });
     const worker = createPrismaProcessingWorkerRepository(databaseUrl);
+    const webOrigin = "https://browser.example.invalid";
     const env = {
       DATABASE_URL: databaseUrl,
       LEDGER_PDF_DELIVERY_ENABLED: "true",
-      SMEDC_API_ORIGIN: "https://browser.example.invalid"
+      SMEDC_API_ORIGIN: webOrigin,
+      SMEDC_WEB_ORIGIN: webOrigin
     };
     const runtime = createLedgerWorkerRuntime({
       storage,
@@ -276,27 +278,20 @@ it.skipIf(!enabled)(
         ).toBe("published");
       }
       origin = await app.listen({ host: "127.0.0.1", port: 0 });
+      // 台账不再有独立登录页：先走共享会话，再用同一 Cookie 读取台账上下文。
       async function login(email: string) {
-        const page = await fetch(`${origin}/ledger-pdfs/login`, { redirect: "manual" });
-        const loginCookie = page.headers.getSetCookie()[0]!.split(";")[0]!;
-        const csrfToken = (await page.text()).match(/name="csrfToken" value="([^"]+)"/)![1]!;
-        const response = await fetch(`${origin}/ledger-pdfs/login`, {
+        const response = await fetch(`${origin}/api/web/v1/session`, {
           method: "POST",
-          redirect: "manual",
-          headers: {
-            cookie: loginCookie,
-            origin: env.SMEDC_API_ORIGIN,
-            "content-type": "application/x-www-form-urlencoded"
-          },
-          body: new URLSearchParams({ email, password, csrfToken })
+          headers: { origin: webOrigin, "content-type": "application/json" },
+          body: JSON.stringify({ email, password })
         });
-        expect(response.status).toBe(303);
+        expect(response.status).toBe(200);
         const setCookie = response.headers
           .getSetCookie()
           .find((value) => value.startsWith(BROWSER_SESSION_COOKIE + "="))!;
         expect(setCookie).toContain("Max-Age=604800");
         const cookie = setCookie.split(";")[0]!;
-        const context = await fetch(`${origin}/ledger-pdfs/api/context`, { headers: { cookie } });
+        const context = await fetch(`${origin}/api/web/v1/ledger/context`, { headers: { cookie } });
         expect(context.status).toBe(200);
         return {
           cookie,
@@ -311,11 +306,11 @@ it.skipIf(!enabled)(
       expect(persisted.expiresAt.getTime()).toBe(issuedAt.getTime() + 604800000);
       const headers = {
         cookie: browser.cookie,
-        origin: env.SMEDC_API_ORIGIN,
+        origin: webOrigin,
         "x-csrf-token": browser.context.csrfToken
       };
       const post = (route: string, body?: unknown) =>
-        fetch(`${origin}/ledger-pdfs/api/${route}`, {
+        fetch(`${origin}/api/web/v1/ledger/${route}`, {
           method: "POST",
           headers: {
             ...headers,
@@ -340,7 +335,7 @@ it.skipIf(!enabled)(
         { storeName: stores[1]!, purchaseDate: dates[1]! }
       ];
       const pdf = await fetch(
-        `${origin}/ledger-pdfs/api/pdf?${new URLSearchParams({ ...selection[0]!, disposition: "inline" })}`,
+        `${origin}/api/web/v1/ledger/pdf?${new URLSearchParams({ ...selection[0]!, disposition: "inline" })}`,
         { headers }
       );
       expect(pdf.status).toBe(200);
@@ -386,7 +381,7 @@ it.skipIf(!enabled)(
         })
       ).toMatchObject({ processed: true, status: "active" });
       const status = () =>
-        fetch(`${origin}/ledger-pdfs/api/requests/${task.requestId}`, { headers });
+        fetch(`${origin}/api/web/v1/ledger/requests/${task.requestId}`, { headers });
       expect(await (await status()).json()).toMatchObject({
         status: "succeeded",
         partitions: expect.arrayContaining(
@@ -398,13 +393,13 @@ it.skipIf(!enabled)(
       const adminBrowser = await login(admin.email);
       const adminHeaders = {
         cookie: adminBrowser.cookie,
-        origin: env.SMEDC_API_ORIGIN,
+        origin: webOrigin,
         "x-csrf-token": adminBrowser.context.csrfToken,
         "content-type": "application/json"
       };
       // Browser status is only for owned downloads, even for admins or the refresh owner.
       for (const cookie of [adminBrowser.cookie, browser.cookie]) {
-        const refresh = await fetch(`${origin}/ledger-pdfs/api/requests/${refreshRequestId}`, {
+        const refresh = await fetch(`${origin}/api/web/v1/ledger/requests/${refreshRequestId}`, {
           headers: { cookie }
         });
         expect(refresh.status).toBe(404);
@@ -444,7 +439,7 @@ it.skipIf(!enabled)(
         status: "succeeded",
         partitions: [{ storeName: stores[0], purchaseDate: dates[0], status: "succeeded" }]
       });
-      const adminCoverage = await fetch(`${origin}/ledger-pdfs/api/coverage`, {
+      const adminCoverage = await fetch(`${origin}/api/web/v1/ledger/coverage`, {
         method: "POST",
         headers: adminHeaders,
         body: JSON.stringify({ scope: { startDate: dates[0], endDate: dates[1] } })
@@ -452,7 +447,7 @@ it.skipIf(!enabled)(
       expect(await adminCoverage.json()).toMatchObject({ partitions: [] });
       expect(
         (
-          await fetch(`${origin}/ledger-pdfs/api/requests/${task.requestId}`, {
+          await fetch(`${origin}/api/web/v1/ledger/requests/${task.requestId}`, {
             headers: adminHeaders
           })
         ).status
@@ -478,12 +473,12 @@ it.skipIf(!enabled)(
         expect(sha256(zipped)).toBe(sha256(pdfs.get(`${pair.storeName}/${pair.purchaseDate}`)!));
       }
       now = new Date(persisted.expiresAt.getTime() - 1);
-      expect((await fetch(`${origin}/ledger-pdfs/api/context`, { headers })).status).toBe(200);
+      expect((await fetch(`${origin}/api/web/v1/ledger/context`, { headers })).status).toBe(200);
       expect(
         (await prisma.browserSession.findUniqueOrThrow({ where: { id: persisted.id } })).expiresAt
       ).toEqual(persisted.expiresAt);
       now = persisted.expiresAt;
-      expect((await fetch(`${origin}/ledger-pdfs/api/context`, { headers })).status).toBe(401);
+      expect((await fetch(`${origin}/api/web/v1/ledger/context`, { headers })).status).toBe(401);
     } finally {
       await app.close();
       await Promise.all([runtime.disconnect(), worker.disconnect?.(), prisma.$disconnect()]);
