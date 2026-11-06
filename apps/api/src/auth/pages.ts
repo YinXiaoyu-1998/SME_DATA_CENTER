@@ -1,4 +1,4 @@
-import { browserPageStyles } from "@smedc/admin-web";
+import { browserPageStyles } from "./browser-page-styles.js";
 import type { PasswordSetupAccount } from "./auth-core.js";
 
 export interface AuthPageHeaders {

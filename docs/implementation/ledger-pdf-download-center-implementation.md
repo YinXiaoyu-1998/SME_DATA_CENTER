@@ -15,7 +15,7 @@
 | 台账读取与大小    | 台账交付服务、当前账号/授权、`readFact`、来源和对象有效性检查    | 网页投影带出已有 `byteSize`；精确键读取复用原判断          |
 | 单份 PDF          | 既有 PDF、`StorageAdapter.getObjectStream`、ZIP 命名规则         | 同源 inline/attachment 流式交付；不经过 ZIP 或重新生成     |
 | 批量 ZIP          | `reserveBundle`、manifest entries、请求所有者、worker、租约/清理 | 接受精确清单并绑定幂等指纹；复用原任务与 manifest 格式     |
-| 网页与发布        | `apps/admin-web`、API 页面注册/镜像、现有双语和发布方式          | 正式列表/选择/预览/状态交互；不新增前端服务或运行时依赖    |
+| 网页与发布        | `SMEDC_FRONTEND`、`/api/web/v1/ledger/*` 契约、独立静态发布      | 正式列表/选择/预览/状态交互；不新增后端渲染页面            |
 
 限额从现有台账模块统一导出并注入网页，避免前后端各写一份：5000 份 PDF、50 家显式指定门店、366 个不同日期、连续查询范围 366 天、每批 200 项、原 PDF 合计 1 GiB。沿用现有 ZIP 超时、保留期与签链期限。
 
@@ -38,7 +38,7 @@
 
 ## 批次 2：受权列表、文件大小与单份 PDF 网页
 
-**主要位置：** 新网页路由放在 `apps/api/src/ledger-web/` 并接入现有 server/context；页面放在 `apps/admin-web/src/`；台账能力扩展现有 `packages/ledger-archive` 交付模块。
+**主要位置：** 接口放在 `apps/api/src/ledger-web/`（`/api/web/v1/ledger/*`）；页面放在独立前端仓 `SMEDC_FRONTEND`；台账能力扩展现有 `packages/ledger-archive` 交付模块。
 
 - [x] 先写网页 HTTP 行为用例：普通员工登录、无会话转登录、同组织授权列表、管理员无读取旁路、跨组织拒绝、四态/大小、200 项游标、inline/attachment PDF 及安全头。
 - [x] 使用 `/ledger-pdfs` 同源页面及其独立网页 API 命名空间，覆盖登录/退出、当前本人安全上下文、覆盖查询、单文件和后续 ZIP 交付；复用现有 Cookie/CSRF/Origin/审计代码。组织来自会话，不接受任意组织、对象键或 return URL。

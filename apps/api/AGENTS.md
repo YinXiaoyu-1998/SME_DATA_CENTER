@@ -12,5 +12,5 @@
 - Keep HTTP routes thin; reuse domain policies and service/repository boundaries. MCP under `apps/api/src/mcp/` adapts controlled HTTP/service operations, never arbitrary API paths or SQL.
 - For business authorization, read `packages/domain/AGENTS.md` and `docs/implementation/business-related-authorization-design.md`. Load live account/tenant permissions; administrative configuration access must not expose ordinary content, rows, photos or download links.
 - Permission writes require version protection and atomic audit attribution; stale writes must not partially apply. See `apps/api/src/admin-permissions/` and `packages/db/AGENTS.md`.
-- UI and login/password language rules: `apps/admin-web/AGENTS.md`.
+- 账号与密码页的双语规则见 `apps/api/src/auth/AGENTS.md`；权限、自动任务与台账的网页在独立前端仓 `SMEDC_FRONTEND`。
 - Focused checks: `npm test -- apps/api/src`; narrow to changed route/service tests. Use `scripts/AGENTS.md` integration entrypoints when real persistence is affected.

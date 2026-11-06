@@ -3,7 +3,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const expectedWorkspaceNames = [
-  "@smedc/admin-web",
   "@smedc/api",
   "@smedc/db",
   "@smedc/domain",

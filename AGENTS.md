@@ -31,15 +31,16 @@
 - Before modifying files, read every applicable `AGENTS.md` from this root through their directories; cross-directory work reads all affected scopes. Local rules add detail without weakening core boundaries. Paths in these instructions are repository-relative; do not preload unrelated module rules.
 - Read these task entrypoints even when the task does not edit their directories:
 
-| Task                                                                    | Required entrypoint                                                            |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Local services, tests, integration, readiness or performance claims     | `scripts/AGENTS.md`                                                            |
-| Cloud/host changes, deployment or rollback, including root Docker files | `deploy/AGENTS.md`; CI changes also read `.github/AGENTS.md`                   |
-| MCP behavior, contracts, launcher release or Skill usage guidance       | `packages/mcp-contract/AGENTS.md`                                              |
-| Enterprise onboarding or permission administration                      | `apps/api/AGENTS.md`                                                           |
-| Employee installation/login or login/password/admin UI changes          | `apps/api/src/auth/AGENTS.md`; UI changes also read `apps/admin-web/AGENTS.md` |
-| Full official manual acceptance, only when explicitly requested         | `skills/smedc-manual-test/AGENTS.md`                                           |
-| Documentation, plans or progress updates                                | `docs/AGENTS.md`                                                               |
+| Task                                                                    | Required entrypoint                                                                  |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Local services, tests, integration, readiness or performance claims     | `scripts/AGENTS.md`                                                                  |
+| Cloud/host changes, deployment or rollback, including root Docker files | `deploy/AGENTS.md`; CI changes also read `.github/AGENTS.md`                         |
+| MCP behavior, contracts, launcher release or Skill usage guidance       | `packages/mcp-contract/AGENTS.md`                                                    |
+| Enterprise onboarding or permission administration                      | `apps/api/AGENTS.md`                                                                 |
+| Employee installation/login or login/password changes                   | `apps/api/src/auth/AGENTS.md`                                                        |
+| Web UI (permissions, tasks, ledger) changes                             | `SMEDC_FRONTEND` repository; contract rules in `packages/web-api-contract/AGENTS.md` |
+| Full official manual acceptance, only when explicitly requested         | `skills/smedc-manual-test/AGENTS.md`                                                 |
+| Documentation, plans or progress updates                                | `docs/AGENTS.md`                                                                     |
 
 ## Agent skills
 
