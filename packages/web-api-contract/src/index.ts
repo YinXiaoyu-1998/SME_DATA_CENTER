@@ -26,3 +26,5 @@ export type {
   WebSessionLoginBody,
   WebSessionResponse
 } from "./schemas/session.js";
+export * from "./schemas/permissions.js";
+export * from "./schemas/workflows.js";

@@ -6,7 +6,8 @@ export const WEB_API_PREFIX = "/api/web/v1" as const;
 /** 契约文档版本。结构变化（不是路由变化）时递增。 */
 export const WEB_API_CONTRACT_VERSION = 1 as const;
 
-export type WebApiMethod = "GET" | "POST" | "DELETE";
+// PATCH 沿用既有子资源的局部更新语义：1:1 迁移不改动词，前端生成的客户端也不必重写。
+export type WebApiMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 /**
  * - `anonymous`：无需会话，只读。
