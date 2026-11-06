@@ -3,6 +3,552 @@
   "prefix": "/api/web/v1",
   "routes": [
     {
+      "id": "ledger.context",
+      "method": "GET",
+      "path": "/api/web/v1/ledger/context",
+      "auth": "session",
+      "summary": "读取台账下载中心所需的本人身份、CSRF 令牌与静态限额",
+      "request": {},
+      "response": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "object",
+            "properties": {
+              "employeeId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "orgId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "organizationName": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "employeeId",
+              "orgId",
+              "displayName",
+              "organizationName"
+            ],
+            "additionalProperties": false
+          },
+          "csrfToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "stores": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "dates": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pageSize": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "deadlineMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "retentionMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "files",
+              "bytes",
+              "stores",
+              "dates",
+              "pageSize",
+              "deadlineMs",
+              "retentionMs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "identity",
+          "csrfToken",
+          "limits"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR"
+      ]
+    },
+    {
+      "id": "ledger.coverage",
+      "method": "POST",
+      "path": "/api/web/v1/ledger/coverage",
+      "auth": "session-write",
+      "summary": "按日期范围或精确分区选择读取台账 PDF 覆盖、大小与下一页游标",
+      "request": {
+        "query": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "object",
+              "properties": {
+                "storeNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "dates": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  }
+                },
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                "endDate": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                }
+              },
+              "additionalProperties": false
+            },
+            "selection": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "storeName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "purchaseDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  }
+                },
+                "required": [
+                  "storeName",
+                  "purchaseDate"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "cursor": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "partitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "storeName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "purchaseDate": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "pending",
+                    "stale",
+                    "missing"
+                  ]
+                },
+                "byteSize": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "storeName",
+                "purchaseDate",
+                "status",
+                "byteSize"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "partitions",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR",
+        "LEDGER_CURSOR_INVALID",
+        "LEDGER_PDF_NOT_ENABLED",
+        "LEDGER_PDF_UNAVAILABLE",
+        "LEDGER_SCOPE_INVALID",
+        "LEDGER_SCOPE_LIMIT_EXCEEDED",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "ledger.downloads",
+      "method": "POST",
+      "path": "/api/web/v1/ledger/downloads",
+      "auth": "session-write",
+      "summary": "按精确分区清单幂等提交台账 ZIP 制作任务",
+      "request": {
+        "query": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "selection": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "storeName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  },
+                  "purchaseDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  }
+                },
+                "required": [
+                  "storeName",
+                  "purchaseDate"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          },
+          "required": [
+            "selection",
+            "idempotencyKey"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "requestId",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR",
+        "LEDGER_IDEMPOTENCY_CONFLICT",
+        "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED",
+        "LEDGER_PDF_NOT_ENABLED",
+        "LEDGER_PDF_NOT_READY",
+        "LEDGER_PDF_UNAVAILABLE",
+        "LEDGER_SCOPE_INVALID",
+        "LEDGER_SCOPE_LIMIT_EXCEEDED",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "ledger.pdf",
+      "method": "GET",
+      "path": "/api/web/v1/ledger/pdf",
+      "auth": "session",
+      "summary": "以同源流式响应预览或下载单个台账 PDF（非 JSON）",
+      "request": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "storeName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "purchaseDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "disposition": {
+              "type": "string",
+              "enum": [
+                "inline",
+                "attachment"
+              ]
+            }
+          },
+          "required": [
+            "storeName",
+            "purchaseDate",
+            "disposition"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "response": {},
+      "errors": [
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR",
+        "LEDGER_PDF_BUNDLE_STALE",
+        "LEDGER_PDF_NOT_ENABLED",
+        "LEDGER_PDF_NOT_READY",
+        "LEDGER_PDF_UNAVAILABLE",
+        "LEDGER_SCOPE_INVALID",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "ledger.requests.downloadUrl",
+      "method": "POST",
+      "path": "/api/web/v1/ledger/requests/:requestId/download-url",
+      "auth": "session-write",
+      "summary": "为已完成的本人台账 ZIP 重新签发短时下载链接",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "requestId"
+          ],
+          "additionalProperties": false
+        },
+        "query": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "downloadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "requestId",
+          "downloadUrl",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "AUTHORIZATION_VERSION_CONFLICT",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR",
+        "LEDGER_DOWNLOAD_REBUILD_REQUIRED",
+        "LEDGER_PDF_BUNDLE_STALE",
+        "LEDGER_PDF_NOT_ENABLED",
+        "LEDGER_PDF_NOT_READY",
+        "LEDGER_PDF_UNAVAILABLE",
+        "LEDGER_REQUEST_INVALID",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "ledger.requests.read",
+      "method": "GET",
+      "path": "/api/web/v1/ledger/requests/:requestId",
+      "auth": "session",
+      "summary": "轮询本人台账 ZIP 任务的进度与分区结果",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "requestId"
+          ],
+          "additionalProperties": false
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "cursor": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "errorCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "partitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "storeName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "purchaseDate": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "storeName",
+                "purchaseDate",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "status",
+          "partitions",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR",
+        "LEDGER_CURSOR_INVALID",
+        "LEDGER_PDF_NOT_ENABLED",
+        "LEDGER_PDF_UNAVAILABLE",
+        "LEDGER_REQUEST_INVALID",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
       "id": "session.login",
       "method": "POST",
       "path": "/api/web/v1/session",
