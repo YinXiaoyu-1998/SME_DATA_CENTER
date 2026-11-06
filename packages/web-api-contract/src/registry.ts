@@ -6,7 +6,10 @@ import {
   type WebApiAuth,
   type WebApiRoute
 } from "./route-types.js";
+import { ledgerWebApiRoutes } from "./routes/ledger.js";
+import { permissionsWebApiRoutes } from "./routes/permissions.js";
 import { sessionWebApiRoutes } from "./routes/session.js";
+import { workflowsWebApiRoutes } from "./routes/workflows.js";
 
 export {
   WEB_API_CONTRACT_VERSION,
@@ -21,7 +24,12 @@ export type { WebApiAuth, WebApiMethod, WebApiRoute } from "./route-types.js";
  * 浏览器接口总表。各域在自己的 `routes/*.ts` 里登记，这里只做汇总，
  * 这样不同批次可以并行维护互不重叠的文件。
  */
-export const WEB_API_ROUTES: readonly WebApiRoute[] = Object.freeze([...sessionWebApiRoutes]);
+export const WEB_API_ROUTES: readonly WebApiRoute[] = Object.freeze([
+  ...sessionWebApiRoutes,
+  ...permissionsWebApiRoutes,
+  ...workflowsWebApiRoutes,
+  ...ledgerWebApiRoutes
+]);
 
 /** 按 id 取路由；拼写错误立即失败，避免 handler 与契约脱节。 */
 export function getWebApiRoute(id: string): WebApiRoute {
