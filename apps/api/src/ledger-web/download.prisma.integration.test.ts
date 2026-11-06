@@ -57,7 +57,7 @@ it.skipIf(!enabled)(
     const env = {
       DATABASE_URL: databaseUrl,
       LEDGER_PDF_DELIVERY_ENABLED: "true",
-      SMEDC_PUBLIC_ORIGIN: "https://browser.example.invalid"
+      SMEDC_API_ORIGIN: "https://browser.example.invalid"
     };
     const runtime = createLedgerWorkerRuntime({
       storage,
@@ -285,7 +285,7 @@ it.skipIf(!enabled)(
           redirect: "manual",
           headers: {
             cookie: loginCookie,
-            origin: env.SMEDC_PUBLIC_ORIGIN,
+            origin: env.SMEDC_API_ORIGIN,
             "content-type": "application/x-www-form-urlencoded"
           },
           body: new URLSearchParams({ email, password, csrfToken })
@@ -311,7 +311,7 @@ it.skipIf(!enabled)(
       expect(persisted.expiresAt.getTime()).toBe(issuedAt.getTime() + 604800000);
       const headers = {
         cookie: browser.cookie,
-        origin: env.SMEDC_PUBLIC_ORIGIN,
+        origin: env.SMEDC_API_ORIGIN,
         "x-csrf-token": browser.context.csrfToken
       };
       const post = (route: string, body?: unknown) =>
@@ -398,7 +398,7 @@ it.skipIf(!enabled)(
       const adminBrowser = await login(admin.email);
       const adminHeaders = {
         cookie: adminBrowser.cookie,
-        origin: env.SMEDC_PUBLIC_ORIGIN,
+        origin: env.SMEDC_API_ORIGIN,
         "x-csrf-token": adminBrowser.context.csrfToken,
         "content-type": "application/json"
       };

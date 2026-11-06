@@ -691,7 +691,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
   it("accepts the exact configured public Host only from a loopback reverse-proxy peer", async () => {
     app = buildMcpTestServer({
       runtimeEnv: {
-        SMEDC_PUBLIC_ORIGIN: "https://api.smedatacenter.xyz"
+        SMEDC_API_ORIGIN: "https://api.smedatacenter.xyz",
+        SMEDC_WEB_ORIGIN: "https://app.smedatacenter.xyz"
       }
     });
 

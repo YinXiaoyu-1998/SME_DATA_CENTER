@@ -1,0 +1,208 @@
+{
+  "contractVersion": 1,
+  "prefix": "/api/web/v1",
+  "routes": [
+    {
+      "id": "session.login",
+      "method": "POST",
+      "path": "/api/web/v1/session",
+      "auth": "anonymous-write",
+      "summary": "用邮箱与密码登录网页，签发会话 Cookie 并返回身份与 CSRF 令牌",
+      "request": {
+        "body": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 320
+            },
+            "password": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "email",
+            "password"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "object",
+            "properties": {
+              "employeeId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "email": {
+                "type": "string",
+                "minLength": 1
+              },
+              "orgId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "organizationName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "employee"
+                ]
+              },
+              "clearance": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              }
+            },
+            "required": [
+              "employeeId",
+              "displayName",
+              "email",
+              "orgId",
+              "organizationName",
+              "role",
+              "clearance"
+            ],
+            "additionalProperties": false
+          },
+          "csrfToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canManageSettings": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identity",
+          "csrfToken",
+          "canManageSettings"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_INVALID_CREDENTIALS",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "session.logout",
+      "method": "DELETE",
+      "path": "/api/web/v1/session",
+      "auth": "session-write",
+      "summary": "注销当前网页会话并清除会话 Cookie",
+      "request": {},
+      "response": {
+        "type": "object",
+        "properties": {
+          "signedOut": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "signedOut"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR"
+      ]
+    },
+    {
+      "id": "session.read",
+      "method": "GET",
+      "path": "/api/web/v1/session",
+      "auth": "session",
+      "summary": "读取当前网页会话的身份、CSRF 令牌与管理设置权限",
+      "request": {},
+      "response": {
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "object",
+            "properties": {
+              "employeeId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "email": {
+                "type": "string",
+                "minLength": 1
+              },
+              "orgId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "organizationName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "employee"
+                ]
+              },
+              "clearance": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              }
+            },
+            "required": [
+              "employeeId",
+              "displayName",
+              "email",
+              "orgId",
+              "organizationName",
+              "role",
+              "clearance"
+            ],
+            "additionalProperties": false
+          },
+          "csrfToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canManageSettings": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identity",
+          "csrfToken",
+          "canManageSettings"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_SIGN_IN_REQUIRED",
+        "INTERNAL_ERROR"
+      ]
+    }
+  ]
+}

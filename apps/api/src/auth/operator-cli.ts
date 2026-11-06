@@ -164,7 +164,7 @@ export async function runOperatorCommand(
   command: OperatorCommand,
   dependencies: {
     repository: AuthOperatorRepository;
-    publicOrigin: string;
+    webOrigin: string;
     stdout: (line: string) => void;
     now?: () => Date;
   }
@@ -186,9 +186,9 @@ export async function runOperatorCommand(
     return;
   }
 
-  const origin = new URL(dependencies.publicOrigin);
+  const origin = new URL(dependencies.webOrigin);
   if (origin.protocol !== "https:") {
-    throw new Error("SMEDC_PUBLIC_ORIGIN must use HTTPS.");
+    throw new Error("SMEDC_WEB_ORIGIN must use HTTPS.");
   }
   const secret = generateOpaqueSecret("eh_ps_");
   const grantInput = {
@@ -231,19 +231,19 @@ function isSyntheticManualTestEmail(email: string): boolean {
 
 async function main(): Promise<void> {
   const databaseUrl = process.env["DATABASE_URL"];
-  const publicOrigin = process.env["SMEDC_PUBLIC_ORIGIN"];
+  const webOrigin = process.env["SMEDC_WEB_ORIGIN"];
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required.");
   }
-  if (!publicOrigin) {
-    throw new Error("SMEDC_PUBLIC_ORIGIN is required.");
+  if (!webOrigin) {
+    throw new Error("SMEDC_WEB_ORIGIN is required.");
   }
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const repository = createPrismaAuthOperatorRepository(prisma);
   try {
     await runOperatorCommand(parseOperatorCommand(process.argv.slice(2)), {
       repository,
-      publicOrigin,
+      webOrigin,
       stdout: (line) => process.stdout.write(`${line}\n`)
     });
   } finally {

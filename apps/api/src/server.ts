@@ -9,6 +9,8 @@ import Fastify from "fastify";
 import { DEFAULT_RETRIEVAL_CONFIG_VERSION } from "@smedc/domain";
 import { registerMcpHttpRoute } from "./mcp/http.js";
 import { registerOfficialAuthRoutes } from "./auth/routes.js";
+import { resolveApiOrigins } from "./config/origins.js";
+import { registerWebSessionRoutes } from "./web-api/session.js";
 import { registerApiErrorHandler } from "./request-errors.js";
 import { isTrustedLoopbackProxy, normalizeRequestId } from "./request-audit-context.js";
 import { createApiServerContext, type ApiServerOptions } from "./app-context.js";
@@ -77,7 +79,8 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     maxUploadBytes: runtimeLimits.maxUploadBytes,
     delegationProof,
     mcpMaxConcurrentRequests: runtimeLimits.mcpMaxConcurrentRequests,
-    publicOrigin: (options.runtimeEnv ?? process.env)["SMEDC_PUBLIC_ORIGIN"],
+    publicOrigin: (options.runtimeEnv ?? process.env)["SMEDC_API_ORIGIN"],
+
     authenticate: async (request, reply) => {
       const authenticated = await requestAuth.authenticate(request, reply);
 
@@ -90,20 +93,25 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   });
 
   if (context.authCore) {
-    const publicOrigin = environment["SMEDC_PUBLIC_ORIGIN"];
-    if (!publicOrigin) {
-      throw new Error("SMEDC_PUBLIC_ORIGIN is required for official authentication.");
-    }
+    const { apiOrigin, webOrigin } = resolveApiOrigins(environment);
     registerOfficialAuthRoutes(app, {
       auth: context.authCore,
-      publicOrigin,
+      apiOrigin,
+      webOrigin,
       browserSessions: context.browserSessions
     });
+    if (context.browserSessions) {
+      registerWebSessionRoutes(app, {
+        auth: context.authCore,
+        browserSessions: context.browserSessions,
+        webOrigin
+      });
+    }
     if (context.browserSessions)
       registerLedgerWebRoutes(app, {
         auth: context.authCore,
         browserSessions: context.browserSessions,
-        publicOrigin,
+        webOrigin,
         ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
         delivery: context.ledgerPdfs
       });
@@ -111,7 +119,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
       registerAdminPermissionsRoutes(app, {
         auth: context.authCore,
         browserSessions: context.browserSessions,
-        publicOrigin,
+        webOrigin,
         permissions: context.permissions,
         metadata: () => context.permissionsUiMetadata!,
         workflows: context.workflows

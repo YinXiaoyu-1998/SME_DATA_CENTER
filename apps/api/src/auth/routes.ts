@@ -68,7 +68,8 @@ type OfficialAuthCore = Pick<
 
 export interface OfficialAuthRoutesOptions {
   auth: OfficialAuthCore;
-  publicOrigin: string;
+  apiOrigin: string;
+  webOrigin: string;
   browserSessions?: BrowserSessions;
 }
 
@@ -89,7 +90,7 @@ export function registerOfficialAuthRoutes(
   });
 
   app.get("/.well-known/oauth-authorization-server", async (_request, reply) =>
-    reply.header("cache-control", "no-store").send(oauthMetadata(options.publicOrigin))
+    reply.header("cache-control", "no-store").send(oauthMetadata(options.apiOrigin))
   );
 
   app.post<{ Body: FormBody }>("/oauth/device_authorization", async (request, reply) => {
@@ -129,7 +130,7 @@ export function registerOfficialAuthRoutes(
       instanceHostname,
       audit
     });
-    const verificationUri = `${options.publicOrigin}/oauth/device/verify`;
+    const verificationUri = `${options.webOrigin}/oauth/device/verify`;
     return reply.header("cache-control", "no-store").send({
       device_code: issued.deviceCode,
       user_code: issued.userCode,

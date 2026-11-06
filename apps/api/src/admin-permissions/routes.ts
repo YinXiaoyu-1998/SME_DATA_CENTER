@@ -38,7 +38,7 @@ export interface AdminPermissionsRoutesOptions {
   browserSessions: BrowserSessions;
   permissions: () => BusinessAuthorizationService;
   metadata: () => PermissionsUiMetadata;
-  publicOrigin: string;
+  webOrigin: string;
   workflows?: () => EnterpriseWorkflowService;
 }
 function browserAudit(request: FastifyRequest) {
@@ -99,7 +99,7 @@ export function registerAdminPermissionsRoutes(
   const principalFor = (request: FastifyRequest) =>
     options.browserSessions.authenticate(sharedSecret(request));
   const validWrite = (request: FastifyRequest, secret: string, csrf: unknown) =>
-    request.headers.origin === options.publicOrigin &&
+    request.headers.origin === options.webOrigin &&
     typeof csrf === "string" &&
     matchesCsrfToken(secret, csrf);
   async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {

@@ -115,7 +115,7 @@ export function registerLedgerWebRoutes(
   options: {
     auth: Pick<AuthCore, "verifyLogin">;
     browserSessions: BrowserSessions;
-    publicOrigin: string;
+    webOrigin: string;
     ledgerPdfDeliveryEnabled: boolean;
     delivery: () => LedgerPdfDelivery;
   }
@@ -125,7 +125,7 @@ export function registerLedgerWebRoutes(
   const principalFor = (request: FastifyRequest) =>
     options.browserSessions.authenticate(secretFor(request));
   const validWrite = (request: FastifyRequest, secret: string, csrf: unknown) =>
-    request.headers.origin === options.publicOrigin &&
+    request.headers.origin === options.webOrigin &&
     typeof csrf === "string" &&
     matchesCsrfToken(secret, csrf);
   const audit = (request: FastifyRequest) => {
