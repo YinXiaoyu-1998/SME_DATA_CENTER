@@ -4,7 +4,7 @@
 
 ## 正式发布入口
 
-正式发布通过 `.github/workflows/staging-deploy.yml` 的 GitHub `staging` Environment 执行 `npm run deploy:staging`。main 的可信质量门禁成功后部署对应不可变提交；手动 deploy/rollback 也只允许 main。PR 不部署。仅 Markdown/docs 的 main 变更跳过自动质量/部署链。
+正式发布通过 `.github/workflows/staging-deploy.yml` 的 GitHub `staging` Environment 执行 `npm run deploy:staging`。仅当仓库级 Actions 变量 `SMEDC_STAGING_AUTO_DEPLOY=true` 时，main 的可信质量门禁成功后才自动部署对应不可变提交。变量缺失时使用明确获准的 main 手动 deploy/rollback。首次网页切换应保留手动发布，先验收 app 站点与配对产物，记录上一版服务和配置，再切换网页入口。PR 不部署。仅 Markdown/docs 的 main 变更跳过自动质量/部署链。
 
 工作流使用 `smedc-staging` 并发组，保留排队发布；Action 固定提交 SHA、权限最小化，临时 SSH key 无论成功失败都删除。本地执行仅用于明确批准的恢复/工作流诊断，不能作为日常发布捷径。
 
@@ -37,7 +37,7 @@
 | /opt/smedc/current-release.env        | 发布程序记录已验证镜像引用               |
 | /opt/smedc/previous-release.env       | 发布程序保存回滚镜像/Compose 对应状态    |
 
-环境变量以 [env-inventory](env-inventory.md) 和当前 Compose/发布脚本为准。API、worker、release-ops 使用一致 DATABASE_URL、存储、Qdrant collection/检索版本及所需 provider 配置。检索版本与 collection 必须匹配；不得复制历史测试 collection 或旧 Qdrant tag。
+环境变量以 [env-inventory](env-inventory.md) 和当前 Compose/发布脚本为准。网页与机器客户端已拆成两个 origin：`SMEDC_API_ORIGIN`（issuer、令牌、MCP host 守卫）与 `SMEDC_WEB_ORIGIN`（浏览器 Origin 校验、生成的网页链接）。两者都必填，改名或缺失会让 API 启动失败。app 站点的 nginx 与静态产物不属于本仓库发布流程。API、worker、release-ops 使用一致 DATABASE_URL、存储、Qdrant collection/检索版本及所需 provider 配置。检索版本与 collection 必须匹配；不得复制历史测试 collection 或旧 Qdrant tag。
 
 GitHub staging secrets：ACR_PASSWORD、STAGING_CURSOR_SIGNING_SECRET、STAGING_SSH_PRIVATE_KEY；非秘密 variables：ACR_REGISTRY、ACR_NAMESPACE、ACR_USERNAME、STAGING_HOST、STAGING_SSH_USER、STAGING_PUBLIC_URL。CI 使用独立受限非交互 SSH key，并以已提交 known_hosts 严格检查主机。
 

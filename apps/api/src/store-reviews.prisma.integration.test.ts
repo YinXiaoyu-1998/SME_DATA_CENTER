@@ -49,7 +49,10 @@ if (run) {
   const permissions = createBusinessAuthorizationRepository({ prisma });
   const app = buildApiServer({
     logger: false,
-    runtimeEnv: { SMEDC_PUBLIC_ORIGIN: "https://reviews.example.invalid" },
+    runtimeEnv: {
+      SMEDC_API_ORIGIN: "https://reviews.example.invalid",
+      SMEDC_WEB_ORIGIN: "https://reviews.example.invalid"
+    },
     cursorSigningSecret: "synthetic-review-secret",
     authenticateAccessToken: async () => employee,
     businessAuthorizationService: createBusinessAuthorizationService(permissions),

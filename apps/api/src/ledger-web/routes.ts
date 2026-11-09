@@ -1,36 +1,35 @@
-import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
-  LEDGER_SCOPE_MAX_STORES,
   LEDGER_SCOPE_MAX_DATES,
+  LEDGER_SCOPE_MAX_STORES,
   LEDGER_PAGE_SIZE,
   parseLedgerScope
 } from "@smedc/ledger-archive";
 import {
   LEDGER_BUNDLE_LIMITS,
-  type LedgerPdfDelivery,
+  LedgerDeliveryError,
   type LedgerCoverageScope,
-  type LedgerPdfSelectionItem,
-  LedgerDeliveryError
+  type LedgerPdfDelivery
 } from "@smedc/ledger-archive/delivery";
-import { renderLedgerLogin, renderLedgerPage } from "../../../admin-web/src/ledger-pages.js";
+import {
+  getWebApiRoute,
+  webApiErrorBody,
+  type LedgerCoverageBody,
+  type LedgerDownloadsBody,
+  type LedgerPdfQuery,
+  type LedgerRequestParams,
+  type LedgerRequestQuery
+} from "@smedc/web-api-contract";
 import type { AuthCore } from "../auth/auth-core.js";
 import {
   BROWSER_SESSION_COOKIE,
-  BROWSER_SESSION_SECONDS,
+  type BrowserPrincipal,
   type BrowserSessions
 } from "../auth/browser-session.js";
-import {
-  cookieValue,
-  csrfTokenForSecret,
-  hostOnlyCookie,
-  matchesCsrfToken
-} from "../auth/http-contract.js";
-import { authPageHeaders } from "../auth/pages.js";
-import { createRequestAuditContext } from "../request-audit-context.js";
+import { cookieValue, csrfTokenForSecret, matchesCsrfToken } from "../auth/http-contract.js";
+import { registerWebApiRoute, type WebApiContext } from "../web-api/register.js";
 
-const base = "/ledger-pdfs";
-const loginCookie = "__Host-smedc_ledger_login";
+/** 台账下载中心的静态限额；只用于展示与请求体上限，内容可见性仍由交付服务裁决。 */
 const limits = {
   files: LEDGER_BUNDLE_LIMITS.files,
   bytes: LEDGER_BUNDLE_LIMITS.bytes,
@@ -40,50 +39,45 @@ const limits = {
   deadlineMs: LEDGER_BUNDLE_LIMITS.deadlineMs,
   retentionMs: LEDGER_BUNDLE_LIMITS.retentionMs
 };
-function page(reply: FastifyReply, render: (nonce: string) => string) {
-  const nonce = randomBytes(18).toString("base64url");
-  const headers = authPageHeaders(nonce);
-  headers["referrer-policy"] = "same-origin";
-  headers["content-security-policy"] += "; connect-src 'self'; frame-src 'self' blob:";
-  return reply
-    .headers({ ...headers })
-    .type("text/html; charset=utf-8")
-    .send(render(nonce));
+
+/**
+ * 满额支持的精确选择可能超过 Fastify 默认 1 MiB 请求体。
+ * 契约注册器统一创建路由，因此用 onRoute 只放大台账写路由的上限，其他路由不变。
+ */
+const largeBodyLimit = limits.files * (512 * 6 + 128);
+const coveredRoutes = new Set(["/api/web/v1/ledger/coverage", "/api/web/v1/ledger/downloads"]);
+
+const errorMessages: Record<string, string> = {
+  BROWSER_SIGN_IN_REQUIRED: "请先登录再重试。",
+  BROWSER_SECURITY_CHECK_FAILED: "安全校验未通过，请刷新后重试。",
+  WEB_API_INVALID_REQUEST: "请求参数无效。",
+  LEDGER_SCOPE_INVALID: "台账筛选条件无效。",
+  LEDGER_SCOPE_LIMIT_EXCEEDED: "台账筛选条件超出上限。",
+  LEDGER_CURSOR_INVALID: "分页游标已失效，请重新筛选。",
+  LEDGER_REQUEST_INVALID: "台账任务标识无效。",
+  LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED: "所选台账文件超出打包容量上限。",
+  LEDGER_PDF_UNAVAILABLE: "该台账内容不可用。",
+  LEDGER_PDF_NOT_READY: "该台账 PDF 尚未生成完成。",
+  LEDGER_PDF_BUNDLE_STALE: "台账内容已更新，请重新打包。",
+  LEDGER_DOWNLOAD_REBUILD_REQUIRED: "台账内容已变化，请重新打包。",
+  LEDGER_IDEMPOTENCY_CONFLICT: "同一幂等键对应了不同的台账选择。",
+  AUTHORIZATION_VERSION_CONFLICT: "业务授权已变化，请重新筛选。",
+  LEDGER_PDF_NOT_ENABLED: "台账下载暂未开启。",
+  INTERNAL_ERROR: "台账服务暂时不可用，请稍后重试。"
+};
+
+function messageFor(code: string): string {
+  return errorMessages[code] ?? "台账请求失败。";
 }
+
 function failure(reply: FastifyReply, status: number, code: string) {
   return reply
     .header("cache-control", "no-store")
     .header("x-content-type-options", "nosniff")
     .code(status)
-    .send({ error: { code } });
+    .send(webApiErrorBody(code, messageFor(code)));
 }
-function object(value: unknown, allowed: string[]): Record<string, unknown> {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    Object.keys(value).some((k) => !allowed.includes(k))
-  )
-    throw new LedgerDeliveryError("LEDGER_SCOPE_INVALID");
-  return value as Record<string, unknown>;
-}
-function cursor(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value || value.length > 4096)
-    throw new LedgerDeliveryError("LEDGER_CURSOR_INVALID");
-  return value;
-}
-function scope(value: unknown): LedgerCoverageScope {
-  const input = object(value, ["storeNames", "dates", "startDate", "endDate"]);
-  const parsed = parseLedgerScope({
-    ...input,
-    storeNames: input["storeNames"] === undefined ? ["__date_validation__"] : input["storeNames"]
-  });
-  if (input["storeNames"] !== undefined) return parsed;
-  return "dates" in parsed
-    ? { dates: parsed.dates! }
-    : { startDate: parsed.startDate, endDate: parsed.endDate };
-}
+
 function deliveryFailure(error: unknown, request: FastifyRequest, reply: FastifyReply) {
   const code = error instanceof Error ? error.message : "";
   if (
@@ -110,221 +104,183 @@ function deliveryFailure(error: unknown, request: FastifyRequest, reply: Fastify
   request.log.error({ err: error }, "Ledger browser request failed.");
   return failure(reply, 500, "INTERNAL_ERROR");
 }
+
+function cursor(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (!value || value.length > 4096) throw new LedgerDeliveryError("LEDGER_CURSOR_INVALID");
+  return value;
+}
+
+/**
+ * 沿用原实现的日期范围语义：只给日期时先借用占位门店名做校验，再还原成无门店的范围。
+ */
+function scope(value: LedgerCoverageScope): LedgerCoverageScope {
+  const input = value as Record<string, unknown>;
+  const parsed = parseLedgerScope({
+    ...input,
+    storeNames: input["storeNames"] === undefined ? ["__date_validation__"] : input["storeNames"]
+  });
+  if (input["storeNames"] !== undefined) return parsed;
+  return "dates" in parsed
+    ? { dates: parsed.dates! }
+    : { startDate: parsed.startDate, endDate: parsed.endDate };
+}
+
+export interface LedgerWebRoutesOptions {
+  /** 登录已迁到 `/api/web/v1/session`；保留该字段以兼容既有调用方，本模块不再使用。 */
+  auth: Pick<AuthCore, "verifyLogin">;
+  browserSessions: BrowserSessions;
+  webOrigin: string;
+  ledgerPdfDeliveryEnabled: boolean;
+  delivery: () => LedgerPdfDelivery;
+}
+
 export function registerLedgerWebRoutes(
   app: FastifyInstance,
-  options: {
-    auth: Pick<AuthCore, "verifyLogin">;
-    browserSessions: BrowserSessions;
-    publicOrigin: string;
-    ledgerPdfDeliveryEnabled: boolean;
-    delivery: () => LedgerPdfDelivery;
-  }
+  options: LedgerWebRoutesOptions
 ): void {
   const secretFor = (request: FastifyRequest) =>
     cookieValue(request.headers.cookie, BROWSER_SESSION_COOKIE);
-  const principalFor = (request: FastifyRequest) =>
+  const authenticate = async (request: FastifyRequest) =>
     options.browserSessions.authenticate(secretFor(request));
-  const validWrite = (request: FastifyRequest, secret: string, csrf: unknown) =>
-    request.headers.origin === options.publicOrigin &&
-    typeof csrf === "string" &&
-    matchesCsrfToken(secret, csrf);
-  const audit = (request: FastifyRequest) => {
-    const context = createRequestAuditContext(request, "browser_auth");
-    return { requestId: context.requestId, sourceIp: context.sourceIp, launcherVersion: null };
-  };
-  const loginPage = (reply: FastifyReply, error = false) => {
-    const secret = randomBytes(24).toString("base64url");
-    reply.header("set-cookie", hostOnlyCookie(loginCookie, secret, 600));
-    return page(reply, (nonce) =>
-      renderLedgerLogin({ nonce, csrfToken: csrfTokenForSecret(secret), error })
-    );
-  };
-  app.get(base, async (request, reply) => {
-    if (!(await principalFor(request)))
-      return reply.header("cache-control", "no-store").code(303).redirect(`${base}/login`);
-    return page(reply, (nonce) => renderLedgerPage({ nonce, limits }));
-  });
-  app.get(`${base}/login`, async (request, reply) => {
-    if (await principalFor(request))
-      return reply.header("cache-control", "no-store").code(303).redirect(base);
-    return loginPage(reply);
-  });
-  app.post<{ Body: Record<string, unknown> }>(`${base}/login`, async (request, reply) => {
-    const secret = cookieValue(request.headers.cookie, loginCookie);
-    const body = request.body;
-    if (!secret || !body || !validWrite(request, secret, body["csrfToken"]))
-      return loginPage(reply.code(403), true);
-    const email = body["email"],
-      password = body["password"];
-    if (
-      typeof email !== "string" ||
-      email.length > 320 ||
-      typeof password !== "string" ||
-      !password.length ||
-      Array.from(password.normalize("NFC")).length > 128
-    )
-      return loginPage(reply.code(400), true);
-    const identity = await options.auth.verifyLogin(email, password, audit(request));
-    if (!identity.ok) return loginPage(reply.code(401), true);
-    const issued = await options.browserSessions.issue(
-      identity,
-      secretFor(request),
-      audit(request)
-    );
-    if (!issued || !(await options.browserSessions.authenticate(issued)))
-      return loginPage(reply.code(401), true);
-    return reply
-      .header("cache-control", "no-store")
-      .header("set-cookie", [
-        hostOnlyCookie(loginCookie, "deleted", 0),
-        hostOnlyCookie(BROWSER_SESSION_COOKIE, issued, BROWSER_SESSION_SECONDS)
-      ])
-      .code(303)
-      .redirect(base);
-  });
-  app.get(`${base}/api/context`, async (request, reply) => {
-    reply.header("cache-control", "no-store").header("x-content-type-options", "nosniff");
-    const principal = await principalFor(request);
-    if (!principal) return failure(reply, 401, "BROWSER_SIGN_IN_REQUIRED");
-    return {
-      identity: {
-        employeeId: principal.id,
-        orgId: principal.orgId,
-        displayName: principal.displayName,
-        organizationName: principal.organizationName
-      },
-      csrfToken: csrfTokenForSecret(secretFor(request)!),
-      limits
-    };
-  });
-  app.post(`${base}/logout`, async (request, reply) => {
+  const verifyWrite = (request: FastifyRequest, principal: BrowserPrincipal | null): boolean => {
+    if (request.headers.origin !== options.webOrigin) return false;
     const secret = secretFor(request);
-    if (!(await principalFor(request))) return failure(reply, 401, "BROWSER_SIGN_IN_REQUIRED");
-    if (!secret || !validWrite(request, secret, request.headers["x-csrf-token"]))
-      return failure(reply, 403, "BROWSER_SECURITY_CHECK_FAILED");
-    await options.browserSessions.logout(secret);
-    return reply
-      .header("cache-control", "no-store")
-      .header("set-cookie", hostOnlyCookie(BROWSER_SESSION_COOKIE, "deleted", 0))
-      .send({ signedOut: true });
+    const csrf = request.headers["x-csrf-token"];
+    return (
+      principal !== null &&
+      secret !== null &&
+      typeof csrf === "string" &&
+      matchesCsrfToken(secret, csrf)
+    );
+  };
+
+  app.addHook("onRoute", (route) => {
+    if (route.method === "POST" && coveredRoutes.has(route.url)) route.bodyLimit = largeBodyLimit;
   });
-  const route = (
-    method: "GET" | "POST",
-    url: string,
-    operation: (
-      request: FastifyRequest,
-      reply: FastifyReply,
-      principal: NonNullable<Awaited<ReturnType<typeof principalFor>>>
+
+  /** 数据面共用注册：会话 → 写校验 → 输入校验由注册器完成，本处只做业务与错误映射。 */
+  const dataRoute = (
+    id: string,
+    handler: (
+      context: WebApiContext<BrowserPrincipal>,
+      principal: BrowserPrincipal
     ) => Promise<unknown>
-  ) => {
-    app.route({
-      method,
-      url: `${base}/api/${url}`,
-      // A full supported selection can exceed Fastify's 1 MiB default. Bound the
-      // encoded 512-character names (including JSON escaping) without lifting other routes.
-      ...(url === "downloads" || url === "coverage"
-        ? { bodyLimit: limits.files * (512 * 6 + 128) }
-        : {}),
-      handler: async (request, reply) => {
-        reply.header("cache-control", "no-store").header("x-content-type-options", "nosniff");
-        const principal = await principalFor(request);
-        if (!principal) return failure(reply, 401, "BROWSER_SIGN_IN_REQUIRED");
-        if (
-          method === "POST" &&
-          !validWrite(request, secretFor(request)!, request.headers["x-csrf-token"])
-        )
-          return failure(reply, 403, "BROWSER_SECURITY_CHECK_FAILED");
-        if (!options.ledgerPdfDeliveryEnabled) return failure(reply, 503, "LEDGER_PDF_NOT_ENABLED");
+  ): void => {
+    registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute(id), {
+      authenticate,
+      verifyWrite,
+      handler: async (context) => {
+        const principal = context.principal;
+        if (!principal) throw new Error(id + " reached without an authenticated session");
+        if (!options.ledgerPdfDeliveryEnabled)
+          return failure(context.reply, 503, "LEDGER_PDF_NOT_ENABLED");
         try {
-          return await operation(request, reply, principal);
+          return await handler(context, principal);
         } catch (error) {
-          return deliveryFailure(error, request, reply);
+          return deliveryFailure(error, context.request, context.reply);
         }
       }
     });
   };
-  route("POST", "coverage", async (request, _reply, employee) => {
-    object(request.query, []);
-    const body = object(request.body, ["scope", "selection", "cursor"]);
-    const next = cursor(body["cursor"]);
-    if ((body["scope"] === undefined) === (body["selection"] === undefined))
+
+  registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute("ledger.context"), {
+    authenticate,
+    verifyWrite,
+    handler: async ({ request, principal }) => {
+      const secret = secretFor(request);
+      if (!principal || secret === null)
+        throw new Error("ledger.context reached without an authenticated session");
+      return {
+        identity: {
+          employeeId: principal.id,
+          orgId: principal.orgId,
+          displayName: principal.displayName,
+          organizationName: principal.organizationName
+        },
+        csrfToken: csrfTokenForSecret(secret),
+        limits
+      };
+    }
+  });
+
+  dataRoute("ledger.coverage", async ({ body }, employee) => {
+    const input = body as LedgerCoverageBody;
+    if ((input.scope === undefined) === (input.selection === undefined))
       throw new LedgerDeliveryError("LEDGER_SCOPE_INVALID");
+    const next = cursor(input.cursor);
     return options.delivery().coverageForBrowser({
       employee,
-      ...(body["scope"] !== undefined
-        ? { scope: scope(body["scope"]) }
-        : { selection: body["selection"] as LedgerPdfSelectionItem[] }),
+      ...(input.scope !== undefined
+        ? { scope: scope(input.scope) }
+        : { selection: input.selection! }),
       ...(next ? { cursor: next } : {})
     });
   });
 
-  route("GET", "pdf", async (request, reply, employee) => {
-    const query = object(request.query, ["storeName", "purchaseDate", "disposition"]);
-    if (
-      request.body !== undefined ||
-      !["inline", "attachment"].includes(String(query["disposition"]))
-    )
-      throw new LedgerDeliveryError("LEDGER_SCOPE_INVALID");
-    const pdf = await options.delivery().openLedgerPdf({
-      employee,
-      selection: {
-        storeName: query["storeName"],
-        purchaseDate: query["purchaseDate"]
-      } as LedgerPdfSelectionItem
-    });
-    const encoded = encodeURIComponent(pdf.fileName).replace(
-      /[!'()*]/g,
-      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
-    );
-    return reply
-      .type("application/pdf")
-      .header("content-length", pdf.byteSize)
-      .header(
-        "content-disposition",
-        `${query["disposition"]}; filename="ledger.pdf"; filename*=UTF-8''${encoded}`
-      )
-      .header("x-frame-options", "SAMEORIGIN")
-      .header("content-security-policy", "default-src 'none'; frame-ancestors 'self'; sandbox")
-      .header("referrer-policy", "no-referrer")
-      .send(pdf.stream);
+  registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute("ledger.pdf"), {
+    authenticate,
+    verifyWrite,
+    handler: async ({ request, reply, principal, query }) => {
+      if (!principal) throw new Error("ledger.pdf reached without an authenticated session");
+      if (!options.ledgerPdfDeliveryEnabled) return failure(reply, 503, "LEDGER_PDF_NOT_ENABLED");
+      try {
+        if (request.body !== undefined) throw new LedgerDeliveryError("LEDGER_SCOPE_INVALID");
+        const input = query as LedgerPdfQuery;
+        const pdf = await options.delivery().openLedgerPdf({
+          employee: principal,
+          selection: { storeName: input.storeName, purchaseDate: input.purchaseDate }
+        });
+        const encoded = encodeURIComponent(pdf.fileName).replace(
+          /[!'()*]/g,
+          (char) => "%" + char.charCodeAt(0).toString(16).toUpperCase()
+        );
+        reply
+          .type("application/pdf")
+          .header("content-length", pdf.byteSize)
+          .header(
+            "content-disposition",
+            `${input.disposition}; filename="ledger.pdf"; filename*=UTF-8''${encoded}`
+          )
+          .header("x-frame-options", "SAMEORIGIN")
+          .header("content-security-policy", "default-src 'none'; frame-ancestors 'self'; sandbox")
+          .header("referrer-policy", "no-referrer");
+        // 二进制流直接交给注册器发送；响应契约只断言它是可读流。
+        return pdf.stream;
+      } catch (error) {
+        return deliveryFailure(error, request, reply);
+      }
+    }
   });
 
-  route("POST", "downloads", async (request, reply, employee) => {
-    object(request.query, []);
-    const body = object(request.body, ["selection", "idempotencyKey"]);
-    if (
-      typeof body["idempotencyKey"] !== "string" ||
-      !body["idempotencyKey"] ||
-      body["idempotencyKey"].length > 255
-    )
-      throw new LedgerDeliveryError("LEDGER_SCOPE_INVALID");
+  dataRoute("ledger.downloads", async ({ body, reply }, employee) => {
+    const input = body as LedgerDownloadsBody;
     const result = await options.delivery().requestSelectedLedgerBundle({
       employee,
-      selection: body["selection"] as LedgerPdfSelectionItem[],
-      idempotencyKey: body["idempotencyKey"]
+      selection: input.selection,
+      idempotencyKey: input.idempotencyKey
     });
-    return reply.code(202).send(result);
+    // 202 只设置状态码；响应体由注册器按契约校验并发送。
+    reply.code(202);
+    return result;
   });
-  const requestId = (request: FastifyRequest) => {
-    const id = object(request.params, ["requestId"])["requestId"];
-    if (typeof id !== "string" || !id || id.length > 128)
-      throw new LedgerDeliveryError("LEDGER_REQUEST_INVALID");
-    return id;
-  };
-  route("GET", "requests/:requestId", async (request, _reply, employee) => {
-    const query = object(request.query, ["cursor"]);
+
+  dataRoute("ledger.requests.read", async ({ request, query, params }, employee) => {
     if (request.body !== undefined) throw new LedgerDeliveryError("LEDGER_REQUEST_INVALID");
-    const next = cursor(query["cursor"]);
+    const next = cursor((query as LedgerRequestQuery).cursor);
     return options.delivery().status({
       employee,
-      requestId: requestId(request),
+      requestId: (params as LedgerRequestParams).requestId,
       downloadOnly: true,
       ...(next ? { cursor: next } : {})
     });
   });
-  route("POST", "requests/:requestId/download-url", async (request, _reply, employee) => {
-    object(request.query, []);
-    if (request.body !== undefined) throw new LedgerDeliveryError("LEDGER_REQUEST_INVALID");
-    return options.delivery().issueLedgerBundleUrl({ employee, requestId: requestId(request) });
+
+  dataRoute("ledger.requests.downloadUrl", async ({ body, params }, employee) => {
+    if (body !== undefined) throw new LedgerDeliveryError("LEDGER_REQUEST_INVALID");
+    return options.delivery().issueLedgerBundleUrl({
+      employee,
+      requestId: (params as LedgerRequestParams).requestId
+    });
   });
 }

@@ -21,7 +21,8 @@ services:
       NODE_ENV: production
       HOST: 127.0.0.1
       PORT: "3000"
-      SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}
+      SMEDC_API_ORIGIN: ${SMEDC_API_ORIGIN:-https://api.smedatacenter.xyz}
+      SMEDC_WEB_ORIGIN: ${SMEDC_WEB_ORIGIN:-https://app.smedatacenter.xyz}
     depends_on:
       - qdrant
 
@@ -48,7 +49,8 @@ services:
       - ${SMEDC_RUNTIME_ENV_FILE:-/opt/smedc/runtime.env}
     environment:
       NODE_ENV: production
-      SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}
+      SMEDC_API_ORIGIN: ${SMEDC_API_ORIGIN:-https://api.smedatacenter.xyz}
+      SMEDC_WEB_ORIGIN: ${SMEDC_WEB_ORIGIN:-https://app.smedatacenter.xyz}
 
 volumes:
   qdrant_data:

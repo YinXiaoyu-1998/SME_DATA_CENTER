@@ -3,7 +3,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const expectedWorkspaceNames = [
-  "@smedc/admin-web",
   "@smedc/api",
   "@smedc/db",
   "@smedc/domain",
@@ -13,6 +12,7 @@ const expectedWorkspaceNames = [
   "@smedc/storage",
   "@smedc/structured-ingestion",
   "@smedc/testing",
+  "@smedc/web-api-contract",
   "@smedc/worker",
   "smedc-mcp-launcher"
 ];

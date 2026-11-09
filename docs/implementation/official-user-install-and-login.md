@@ -335,13 +335,13 @@ Current staging runs one Fastify API container behind nginx and TLS at
 - the initial/reset password form;
 - the invalid or expired setup-link page.
 
-The Device Authorization verification page renders the successful-login state. Pages use plain
-server-rendered HTML with no React/Next.js bundle, client-side authentication state, external script/CDN, separate
-frontend container or new domain. The permissions UI is presented by `apps/admin-web` and served
-by the same API process. Its same-origin native forms use `Referrer-Policy: same-origin` so strict
-Origin plus CSRF checks accept legitimate form submissions without sending referrers off-site. They require strict security
-headers, CSRF and device-verification checks, form-level tests, accessibility basics, and
-neutral styling. Login pages keep the normal same-origin form target and add only
+The Device Authorization verification page renders the successful-login state. That page and the password
+setup page remain plain server-rendered HTML with no React bundle, external script/CDN or client-side
+authentication state; they are served from `app.smedatacenter.xyz` by the API process. Every other web
+surface lives in the separate `SMEDC_FRONTEND` app, which reads `/api/web/v1` and keeps the same
+same-origin Cookie and CSRF model. `Referrer-Policy: same-origin` on the two rendered pages keeps strict
+Origin plus CSRF checks working for native form posts without sending referrers off-site. Both pages keep
+strict security headers, device-verification checks, form-level tests, accessibility basics and neutral styling. Login pages keep the normal same-origin form target and add only
 `form-action 'self'`. Existing Docker, nginx, TLS, and deployment topology remains unchanged.
 
 ## Accepted Browser Session Behavior

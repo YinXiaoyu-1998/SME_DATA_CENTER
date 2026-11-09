@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +23,40 @@ function composeService(name: string) {
   return compose.slice(start, next === -1 ? undefined : next);
 }
 
+function workspaceManifests(): string[] {
+  return ["apps", "packages"]
+    .flatMap((group) =>
+      readdirSync(resolve(workspaceRoot, group), { withFileTypes: true })
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            existsSync(resolve(workspaceRoot, group, entry.name, "package.json"))
+        )
+        .map((entry) => `${group}/${entry.name}/package.json`)
+    )
+    .sort();
+}
+
+function manifestCopies(): string[] {
+  const stage = dockerStage("manifests");
+  return [...stage.matchAll(/^COPY ((?:apps|packages)\/[^/\s]+\/package\.json) /gm)]
+    .map((match) => match[1] as string)
+    .sort();
+}
+
 describe("runtime image contracts", () => {
+  // manifests 阶段逐个 COPY 每个 workspace 的 package.json。新增或删除 workspace
+  // 包时如果漏改这里，镜像构建会因为找不到文件（或 npm ci 缺 manifest）而失败，
+  // 但本地单元测试与类型检查都发现不了，所以在这里钉死。
+  it("copies exactly the workspace manifests into the image", () => {
+    const copied = manifestCopies();
+    expect(copied.length).toBeGreaterThan(0);
+    for (const source of copied) {
+      expect(existsSync(resolve(workspaceRoot, source)), `missing ${source}`).toBe(true);
+    }
+    expect(copied).toEqual(workspaceManifests());
+  });
+
   it("runs long-lived services from compiled release artifacts", () => {
     const apiSection = dockerStage("api");
     const workerSection = dockerStage("worker");
@@ -110,9 +143,13 @@ describe("runtime image contracts", () => {
     expect(step).toContain("smedc-release-ops:ci node node_modules/prisma/build/index.js version");
   });
 
-  it("passes the public origin to release operations", () => {
-    expect(composeService("release-ops")).toContain(
-      "SMEDC_PUBLIC_ORIGIN: ${SMEDC_PUBLIC_ORIGIN:-https://api.smedatacenter.xyz}"
+  it("passes both public origins to release operations", () => {
+    const service = composeService("release-ops");
+    expect(service).toContain(
+      "SMEDC_API_ORIGIN: ${SMEDC_API_ORIGIN:-https://api.smedatacenter.xyz}"
+    );
+    expect(service).toContain(
+      "SMEDC_WEB_ORIGIN: ${SMEDC_WEB_ORIGIN:-https://app.smedatacenter.xyz}"
     );
   });
 

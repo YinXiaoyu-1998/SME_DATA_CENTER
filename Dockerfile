@@ -5,7 +5,6 @@ WORKDIR /app
 RUN npm install --global npm@11.18.0
 
 COPY package.json package-lock.json tsconfig.json tsconfig.base.json tsup.release.config.ts ./
-COPY apps/admin-web/package.json ./apps/admin-web/package.json
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/mcp-launcher/package.json ./apps/mcp-launcher/package.json
 COPY apps/release-ops/package.json ./apps/release-ops/package.json
@@ -17,6 +16,7 @@ COPY packages/mcp-contract/package.json ./packages/mcp-contract/package.json
 COPY packages/storage/package.json ./packages/storage/package.json
 COPY packages/structured-ingestion/package.json ./packages/structured-ingestion/package.json
 COPY packages/testing/package.json ./packages/testing/package.json
+COPY packages/web-api-contract/package.json ./packages/web-api-contract/package.json
 
 FROM manifests AS build
 

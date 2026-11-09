@@ -2,6 +2,7 @@ node_modules/
 coverage/
 dist/
 package-lock.json
+packages/web-api-contract/contract.json
 .env*
 .dockerignore
 deploy/staging/nginx-smedc.conf

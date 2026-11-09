@@ -60,7 +60,10 @@ describe("API server context", () => {
       logger: false,
       cursorSigningSecret: "cursor-secret",
       authenticateAccessToken: async () => employee,
-      runtimeEnv: { SMEDC_PUBLIC_ORIGIN: "https://api.example.invalid" }
+      runtimeEnv: {
+        SMEDC_API_ORIGIN: "https://api.example.invalid",
+        SMEDC_WEB_ORIGIN: "https://app.example.invalid"
+      }
     });
 
     await app.ready();
@@ -73,7 +76,8 @@ describe("API server context", () => {
       createApiServerContext({
         logger: false,
         runtimeEnv: {
-          SMEDC_PUBLIC_ORIGIN: "http://localhost:3000"
+          SMEDC_API_ORIGIN: "https://api.example.invalid",
+          SMEDC_WEB_ORIGIN: "http://localhost:5173"
         },
         authenticateAccessToken: async () => employee
       })
