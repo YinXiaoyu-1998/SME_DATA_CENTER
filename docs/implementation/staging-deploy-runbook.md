@@ -4,7 +4,7 @@
 
 ## 正式发布入口
 
-正式发布通过 `.github/workflows/staging-deploy.yml` 的 GitHub `staging` Environment 执行 `npm run deploy:staging`。main 的可信质量门禁成功后部署对应不可变提交；手动 deploy/rollback 也只允许 main。PR 不部署。仅 Markdown/docs 的 main 变更跳过自动质量/部署链。
+正式发布通过 `.github/workflows/staging-deploy.yml` 的 GitHub `staging` Environment 执行 `npm run deploy:staging`。仅当仓库级 Actions 变量 `SMEDC_STAGING_AUTO_DEPLOY=true` 时，main 的可信质量门禁成功后才自动部署对应不可变提交。变量缺失时使用明确获准的 main 手动 deploy/rollback。首次网页切换应保留手动发布，先验收 app 站点与配对产物，记录上一版服务和配置，再切换网页入口。PR 不部署。仅 Markdown/docs 的 main 变更跳过自动质量/部署链。
 
 工作流使用 `smedc-staging` 并发组，保留排队发布；Action 固定提交 SHA、权限最小化，临时 SSH key 无论成功失败都删除。本地执行仅用于明确批准的恢复/工作流诊断，不能作为日常发布捷径。
 

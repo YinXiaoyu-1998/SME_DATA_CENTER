@@ -35,7 +35,7 @@ describe("staging GitHub Actions release boundary", () => {
     }
   });
 
-  it("deploys only after a successful main push quality run or a main manual dispatch", async () => {
+  it("requires opt-in for automatic main deploys and keeps explicit main dispatch available", async () => {
     const source = await workflow(deployWorkflowPath);
 
     expect(source).toContain("workflow_run:");
@@ -45,6 +45,11 @@ describe("staging GitHub Actions release boundary", () => {
     expect(source).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(source).toContain("github.event.workflow_run.event == 'push'");
     expect(source).toContain("github.event.workflow_run.head_branch == 'main'");
+    const [automatic, manual] =
+      source.split("if: >-")[1]?.split("runs-on:")[0]?.split(") ||") ?? [];
+    expect(automatic).toContain("vars.SMEDC_STAGING_AUTO_DEPLOY == 'true'");
+    expect(manual).toContain("github.event_name == 'workflow_dispatch'");
+    expect(manual).not.toContain("SMEDC_STAGING_AUTO_DEPLOY");
     expect(source).toContain("github.ref_name == 'main'");
   });
 

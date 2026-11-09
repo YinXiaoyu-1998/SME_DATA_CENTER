@@ -462,7 +462,7 @@ function workflowResponse(tool: string): unknown {
     return {
       capability: workflowView.capability,
       needsConfiguration: false,
-      setupUrl: "/admin/permissions/org_a/workflows/business-a",
+      setupUrl: "/admin/org_a/workflows/business-a",
       workflows: [workflowView],
       nextCursor: null
     };

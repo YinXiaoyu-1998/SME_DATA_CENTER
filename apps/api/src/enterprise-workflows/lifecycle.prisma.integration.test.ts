@@ -133,7 +133,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           minimumLauncherVersion: "0.16.0"
         },
         needsConfiguration: true,
-        setupUrl: "/admin/permissions/workflow_org/workflows/enterprise"
+        setupUrl: "/admin/workflow_org/workflows/enterprise"
       });
       const expected = {
         expectedVersion: 0,

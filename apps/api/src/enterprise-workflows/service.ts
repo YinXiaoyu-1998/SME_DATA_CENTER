@@ -8,6 +8,7 @@ import type { PrismaClient } from "@prisma/client";
 import { WORKFLOW_MCP_INPUT_SCHEMAS, type WorkflowMcpToolName } from "@smedc/mcp-contract";
 import { dbType, transaction, lockWorkflow, fail, type Actor } from "./repository.js";
 import { ensureWorkflow, prepareChange, saveChange, view } from "./configuration.js";
+import { canonicalWebOrigin } from "../config/origins.js";
 // Recognize only bounded, unambiguous daily/weekly cadence. This never schedules a job
 // or predicts today's next trigger; unsupported calendar rules remain unknown.
 function confirmedCycleDays(type: string, schedule: string): number | null {
@@ -64,8 +65,9 @@ export function createEnterpriseWorkflowService(options: {
   prisma: PrismaClient;
   now?: () => Date;
   disconnect?: () => Promise<void>;
-  setupUrl?: (orgId: string, enterpriseKey?: string) => string;
+  webOrigin?: string | undefined;
 }) {
+  const webOrigin = options.webOrigin ? canonicalWebOrigin(options.webOrigin.trim()) : "";
   async function pruneRetention(now = options.now?.() ?? new Date()) {
     const expired = await options.prisma.workflowRun.findMany({
       where: { retainUntil: { lt: now }, finishedAt: { not: null } },
@@ -110,9 +112,7 @@ export function createEnterpriseWorkflowService(options: {
                   ...(input.enterpriseKey ? { enterpriseKey: input.enterpriseKey } : {})
                 }
               })) === 0,
-            setupUrl:
-              options.setupUrl?.(actor.orgId, input.enterpriseKey) ??
-              `/admin/permissions/${encodeURIComponent(actor.orgId)}/workflows${input.enterpriseKey ? `/${encodeURIComponent(input.enterpriseKey)}` : ""}`,
+            setupUrl: `${webOrigin}/admin/${encodeURIComponent(actor.orgId)}/workflows${input.enterpriseKey ? `/${encodeURIComponent(input.enterpriseKey)}` : ""}`,
             workflows: await Promise.all(rows.slice(0, limit).map((w) => view(tx, w))),
             nextCursor: rows.length > limit ? rows[limit - 1]!.id : null
           };

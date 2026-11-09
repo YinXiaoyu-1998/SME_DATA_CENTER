@@ -18,3 +18,24 @@ test("深链直接打开自动任务页", async ({ page }) => {
     "page"
   );
 });
+
+test("管理员打开服务返回的自动任务设置链接", async ({ page }) => {
+  await login(page, 0, `/admin/${ORG}/permissions`);
+  const session = await page.request.get("/api/web/v1/session");
+  expect(session.ok()).toBe(true);
+  const { csrfToken } = await session.json();
+  const response = await page.request.post(
+    `/api/web/v1/orgs/${ORG}/workflows/list_enterprise_workflows`,
+    {
+      headers: { origin: new URL(page.url()).origin, "x-csrf-token": csrfToken },
+      data: {}
+    }
+  );
+  expect(response.ok()).toBe(true);
+  const { setupUrl } = await response.json();
+  await page.goto(setupUrl);
+  await expect(page.getByRole("link", { name: "自动任务" })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+});

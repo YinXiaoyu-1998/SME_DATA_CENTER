@@ -28,6 +28,7 @@ jobs:
       ${{
         (
           github.event_name == 'workflow_run' &&
+          vars.SMEDC_STAGING_AUTO_DEPLOY == 'true' &&
           github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
           github.event.workflow_run.head_branch == 'main'
