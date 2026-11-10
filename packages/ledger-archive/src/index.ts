@@ -8,3 +8,4 @@ export * from "./supplier-values.js";
 export * from "./access.js";
 export * from "./changes.js";
 export * from "./publication.js";
+export { ledgerStoreKeyFromMetadata } from "./store-identity.js";

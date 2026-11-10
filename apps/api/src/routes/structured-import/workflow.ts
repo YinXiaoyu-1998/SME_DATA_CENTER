@@ -378,6 +378,13 @@ export function responseForReservedImport(importBatch: StructuredImportBatchReco
 }
 
 export function structuredImportProgressResponse(importBatch: StructuredImportBatchRecord) {
+  const storeErrors = importBatch.validationErrors.filter(
+    (error) =>
+      error !== null &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error.code === "FORMAL_STORE_NAME_INVALID" || error.code === "RESOURCE_DIRECTORY_RETIRED")
+  );
   return {
     document: {
       documentId: importBatch.sourceDocumentId,
@@ -393,6 +400,7 @@ export function structuredImportProgressResponse(importBatch: StructuredImportBa
       sourceDocumentId: importBatch.sourceDocumentId,
       status: importBatch.status,
       hasValidationErrors: importBatch.validationErrorCount > 0,
+      ...(storeErrors.length ? { validationErrors: storeErrors } : {}),
       ...(importBatch.dataset === "cost_cards" &&
       ["failed", "rejected"].includes(importBatch.status)
         ? { errorCode: importBatch.errorCode ?? null }

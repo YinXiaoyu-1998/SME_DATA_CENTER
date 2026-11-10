@@ -31,6 +31,8 @@ suite("structured partition repository", () => {
         clearance: 3
       }
     });
+    await prisma.businessAuthorizationState.create({ data: { orgId } });
+    await registerStore("Store A");
   });
 
   afterAll(async () => {
@@ -47,6 +49,44 @@ suite("structured partition repository", () => {
     await prisma.userAccount.deleteMany({ where: { id: userAccountId } });
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
+  });
+
+  it("rejects a mismatched store without publishing any partition in the source", async () => {
+    await createProcessingJob("invalid_store");
+    const first = candidate({
+      id: "part_invalid_store_good",
+      objectKey: `structured-partitions/${orgId}/invalid_store_good.csv`
+    });
+    const second = candidate({
+      id: "part_invalid_store_bad",
+      storeName: "Store A ",
+      businessDate: "2026-09-08",
+      objectKey: `structured-partitions/${orgId}/invalid_store_bad.csv`,
+      sourceRowNumber: 12
+    });
+    await expect(
+      repository.publishSourceAtomically({
+        orgId,
+        jobId: "pjob_invalid_store",
+        lease: leases.get("pjob_invalid_store")!,
+        totalRowCount: 6n,
+        candidates: [first, second]
+      })
+    ).rejects.toMatchObject({
+      code: "FORMAL_STORE_NAME_INVALID",
+      details: { storeName: "Store A ", rowNumber: 12 }
+    });
+    expect(
+      await repository.listReadableManifestRows({
+        orgId,
+        clearance: 3,
+        dataset: "business",
+        enterpriseKey: "synthetic",
+        startDate: "2026-09-07",
+        endDate: "2026-09-08",
+        maxPartitions: 10
+      })
+    ).toEqual([]);
   });
 
   it("publishes atomically, deduplicates bytes, replaces metadata, and filters by clearance", async () => {
@@ -132,11 +172,11 @@ suite("structured partition repository", () => {
       { name: "麦家小馆西店", merchantId: null },
       { name: "其他品牌", merchantId: "scope003" },
       { name: "麦家小馆密店", merchantId: "scope004", confidentialityLevel: 3 },
-      { name: "麦家小馆企业外", merchantId: "scope005", enterpriseKey: "other" },
       { name: "前缀A%_\\后缀", merchantId: "scope006" },
       { name: "前缀a%_\\后缀", merchantId: "scope007" },
       { name: "前缀AXY\\后缀", merchantId: "scope008" }
     ];
+    for (const store of stores) await registerStore(store.name);
     await repository.publishSourceAtomically({
       orgId,
       jobId: "pjob_literal_scope",
@@ -148,11 +188,29 @@ suite("structured partition repository", () => {
           storeKey: `scope:${i}`,
           storeName: store.name,
           merchantId: store.merchantId,
-          enterpriseKey: store.enterpriseKey ?? "synthetic",
           confidentialityLevel: store.confidentialityLevel ?? 0,
           objectKey: `structured-partitions/${orgId}/pjob_literal_scope/part_${i}.csv`
         })
       )
+    });
+    await registerStore("麦家小馆企业外", "other");
+    await createProcessingJob("literal_other", "other");
+    await repository.publishSourceAtomically({
+      orgId,
+      jobId: "pjob_literal_other",
+      lease: leases.get("pjob_literal_other")!,
+      totalRowCount: 3n,
+      candidates: [
+        candidate({
+          id: "part_scope_other",
+          storeKey: "merchant:scope005",
+          storeName: "麦家小馆企业外",
+          merchantId: "scope005",
+          enterpriseKey: "other",
+          confidentialityLevel: 0,
+          objectKey: `structured-partitions/${orgId}/pjob_literal_other/part.csv`
+        })
+      ]
     });
     await prisma.organization.create({
       data: { id: "partition_other_org", name: "Other synthetic organization" }
@@ -393,14 +451,82 @@ suite("structured partition repository", () => {
     expect(await manifest()).toHaveLength(1);
   });
 
-  async function createProcessingJob(suffix: string) {
+  it("reuses a legacy name-keyed store partition through repeated formal renames", async () => {
+    const originalName = "Original fallback";
+    const businessDate = "2026-09-07";
+    await registerStore(originalName);
+    const original = candidate({
+      id: "part_old_fallback",
+      storeName: originalName,
+      storeKey: "name:original fallback",
+      merchantId: null,
+      businessDate,
+      objectKey: `structured-partitions/${orgId}/old_fallback.csv`
+    });
+    await prisma.structuredPartition.create({
+      data: {
+        ...original,
+        businessDate: new Date(`${businessDate}T00:00:00Z`),
+        publishedByJobId: "historical"
+      }
+    });
+    let previousName = originalName;
+    for (const [index, name] of ["Renamed fallback", "Final fallback"].entries()) {
+      const suffix = `rename_${index}`;
+      // A source accepted for background processing before the rename must be
+      // checked against the directory again when its candidates are published.
+      await createProcessingJob(suffix);
+      await prisma.$executeRaw`UPDATE business_stores SET official_name = ${name}
+        WHERE org_id = ${orgId} AND enterprise_key = 'synthetic' AND name = ${originalName}`;
+      const publish = (storeName: string) =>
+        repository.publishSourceAtomically({
+          orgId,
+          jobId: `pjob_${suffix}`,
+          lease: leases.get(`pjob_${suffix}`)!,
+          totalRowCount: 3n,
+          candidates: [
+            candidate({
+              id: `part_${suffix}`,
+              merchantId: null,
+              storeName,
+              storeKey: `name:${storeName.toLowerCase()}`,
+              businessDate,
+              checksumSha256: String(index + 1).repeat(64),
+              objectKey: `structured-partitions/${orgId}/${suffix}.csv`
+            })
+          ]
+        });
+      await expect(publish(previousName)).rejects.toMatchObject({
+        code: "FORMAL_STORE_NAME_INVALID"
+      });
+      await publish(name);
+      expect(
+        await prisma.structuredPartition.findUniqueOrThrow({ where: { id: original.id } })
+      ).toMatchObject({ storeKey: original.storeKey, storeName: name });
+      expect(
+        await prisma.structuredPartition.count({
+          where: { orgId, storeName: { in: [originalName, "Renamed fallback", "Final fallback"] } }
+        })
+      ).toBe(1);
+      previousName = name;
+    }
+  });
+
+  async function registerStore(name: string, enterpriseKey = "synthetic") {
+    await prisma.$executeRaw`
+      INSERT INTO business_stores (org_id, enterprise_key, name, official_name, store_id, confirmation)
+      VALUES (${orgId}, ${enterpriseKey}, ${name}, ${name}, UUID(), 'confirmed')
+    `;
+  }
+
+  async function createProcessingJob(suffix: string, enterpriseKey = "synthetic") {
     const jobId = `pjob_${suffix}`;
     await repository.reserveUpload({
       id: jobId,
       orgId,
       uploaderId: userAccountId,
       dataset: "business",
-      enterpriseKey: "synthetic",
+      enterpriseKey,
       enterpriseName: "Synthetic",
       confidentialityLevel: 0,
       idempotencyKey: `idem_${suffix}`,

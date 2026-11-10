@@ -11,6 +11,7 @@ import {
   type PartitionDatasetName,
   type AuthorizationSnapshot
 } from "@smedc/domain";
+import { FormalStoreIntakeError, requireFormalStoreForIntake } from "./formal-store-intake.js";
 import { compileStructuredReadScope } from "./business-authorization-sql.js";
 import {
   bindHistoricalSupplementIntent,
@@ -59,6 +60,7 @@ export interface PartitionCandidate extends CurrentPartitionState {
   dataset: PartitionDatasetName;
   storeKey: string;
   businessDate: string;
+  sourceRowNumber?: number;
 }
 
 export function decidePartitionReplacement(
@@ -317,7 +319,6 @@ export function createPrismaStructuredPartitionRepository(
         async (tx) => {
           await lockOrderScopeControl(tx, input.orgId);
           await requireCurrentUploadAdmin(tx, input.orgId, input.actorId);
-          await requireOrderScopeStores(tx, input.orgId, enterprise.enterpriseKey, storeNames);
           const selection = {
             orgId: input.orgId,
             enterpriseKey: enterprise.enterpriseKey,
@@ -620,18 +621,6 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async publishSourceAtomically(input) {
-      const identities = new Set<string>();
-      for (const candidate of input.candidates) {
-        if (candidate.orgId !== input.orgId)
-          throw new StructuredPartitionRepositoryError("PARTITION_ORG_MISMATCH");
-        const key = `${candidate.enterpriseKey}\u0000${candidate.dataset}\u0000${candidate.storeKey}\u0000${candidate.businessDate}`;
-        if (identities.has(key))
-          throw new StructuredPartitionRepositoryError("PARTITION_DUPLICATE_CANDIDATE");
-        identities.add(key);
-      }
-      const sorted = [...input.candidates].sort((left, right) =>
-        identityLockKey(left).localeCompare(identityLockKey(right))
-      );
       return retryIdempotentDatabaseOperation(async () =>
         prisma.$transaction(
           async (tx) => {
@@ -665,12 +654,11 @@ export function createPrismaStructuredPartitionRepository(
                 transition.sourceChecksumSha256 !== job.sourceChecksumSha256
               )
                 throw new StructuredPartitionRepositoryError("ORDER_SCOPE_CONFLICT");
-              await verifyOrderScopeSnapshot(tx, transition, input.candidates);
             }
             if (
-              job.dataset === "in_store_orders" &&
               input.candidates.some(
                 (candidate) =>
+                  candidate.orgId !== job.orgId ||
                   candidate.dataset !== job.dataset ||
                   candidate.enterpriseKey !== job.enterpriseKey ||
                   effectiveOrderScope(candidate.dataset, candidate.orderScope) !==
@@ -705,8 +693,19 @@ export function createPrismaStructuredPartitionRepository(
               throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
             if (!input.candidates.length || input.totalRowCount <= 0n)
               throw new StructuredPartitionRepositoryError("PARTITION_INVALID_SOURCE");
+            const resolved = await resolvePartitionStores(
+              tx,
+              input.candidates,
+              !!historicalSupplement
+            );
+            if (transition)
+              await verifyOrderScopeSnapshot(
+                tx,
+                transition,
+                resolved.map(({ candidate }) => candidate)
+              );
             const garbage = new Set<string>();
-            for (const candidate of sorted) {
+            for (const { candidate, authorizationStoreKey, directoryStoreId } of resolved) {
               const identity = partitionIdentityWhere(candidate);
               await tx.$queryRaw(
                 Prisma.sql`SELECT id FROM structured_partitions WHERE org_id = ${identity.orgId} AND enterprise_key = ${identity.enterpriseKey} AND dataset = ${identity.dataset} AND store_key = ${identity.storeKey} AND business_date = ${identity.businessDate} FOR UPDATE`
@@ -719,6 +718,20 @@ export function createPrismaStructuredPartitionRepository(
                   }
                 }
               });
+              if (
+                current &&
+                (current.directoryStoreId
+                  ? current.directoryStoreId !== directoryStoreId
+                  : current.storeName !== authorizationStoreKey)
+              )
+                throw new FormalStoreIntakeError(
+                  "PARTITION_STORE_IDENTITY_CONFLICT",
+                  candidate.storeName,
+                  {
+                    field: "store_name",
+                    rowNumber: candidate.sourceRowNumber
+                  }
+                );
               if (
                 current &&
                 candidate.dataset === "in_store_orders" &&
@@ -734,46 +747,39 @@ export function createPrismaStructuredPartitionRepository(
               for (const objectKey of decision.garbageObjectKeys) garbage.add(objectKey);
 
               if (decision.action === "insert") {
-                await tx.structuredPartition.create({ data: partitionCreate(candidate, job.id) });
-              } else if (decision.action === "update_metadata") {
-                await tx.structuredPartition.update({
-                  where: { id: current!.id },
-                  data: { ...partitionMetadata(candidate, job.id), version: { increment: 1 } }
+                await tx.structuredPartition.create({
+                  data: { ...partitionCreate(candidate, job.id), directoryStoreId }
                 });
-              } else if (decision.action === "replace") {
+              } else if (decision.action === "replace" || decision.action === "update_metadata") {
                 await tx.structuredPartition.update({
                   where: { id: current!.id },
                   data: {
                     ...partitionMetadata(candidate, job.id),
-                    objectKey: candidate.objectKey,
+                    directoryStoreId,
+                    ...(decision.action === "replace" ? { objectKey: candidate.objectKey } : {}),
                     version: { increment: 1 }
                   }
                 });
-              }
-              {
-                const persisted = await tx.structuredPartition.findUniqueOrThrow({
-                  where: {
-                    orgId_enterpriseKey_dataset_storeKey_businessDate: {
-                      ...identity,
-                      dataset: identity.dataset as PartitionDataset
-                    }
-                  }
+              } else if (!current!.directoryStoreId) {
+                await tx.structuredPartition.update({
+                  where: { id: current!.id },
+                  data: { directoryStoreId }
                 });
-                await persistPartitionReadRequirement(
-                  tx,
-                  {
-                    orgId: input.orgId,
-                    partitionId: persisted.id,
-                    dataset: persisted.dataset,
-                    enterpriseKey: persisted.enterpriseKey,
-                    storeName: persisted.storeName,
-                    workerId: job.id,
-                    businessDate: persisted.businessDate.toISOString().slice(0, 10),
-                    historicalSupplement
-                  },
-                  authorizationState
-                );
               }
+              await persistPartitionReadRequirement(
+                tx,
+                {
+                  orgId: input.orgId,
+                  partitionId: current?.id ?? candidate.id,
+                  dataset: candidate.dataset,
+                  enterpriseKey: candidate.enterpriseKey,
+                  storeName: authorizationStoreKey,
+                  workerId: job.id,
+                  businessDate: candidate.businessDate,
+                  historicalSupplement
+                },
+                authorizationState
+              );
             }
             for (const objectKey of garbage) {
               await enqueueStorageGarbage(tx, { objectKey, reason: "partition_replaced" });
@@ -1090,6 +1096,80 @@ function toJobRecord(job: {
   };
 }
 
+async function resolvePartitionStores(
+  tx: Prisma.TransactionClient,
+  candidates: PartitionCandidate[],
+  historicalSupplement: boolean
+) {
+  const stores = new Map<string, Awaited<ReturnType<typeof requireFormalStoreForIntake>>>();
+  const identities = new Set<string>();
+  const storeDays = new Set<string>();
+  const resolved = [];
+  for (const candidate of candidates) {
+    const location = { field: "store_name", rowNumber: candidate.sourceRowNumber };
+    let store = stores.get(candidate.storeName);
+    if (!store) {
+      store = await requireFormalStoreForIntake(tx, {
+        orgId: candidate.orgId,
+        enterpriseKey: candidate.enterpriseKey,
+        name: candidate.storeName,
+        historicalSupplement,
+        location
+      });
+      stores.set(candidate.storeName, store);
+    }
+    const storeDay = JSON.stringify([store.storeId, candidate.businessDate]);
+    if (storeDays.has(storeDay))
+      throw new StructuredPartitionRepositoryError("PARTITION_DUPLICATE_CANDIDATE");
+    storeDays.add(storeDay);
+    const proposedKey = candidate.merchantId ? candidate.storeKey : `store:${store.storeId}`;
+    const existing = await tx.$queryRaw<
+      Array<{ storeKey: string; merchantId: string | null; matchesStore: number | bigint }>
+    >(Prisma.sql`
+      SELECT p.store_key AS storeKey, p.merchant_id AS merchantId,
+        (p.directory_store_id = ${store.storeId} OR
+          (p.directory_store_id IS NULL AND BINARY p.store_name = BINARY ${store.storeKey})
+        ) AS matchesStore
+      FROM structured_partitions p
+      WHERE p.org_id = ${candidate.orgId} AND p.enterprise_key = ${candidate.enterpriseKey}
+        AND p.dataset = ${candidate.dataset} AND p.business_date = ${candidate.businessDate}
+      HAVING storeKey = ${proposedKey} OR matchesStore
+      FOR UPDATE
+    `);
+    const current = existing[0];
+    if (
+      existing.length > 1 ||
+      (current &&
+        (!current.matchesStore ||
+          (current.merchantId &&
+            candidate.merchantId &&
+            current.merchantId !== candidate.merchantId)))
+    )
+      throw new FormalStoreIntakeError(
+        "PARTITION_STORE_IDENTITY_CONFLICT",
+        candidate.storeName,
+        location
+      );
+    const value = {
+      ...candidate,
+      storeKey: current?.storeKey ?? proposedKey,
+      merchantId: current?.merchantId ?? candidate.merchantId
+    };
+    const identity = identityLockKey(value);
+    if (identities.has(identity))
+      throw new StructuredPartitionRepositoryError("PARTITION_DUPLICATE_CANDIDATE");
+    identities.add(identity);
+    resolved.push({
+      candidate: value,
+      authorizationStoreKey: store.storeKey,
+      directoryStoreId: store.storeId
+    });
+  }
+  return resolved.sort((left, right) =>
+    identityLockKey(left.candidate).localeCompare(identityLockKey(right.candidate))
+  );
+}
+
 function partitionCreate(candidate: PartitionCandidate, jobId: string) {
   return {
     id: candidate.id,
@@ -1202,14 +1282,24 @@ async function requireOrderScopeStores(
     where: { orgId_enterpriseKey: { orgId, enterpriseKey } }
   });
   const stores = await tx.businessStore.findMany({
-    where: { orgId, enterpriseKey, name: { in: storeNames }, retired: false },
-    select: { name: true }
+    where: {
+      orgId,
+      enterpriseKey,
+      officialName: { in: storeNames },
+      confirmation: "confirmed",
+      retired: false
+    },
+    select: { name: true, officialName: true, storeId: true }
   });
-  if (!enterprise || storeNames.some((name) => !stores.some((store) => store.name === name)))
+  if (
+    !enterprise ||
+    storeNames.some((name) => !stores.some((store) => store.officialName === name))
+  )
     throw new StructuredPartitionRepositoryError(
       "ORDER_SCOPE_CONFLICT",
       "Transition stores must match the registered enterprise and exact active store names."
     );
+  return stores.filter((store) => storeNames.includes(store.officialName));
 }
 async function orderScopeSnapshot(
   tx: Prisma.TransactionClient,
@@ -1221,18 +1311,30 @@ async function orderScopeSnapshot(
     storeNames: string[];
   }
 ) {
+  const stores = await requireOrderScopeStores(
+    tx,
+    selection.orgId,
+    selection.enterpriseKey,
+    selection.storeNames
+  );
+  const namesById = new Map(stores.map((store) => [store.storeId, store.officialName]));
+  const namesByKey = new Map(stores.map((store) => [store.name, store.officialName]));
   const rows = await tx.structuredPartition.findMany({
     where: {
       orgId: selection.orgId,
       enterpriseKey: selection.enterpriseKey,
       dataset: "in_store_orders",
-      storeName: { in: selection.storeNames },
+      OR: [
+        { directoryStoreId: { in: [...namesById.keys()] } },
+        { directoryStoreId: null, storeName: { in: [...namesByKey.keys()] } }
+      ],
       businessDate: { gte: selection.startDate, lte: selection.endDate }
     },
     orderBy: [{ businessDate: "asc" }, { storeKey: "asc" }],
     take: 2001,
     select: {
       id: true,
+      directoryStoreId: true,
       storeKey: true,
       storeName: true,
       businessDate: true,
@@ -1246,13 +1348,21 @@ async function orderScopeSnapshot(
       "ORDER_SCOPE_PREVIEW_LIMIT",
       "Narrow the transition range to at most 2000 partitions."
     );
-  return rows
-    .filter((row) => selection.storeNames.includes(row.storeName))
-    .map((row) => ({
-      ...row,
-      businessDate: row.businessDate.toISOString().slice(0, 10),
-      orderScope: effectiveOrderScope("in_store_orders", row.orderScope)!
-    }));
+  return rows.flatMap(({ directoryStoreId, storeName, ...row }) => {
+    const officialName = directoryStoreId
+      ? namesById.get(directoryStoreId)
+      : namesByKey.get(storeName);
+    return officialName === undefined
+      ? []
+      : [
+          {
+            ...row,
+            storeName: officialName,
+            businessDate: row.businessDate.toISOString().slice(0, 10),
+            orderScope: effectiveOrderScope("in_store_orders", row.orderScope)!
+          }
+        ];
+  });
 }
 type StoredOrderScopePreview = Prisma.OrderScopeTransitionPreviewGetPayload<Record<string, never>>;
 async function verifyOrderScopeSnapshot(
@@ -1329,12 +1439,6 @@ async function confirmedOrderScopePreview(
       "ORDER_SCOPE_CONFLICT",
       "Transition confirmation does not match this source and current administrator."
     );
-  await requireOrderScopeStores(
-    tx,
-    input.orgId,
-    input.enterpriseKey,
-    preview.storeNames as string[]
-  );
   await verifyOrderScopeSnapshot(tx, preview);
   return preview;
 }

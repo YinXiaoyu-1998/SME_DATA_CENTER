@@ -77,6 +77,7 @@ export interface DocumentStatusRecord {
   sourceTime: Date | null;
   confidentialityLevel: number;
   processingRunStatus: string | null;
+  processingFormalStoreError?: { code: string; message: string };
   documentIndexStatus: string | null;
   documentIndexRetrievalConfigVersion: string | null;
 }
@@ -121,7 +122,9 @@ const documentStatusInclude = {
     },
     take: 1,
     select: {
-      status: true
+      status: true,
+      errorCode: true,
+      errorSummary: true
     }
   },
   indexes: {
@@ -364,7 +367,14 @@ export function createPrismaDocumentCatalogRepository(
 function toDocumentStatusRecord(
   document: Prisma.DocumentGetPayload<{ include: typeof documentStatusInclude }>
 ): DocumentStatusRecord {
+  const run = document.processingRuns[0];
+  const formalStoreError =
+    run?.errorCode === "FORMAL_STORE_NAME_INVALID" ||
+    run?.errorCode === "RESOURCE_DIRECTORY_RETIRED";
   return {
+    ...(formalStoreError && run.errorSummary
+      ? { processingFormalStoreError: { code: run.errorCode!, message: run.errorSummary } }
+      : {}),
     readRequirements: document.businessResources.map((resource) => ({
       ...toResourceReadRequirement(resource),
       valid: resource.valid && document.status === DocumentStatus.active && !document.archivedAt

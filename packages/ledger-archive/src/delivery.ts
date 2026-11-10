@@ -1,3 +1,4 @@
+import { ledgerStoreKeySql } from "./store-identity.js";
 import { Readable } from "node:stream";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -828,7 +829,7 @@ export function createPrismaLedgerDeliveryRepository({
         );
     else {
       const names = await tx.$queryRaw<{ supplierName: string | null }[]>(
-        Prisma.sql`SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.supplier_name')) AS supplierName FROM delivery_ledger_rows r JOIN documents d ON d.id=r.source_document_id AND d.org_id=r.org_id JOIN import_batches b ON b.id=r.import_batch_id AND b.org_id=r.org_id WHERE r.org_id=${key.orgId} AND d.status='active' AND d.archived_at IS NULL AND b.status='applied' AND b.archived_at IS NULL AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.store_name')) AS BINARY)=CAST(${key.storeName} AS BINARY) AND JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.purchase_date'))=${key.purchaseDate} LIMIT 10001`
+        Prisma.sql`SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.supplier_name')) AS supplierName FROM delivery_ledger_rows r JOIN documents d ON d.id=r.source_document_id AND d.org_id=r.org_id JOIN import_batches b ON b.id=r.import_batch_id AND b.org_id=r.org_id WHERE r.org_id=${key.orgId} AND d.status='active' AND d.archived_at IS NULL AND b.status='applied' AND b.archived_at IS NULL AND CAST(${ledgerStoreKeySql} AS BINARY)=CAST(${key.storeName} AS BINARY) AND JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.purchase_date'))=${key.purchaseDate} LIMIT 10001`
       );
       const supplierNames = names.flatMap((n) =>
         nullableValue(n.supplierName) === null ? [] : [String(n.supplierName)]

@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { ResourceAttributesError, StoreReviewRepositoryError } from "@smedc/db";
+import {
+  FormalStoreIntakeError,
+  ResourceAttributesError,
+  StoreReviewRepositoryError
+} from "@smedc/db";
 import {
   STORE_REVIEW_LIMITS,
   StoreReviewValidationError,
@@ -90,8 +94,13 @@ export function registerStoreReviewRoutes(
                   phase3ErrorResponse(
                     request,
                     error.code,
-                    "Store reviews are unavailable for this request.",
-                    error instanceof StoreReviewRepositoryError ? error.details : {}
+                    error instanceof FormalStoreIntakeError
+                      ? error.message
+                      : "Store reviews are unavailable for this request.",
+                    error instanceof StoreReviewRepositoryError ||
+                      error instanceof FormalStoreIntakeError
+                      ? error.details
+                      : {}
                   )
                 );
             }
