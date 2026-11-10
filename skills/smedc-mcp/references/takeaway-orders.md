@@ -3,7 +3,7 @@
 ## Release prerequisite
 
 `takeaway_orders` (平台外卖订单明细) is supported by published, independently verified
-launcher `0.16.0`, the approved exact installation pin. Confirm matching service deployment and
+launcher `0.17.0`, the approved exact installation pin. Confirm matching service deployment and
 current independent category grants. Package publication, static tools/list or successful login
 alone does not establish service or tenant readiness.
 
