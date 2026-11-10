@@ -12,7 +12,7 @@ import {
   type WorkflowConfiguration,
   type EnterpriseIntegrationConfiguration
 } from "@smedc/domain";
-import type { WorkflowMcpInputs } from "@smedc/mcp-contract";
+import type { WorkflowOperationInputs } from "@smedc/mcp-contract";
 import {
   audit,
   dbType,
@@ -28,7 +28,7 @@ import {
 export async function ensureWorkflow(
   tx: Tx,
   actor: Actor,
-  input: WorkflowMcpInputs["get_enterprise_workflow"]
+  input: WorkflowOperationInputs["get_enterprise_workflow"]
 ) {
   const enterprise = await tx.businessEnterpriseIdentity.findUnique({
     where: { orgId_enterpriseKey: { orgId: actor.orgId, enterpriseKey: input.enterpriseKey } }
@@ -240,7 +240,7 @@ export async function prepareChange(
   tx: Tx,
   actor: Actor,
   workflow: Workflow,
-  input: WorkflowMcpInputs["prepare_enterprise_workflow_change"],
+  input: WorkflowOperationInputs["prepare_enterprise_workflow_change"],
   now: Date
 ) {
   const shared = await integration(tx, workflow);
@@ -309,7 +309,7 @@ export async function saveChange(
   tx: Tx,
   actor: Actor,
   workflow: Workflow,
-  input: WorkflowMcpInputs["save_enterprise_workflow"],
+  input: WorkflowOperationInputs["save_enterprise_workflow"],
   now: Date
 ) {
   const shared = await integration(tx, workflow);

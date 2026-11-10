@@ -1,6 +1,10 @@
 import { z } from "zod";
-import { workflowReadinessCheckSchema, workflowHostSnapshotSchema } from "@smedc/domain";
-import { ENTERPRISE_WORKFLOW_LAUNCHER_VERSION, type WorkflowMcpInputs } from "@smedc/mcp-contract";
+import {
+  WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION,
+  workflowReadinessCheckSchema,
+  workflowHostSnapshotSchema
+} from "@smedc/domain";
+import type { WorkflowOperationInputs } from "@smedc/mcp-contract";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 import { audit, fail, hash, id, json, type Actor, type Tx, type Workflow } from "./repository.js";
 import { configuration, integration, validateConfiguration } from "./configuration.js";
@@ -72,7 +76,7 @@ export async function requireReady(
     (await integration(tx, workflow)).configuration
   );
   if (
-    !launcherVersionAtLeast(row.launcherVersion, ENTERPRISE_WORKFLOW_LAUNCHER_VERSION) ||
+    !launcherVersionAtLeast(row.launcherVersion, WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION) ||
     !supportsWorkflowPackageVersion(row.workflowPackageVersion)
   )
     fail("WORKFLOW_VERSION_INCOMPATIBLE");
@@ -111,7 +115,7 @@ export async function installOperation(
   tx: Tx,
   actor: Actor,
   workflow: Workflow,
-  op: WorkflowMcpInputs["manage_workflow_installation"]["operation"],
+  op: WorkflowOperationInputs["manage_workflow_installation"]["operation"],
   now: Date
 ) {
   if (op.kind === "register") {

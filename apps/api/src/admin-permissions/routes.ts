@@ -6,7 +6,7 @@ import {
   type BusinessGrant,
   type BusinessScopeItem
 } from "@smedc/domain";
-import { WORKFLOW_MCP_TOOL_NAMES, type WorkflowMcpInputs } from "@smedc/mcp-contract";
+import { WORKFLOW_OPERATION_NAMES, type WorkflowOperationInputs } from "@smedc/mcp-contract";
 import {
   getWebApiRoute,
   permissionAccountUpdateBody,
@@ -67,7 +67,7 @@ function jsonSafe(value: unknown): unknown {
   );
 }
 
-const workflowRouteIds: Record<keyof WorkflowMcpInputs, string> = {
+const workflowRouteIds: Record<keyof WorkflowOperationInputs, string> = {
   list_enterprise_workflows: "workflows.listEnterpriseWorkflows",
   get_enterprise_workflow: "workflows.getEnterpriseWorkflow",
   prepare_enterprise_workflow_change: "workflows.prepareEnterpriseWorkflowChange",
@@ -449,7 +449,7 @@ export function registerAdminPermissionsRoutes(
 
   if (!options.workflows) return;
   const workflows = options.workflows;
-  for (const tool of WORKFLOW_MCP_TOOL_NAMES) {
+  for (const tool of WORKFLOW_OPERATION_NAMES) {
     registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute(workflowRouteIds[tool]), {
       authenticate,
       verifyWrite,
@@ -462,10 +462,14 @@ export function registerAdminPermissionsRoutes(
         }
         try {
           // 服务层继续负责管理员复核、版本校验与审计归属。
-          const result = await workflows().execute(tool, body as WorkflowMcpInputs[typeof tool], {
-            id: principal.id,
-            orgId
-          });
+          const result = await workflows().execute(
+            tool,
+            body as WorkflowOperationInputs[typeof tool],
+            {
+              id: principal.id,
+              orgId
+            }
+          );
           return jsonSafe(result);
         } catch (error) {
           return respondWorkflowError(error, reply);

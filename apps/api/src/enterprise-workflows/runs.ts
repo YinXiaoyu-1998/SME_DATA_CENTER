@@ -10,7 +10,7 @@ import {
   type WorkflowRunSnapshot,
   type AuthorizationSnapshot
 } from "@smedc/domain";
-import type { WorkflowMcpInputs } from "@smedc/mcp-contract";
+import type { WorkflowOperationInputs } from "@smedc/mcp-contract";
 import {
   audit,
   fail,
@@ -144,7 +144,7 @@ export async function runOperation(
   actor: Actor,
   auth: AuthorizationSnapshot,
   workflow: Workflow,
-  op: WorkflowMcpInputs["manage_workflow_run"]["operation"],
+  op: WorkflowOperationInputs["manage_workflow_run"]["operation"],
   now: Date
 ) {
   if (!["release", "finish", "record_summary"].includes(op.kind) && auth.mode !== "enabled")

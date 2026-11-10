@@ -5,7 +5,7 @@ import { requireBinding } from "./runs.js";
 import { installOperation } from "./installations.js";
 import { scheduledWindow, runOperation, runView } from "./runs.js";
 import type { PrismaClient } from "@prisma/client";
-import { WORKFLOW_MCP_INPUT_SCHEMAS, type WorkflowMcpToolName } from "@smedc/mcp-contract";
+import { WORKFLOW_OPERATION_INPUT_SCHEMAS, type WorkflowOperationName } from "@smedc/mcp-contract";
 import { dbType, transaction, lockWorkflow, fail, type Actor } from "./repository.js";
 import { ensureWorkflow, prepareChange, saveChange, view } from "./configuration.js";
 import { canonicalWebOrigin } from "../config/origins.js";
@@ -87,11 +87,11 @@ export function createEnterpriseWorkflowService(options: {
   return {
     pruneRetention,
     disconnect: options.disconnect,
-    async execute(tool: WorkflowMcpToolName, raw: unknown, actor: Actor): Promise<unknown> {
+    async execute(tool: WorkflowOperationName, raw: unknown, actor: Actor): Promise<unknown> {
       return transaction(options.prisma, actor, async (tx, auth) => {
         const now = options.now?.() ?? new Date();
         if (tool === "list_enterprise_workflows") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           const limit = input.limit ?? 25;
           const rows = await tx.enterpriseWorkflow.findMany({
             where: {
@@ -118,12 +118,12 @@ export function createEnterpriseWorkflowService(options: {
           };
         }
         if (tool === "prepare_enterprise_workflow_change") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           const workflow = await ensureWorkflow(tx, actor, input);
           return prepareChange(tx, actor, await lockWorkflow(tx, actor, workflow.id), input, now);
         }
         if (tool === "get_enterprise_workflow" || tool === "save_enterprise_workflow") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           const found = await tx.enterpriseWorkflow.findUnique({
             where: {
               orgId_enterpriseKey_type: {
@@ -141,19 +141,19 @@ export function createEnterpriseWorkflowService(options: {
                 tx,
                 actor,
                 workflow,
-                WORKFLOW_MCP_INPUT_SCHEMAS.save_enterprise_workflow.parse(raw),
+                WORKFLOW_OPERATION_INPUT_SCHEMAS.save_enterprise_workflow.parse(raw),
                 now
               );
         }
         if (tool === "manage_workflow_installation") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           const workflow = await lockWorkflow(tx, actor, input.workflowId);
           return input.operation.kind.startsWith("migration_")
             ? migrationOperation(tx, actor, workflow, input.operation, now)
             : installOperation(tx, actor, workflow, input.operation, now);
         }
         if (tool === "manage_workflow_run") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           const workflow = await lockWorkflow(tx, actor, input.workflowId);
           if (input.operation.kind === "check_actions") {
             const bound = await requireBinding(tx, actor, workflow, input.operation, now);
@@ -172,7 +172,7 @@ export function createEnterpriseWorkflowService(options: {
           return runOperation(tx, actor, auth, workflow, input.operation, now);
         }
         if (tool === "record_workflow_action") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           return actionOperation(
             tx,
             actor,
@@ -183,7 +183,7 @@ export function createEnterpriseWorkflowService(options: {
           );
         }
         if (tool === "get_workflow_status") {
-          const input = WORKFLOW_MCP_INPUT_SCHEMAS[tool].parse(raw);
+          const input = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].parse(raw);
           const workflow = await lockWorkflow(tx, actor, input.workflowId);
           const limit = input.limit ?? 25;
           const runs = await tx.workflowRun.findMany({

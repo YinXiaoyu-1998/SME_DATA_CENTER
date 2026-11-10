@@ -41,12 +41,9 @@ describe("action MCP tool handlers", () => {
       "upsert_store_reviews",
       "prepare_ledger_pdf_download",
       "update_account_permissions",
-      "create_evidence_category",
-      "update_business_category",
-      "create_business_dimension",
-      "update_business_dimension",
-      "create_business_dimension_value",
-      "update_business_dimension_value",
+      "configure_business_category",
+      "configure_business_dimension",
+      "configure_business_dimension_value",
       "update_business_store",
       "update_evidence_document_attributes",
       "activate_authorization_cutover",
@@ -111,54 +108,6 @@ it.each([
     "/v1/admin/permissions/accounts/employee%2F1",
     { employeeId: "employee/1", expectedVersion: "7", clearance: 2, grants: [] },
     ["employeeId"]
-  ],
-  [
-    "create_evidence_category",
-    "POST",
-    "/v1/admin/permissions/categories",
-    {
-      id: "memo",
-      name: "Memo",
-      expectedVersion: "7",
-      ownerships: ["group"],
-      requiredDimensionIds: []
-    },
-    []
-  ],
-  [
-    "update_business_category",
-    "PATCH",
-    "/v1/admin/permissions/categories/category%2F1",
-    { categoryId: "category/1", name: "Business", expectedVersion: "7", confidentialityLevel: 2 },
-    ["categoryId"]
-  ],
-  [
-    "create_business_dimension",
-    "POST",
-    "/v1/admin/permissions/dimensions",
-    { id: "project", name: "Project", expectedVersion: "7" },
-    []
-  ],
-  [
-    "update_business_dimension",
-    "PATCH",
-    "/v1/admin/permissions/dimensions/project%2F1",
-    { dimensionId: "project/1", name: "Project", expectedVersion: "7" },
-    ["dimensionId"]
-  ],
-  [
-    "create_business_dimension_value",
-    "POST",
-    "/v1/admin/permissions/dimensions/project%2F1/values",
-    { dimensionId: "project/1", id: "X", name: "X", expectedVersion: "7" },
-    ["dimensionId"]
-  ],
-  [
-    "update_business_dimension_value",
-    "PATCH",
-    "/v1/admin/permissions/dimensions/project%2F1/values/X%2F1",
-    { dimensionId: "project/1", valueId: "X/1", name: "X", expectedVersion: "7" },
-    ["dimensionId", "valueId"]
   ],
   [
     "update_business_store",

@@ -5,7 +5,11 @@ import {
   errorToolResult,
   validationErrorToolResult
 } from "@smedc/mcp-contract";
-import { delegateJsonApiRequest, type ApiDelegationContext } from "./api-delegation.js";
+import {
+  delegateJsonApiRequest,
+  type ApiDelegationContext,
+  type DelegateJsonApiRequest
+} from "./api-delegation.js";
 import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 export function createWorkflowMcpToolHandlers(context: ApiDelegationContext): SmedcMcpToolHandlers {
@@ -30,9 +34,24 @@ export function createWorkflowMcpToolHandlers(context: ApiDelegationContext): Sm
               message: issue.message
             }))
           );
+        const { data } = parsed;
+        let route: DelegateJsonApiRequest;
+        if ("query" in data) {
+          const { mode, ...body } = data.query;
+          route = {
+            method: "POST",
+            path:
+              mode === "list"
+                ? "/v1/admin/workflows/list_enterprise_workflows"
+                : "/v1/admin/workflows/get_enterprise_workflow",
+            body
+          };
+        } else {
+          route = { method: "POST", path: `/v1/admin/workflows/${tool}`, body: data };
+        }
         return delegateJsonApiRequest(
           { ...context, audit, abortSignal: request.abortSignal ?? context.abortSignal },
-          { method: "POST", path: `/v1/admin/workflows/${tool}`, body: parsed.data }
+          route
         );
       }
     ])

@@ -21,6 +21,7 @@ import {
   AUTHORIZATION_READ_ADAPTERS
 } from "./business-authorization-cutover.js";
 import { createPrismaSourceDocumentRepository } from "./source-documents.js";
+import { buildApiServer } from "./server.js";
 const run = process.env["RUN_BUSINESS_AUTHORIZATION_PRISMA_INTEGRATION"] === "1";
 const url = process.env["DATABASE_URL"] ?? "";
 if (run) {
@@ -261,6 +262,155 @@ suite("atomic tenant authorization cutover", () => {
     });
   });
   afterAll(() => prisma.$disconnect());
+  it("dispatches MCP directory configuration as versioned creates or updates within the current tenant", async () => {
+    const employee = {
+      id: actorId,
+      orgId,
+      email: "mcp-config@example.invalid",
+      displayName: "Synthetic",
+      organizationName: "Synthetic",
+      role: "admin" as const,
+      disabled: false,
+      clearance: 3
+    };
+    const app = buildApiServer({
+      logger: false,
+      cursorSigningSecret: "synthetic-test-secret",
+      authenticateAccessToken: async () => employee,
+      businessAuthorizationService: createBusinessAuthorizationService(repository)
+    });
+    const mcp = async (name: string, args: unknown) => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          host: "127.0.0.1:3000",
+          authorization: "Bearer synthetic",
+          accept: "application/json, text/event-stream",
+          "x-smedc-launcher-version": "0.17.0"
+        },
+        payload: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const result = response.json().result;
+      return result.isError
+        ? { error: JSON.parse(result.content[0].text).error }
+        : JSON.parse(result.content[0].text);
+    };
+    try {
+      const directory = (section: string) => mcp("get_permission_directory", { section });
+      const category = (operation: unknown, expectedVersion: string) =>
+        mcp("configure_business_category", { operation, expectedVersion });
+      const before = await directory("categories");
+      const fixed = {
+        kind: "update_fixed",
+        categoryId: "vip",
+        name: "VIP",
+        confidentialityLevel: 2
+      };
+      const evidence = {
+        kind: "create_evidence",
+        id: "memo/policies",
+        name: "Memos",
+        ownerships: ["group"],
+        requiredDimensionIds: []
+      };
+      expect(await directory("stores")).toEqual({
+        authorizationVersion: before.authorizationVersion,
+        stores: []
+      });
+      const created = await category(evidence, before.authorizationVersion);
+      expect(created.value).toMatchObject({ id: "memo/policies", kind: "evidence" });
+      const configured = await category(fixed, created.authorizationVersion);
+      expect(configured.value).toMatchObject({ id: "vip", kind: "fixed", confidentialityLevel: 2 });
+      const evidenceUpdate = {
+        kind: "update_evidence",
+        categoryId: "memo/policies",
+        name: "Updated memos",
+        ownerships: ["store"],
+        requiredDimensionIds: []
+      };
+      expect(await category(evidenceUpdate, created.authorizationVersion)).toMatchObject({
+        error: { code: "AUTHORIZATION_VERSION_CONFLICT" }
+      });
+      const unchanged = await directory("categories");
+      expect(unchanged.authorizationVersion).toBe(configured.authorizationVersion);
+      expect(unchanged.categories).toContainEqual(
+        expect.objectContaining({ id: "memo/policies", name: "Memos", allowGroup: true })
+      );
+      const updated = await category(evidenceUpdate, unchanged.authorizationVersion);
+      expect(updated.value).toMatchObject({
+        id: "memo/policies",
+        name: "Updated memos",
+        allowStore: true
+      });
+      for (const operation of [
+        evidence,
+        { ...fixed, categoryId: "memo/policies" },
+        { ...evidenceUpdate, categoryId: "vip" }
+      ]) {
+        expect(await category(operation, updated.authorizationVersion)).toMatchObject({
+          error: { code: "INVALID_PERMISSION_CONFIGURATION" }
+        });
+      }
+      expect(
+        await category({ ...fixed, categoryId: "absent" }, updated.authorizationVersion)
+      ).toMatchObject({ error: { code: "CATEGORY_NOT_FOUND" } });
+
+      const dimension = (kind: string, name: string, expectedVersion: string) =>
+        mcp("configure_business_dimension", {
+          expectedVersion,
+          operation: { kind, name, dimensionId: "geo/sales" }
+        });
+      const value = (kind: string, name: string, expectedVersion: string) =>
+        mcp("configure_business_dimension_value", {
+          expectedVersion,
+          operation: { kind, name, dimensionId: "geo/sales", valueId: "east/coast" }
+        });
+      expect(await dimension("update", "Region", updated.authorizationVersion)).toMatchObject({
+        error: { code: "INVALID_PERMISSION_CONFIGURATION" }
+      });
+      const newDimension = await dimension("create", "Region", updated.authorizationVersion);
+      expect(newDimension.value).toMatchObject({ id: "geo/sales", name: "Region" });
+      const changedDimension = await dimension(
+        "update",
+        "Business region",
+        newDimension.authorizationVersion
+      );
+      expect(changedDimension.value).toMatchObject({ id: "geo/sales", name: "Business region" });
+      expect(await value("update", "East", changedDimension.authorizationVersion)).toMatchObject({
+        error: { code: "INVALID_PERMISSION_CONFIGURATION" }
+      });
+      const newValue = await value("create", "East", changedDimension.authorizationVersion);
+      expect(newValue.value).toMatchObject({
+        id: "east/coast",
+        dimensionId: "geo/sales",
+        name: "East"
+      });
+      expect(await value("create", "East", newValue.authorizationVersion)).toMatchObject({
+        error: { code: "INVALID_PERMISSION_CONFIGURATION" }
+      });
+      const changedValue = await value("update", "Eastern region", newValue.authorizationVersion);
+      expect(changedValue.value).toMatchObject({ id: "east/coast", name: "Eastern region" });
+      expect(await directory("dimensions")).toMatchObject({
+        authorizationVersion: changedValue.authorizationVersion,
+        dimensions: [
+          {
+            id: "geo/sales",
+            name: "Business region",
+            values: [{ id: "east/coast", name: "Eastern region" }]
+          }
+        ]
+      });
+      await prisma.employee.update({ where: { id: actorId }, data: { role: "employee" } });
+      expect(await category(fixed, changedValue.authorizationVersion)).toMatchObject({
+        error: { code: "AUTHORIZATION_ADMIN_REQUIRED" }
+      });
+    } finally {
+      await app.close();
+    }
+  });
   it("prepares without writes and refuses incomplete adapter activation with no partial version or mode change", async () => {
     const before = await snapshot();
     expect(await service.prepareAuthorizationCutover(orgId)).toMatchObject({

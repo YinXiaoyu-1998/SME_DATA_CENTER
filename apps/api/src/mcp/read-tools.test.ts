@@ -78,11 +78,8 @@ describe("read-only MCP tool handlers", () => {
       "get_ledger_pdf_request_status",
       "get_ledger_pdf_download_url",
       "get_my_permissions",
-      "list_account_permissions",
-      "get_account_permissions",
-      "list_business_categories",
-      "list_business_dimensions",
-      "list_business_stores",
+      "query_account_permissions",
+      "get_permission_directory",
       "get_evidence_document_management_status",
       "prepare_authorization_cutover"
     ]);
@@ -668,15 +665,15 @@ it("uses the current call audit context and requires launcher 0.8.1 for prepared
 
 it.each([
   ["get_my_permissions", "/v1/permissions/me", {}],
-  ["list_account_permissions", "/v1/admin/permissions/accounts", {}],
+  ["query_account_permissions", "/v1/admin/permissions/accounts", { query: { mode: "list" } }],
   [
-    "get_account_permissions",
+    "query_account_permissions",
     "/v1/admin/permissions/accounts/employee%2F1",
-    { employeeId: "employee/1" }
+    { query: { mode: "detail", employeeId: "employee/1" } }
   ],
-  ["list_business_categories", "/v1/admin/permissions/categories", {}],
-  ["list_business_dimensions", "/v1/admin/permissions/dimensions", {}],
-  ["list_business_stores", "/v1/admin/permissions/stores", {}],
+  ["get_permission_directory", "/v1/admin/permissions/categories", { section: "categories" }],
+  ["get_permission_directory", "/v1/admin/permissions/dimensions", { section: "dimensions" }],
+  ["get_permission_directory", "/v1/admin/permissions/stores", { section: "stores" }],
   [
     "get_evidence_document_management_status",
     "/v1/admin/documents/evidence/doc%2F1/status",

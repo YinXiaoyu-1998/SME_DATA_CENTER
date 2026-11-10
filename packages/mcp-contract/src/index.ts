@@ -1,7 +1,9 @@
 import {
+  ENTERPRISE_WORKFLOW_LAUNCHER_VERSION,
   WORKFLOW_MCP_INPUT_SCHEMAS,
   WORKFLOW_MCP_TOOL_NAMES,
-  WORKFLOW_TOOL_READ_ONLY
+  WORKFLOW_TOOL_READ_ONLY,
+  type WorkflowMcpToolName
 } from "./enterprise-workflows.js";
 export * from "./enterprise-workflows.js";
 import path from "node:path";
@@ -854,10 +856,27 @@ export const queryStoreReviewsInputSchema = z
     }
   });
 
+const businessDirectoryFields = { name: exactBusinessName, retired: z.boolean().optional() };
+const evidenceCategoryFields = {
+  ownerships: z
+    .array(z.enum(["group", "store"]))
+    .min(1)
+    .max(2),
+  requiredDimensionIds: z.array(permissionId).max(1000)
+};
+const dimensionFields = { dimensionId: permissionId, ...businessDirectoryFields };
+const dimensionValueFields = { ...dimensionFields, valueId: permissionId };
+
 export const PERMISSION_MCP_INPUT_SCHEMAS = {
   get_my_permissions: z.object({}).strict(),
-  list_account_permissions: z.object({}).strict(),
-  get_account_permissions: z.object({ employeeId: permissionId }).strict(),
+  query_account_permissions: z
+    .object({
+      query: z.discriminatedUnion("mode", [
+        z.object({ mode: z.literal("list") }).strict(),
+        z.object({ mode: z.literal("detail"), employeeId: permissionId }).strict()
+      ])
+    })
+    .strict(),
   update_account_permissions: z
     .object({
       employeeId: permissionId,
@@ -866,83 +885,58 @@ export const PERMISSION_MCP_INPUT_SCHEMAS = {
       grants: z.array(permissionGrant).max(1000)
     })
     .strict(),
-  list_business_categories: z.object({}).strict(),
-  create_evidence_category: z
+  get_permission_directory: z
+    .object({ section: z.enum(["categories", "dimensions", "stores"]) })
+    .strict(),
+  configure_business_category: z
     .object({
-      id: permissionId,
-      name: exactBusinessName,
       expectedVersion: permissionVersion,
-      ownerships: z
-        .array(z.enum(["group", "store"]))
-        .min(1)
-        .max(2),
-      requiredDimensionIds: z.array(permissionId).max(1000),
-      retired: z.boolean().optional()
+      operation: z.discriminatedUnion("kind", [
+        z
+          .object({
+            kind: z.literal("create_evidence"),
+            id: permissionId,
+            ...businessDirectoryFields,
+            ...evidenceCategoryFields
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("update_evidence"),
+            categoryId: permissionId,
+            ...businessDirectoryFields,
+            ...evidenceCategoryFields
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("update_fixed"),
+            categoryId: permissionId,
+            ...businessDirectoryFields,
+            confidentialityLevel: z.number().int().min(0).max(3)
+          })
+          .strict()
+      ])
     })
     .strict(),
-  update_business_category: z
+  configure_business_dimension: z
     .object({
-      categoryId: permissionId,
-      name: exactBusinessName,
       expectedVersion: permissionVersion,
-      confidentialityLevel: z.number().int().min(0).max(3).optional(),
-      ownerships: z
-        .array(z.enum(["group", "store"]))
-        .min(1)
-        .max(2)
-        .optional(),
-      requiredDimensionIds: z.array(permissionId).max(1000).optional(),
-      retired: z.boolean().optional()
-    })
-    .strict()
-    .superRefine((v, context) => {
-      if (
-        v.confidentialityLevel !== undefined
-          ? v.ownerships !== undefined || v.requiredDimensionIds !== undefined
-          : !v.ownerships || !v.requiredDimensionIds
-      )
-        context.addIssue({
-          code: "custom",
-          message:
-            "Supply only confidentialityLevel for a fixed category, or ownerships and requiredDimensionIds for evidence."
-        });
-    }),
-  list_business_dimensions: z.object({}).strict(),
-  create_business_dimension: z
-    .object({
-      id: permissionId,
-      name: exactBusinessName,
-      expectedVersion: permissionVersion,
-      retired: z.boolean().optional()
+      operation: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("create"), ...dimensionFields }).strict(),
+        z.object({ kind: z.literal("update"), ...dimensionFields }).strict()
+      ])
     })
     .strict(),
-  update_business_dimension: z
+  configure_business_dimension_value: z
     .object({
-      dimensionId: permissionId,
-      name: exactBusinessName,
       expectedVersion: permissionVersion,
-      retired: z.boolean().optional()
+      operation: z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("create"), ...dimensionValueFields }).strict(),
+        z.object({ kind: z.literal("update"), ...dimensionValueFields }).strict()
+      ])
     })
     .strict(),
-  create_business_dimension_value: z
-    .object({
-      dimensionId: permissionId,
-      id: permissionId,
-      name: exactBusinessName,
-      expectedVersion: permissionVersion,
-      retired: z.boolean().optional()
-    })
-    .strict(),
-  update_business_dimension_value: z
-    .object({
-      dimensionId: permissionId,
-      valueId: permissionId,
-      name: exactBusinessName,
-      expectedVersion: permissionVersion,
-      retired: z.boolean().optional()
-    })
-    .strict(),
-  list_business_stores: z.object({}).strict(),
   update_business_store: z
     .object({
       enterpriseKey: permissionId,
@@ -973,13 +967,15 @@ export const PERMISSION_MCP_INPUT_SCHEMAS = {
 export const PERMISSION_MCP_TOOL_NAMES = Object.keys(PERMISSION_MCP_INPUT_SCHEMAS) as Array<
   keyof typeof PERMISSION_MCP_INPUT_SCHEMAS
 >;
-const permissionReadNames = new Set([
+export type PermissionMcpInputs = {
+  [K in keyof typeof PERMISSION_MCP_INPUT_SCHEMAS]: z.infer<
+    (typeof PERMISSION_MCP_INPUT_SCHEMAS)[K]
+  >;
+};
+const permissionReadNames = new Set<keyof PermissionMcpInputs>([
   "get_my_permissions",
-  "list_account_permissions",
-  "get_account_permissions",
-  "list_business_categories",
-  "list_business_dimensions",
-  "list_business_stores",
+  "query_account_permissions",
+  "get_permission_directory",
   "get_evidence_document_management_status",
   "prepare_authorization_cutover"
 ]);
@@ -1069,6 +1065,52 @@ export const MCP_ERROR_CODES = [
 
 export type McpErrorCode = (typeof MCP_ERROR_CODES)[number];
 
+const workflowToolDescriptions: Record<WorkflowMcpToolName, string> = {
+  query_enterprise_workflows:
+    "List enterprise workflows, launcher capabilities and official settings entries with query.mode=list. Use query.mode=detail with enterpriseKey and workflowType for current configuration and versions. For installations, runs or migrations, use get_workflow_status.",
+  prepare_enterprise_workflow_change:
+    "Preview a proposed workflow configuration, integration, authorization or control change against current versions. Returns a confirmation digest for save_enterprise_workflow.",
+  save_enterprise_workflow:
+    "Commit a prepared workflow change using its preview ID, confirmation digest and expected versions. Applies the confirmed change without running the workflow.",
+  manage_workflow_installation:
+    "Register a workflow host, record checks or host task state, change control ownership, or coordinate migration. Select the specific operation kind to write or retrieve migration records.",
+  manage_workflow_run:
+    "Coordinate a scheduled run or approved backfill on a registered host. Use the operation kind to start, renew, resume, check actions, summarize, finish or release the run. The host executes the work.",
+  record_workflow_action:
+    "Record action intents and receipts, resolve uncertain outcomes or read specific action IDs for a workflow. Keep business content and credentials out of records.",
+  get_workflow_status:
+    "Read a workflow's installation, run, action and migration status by workflowId. Use the returned cursors for subsequent pages. For saved configuration by enterpriseKey and workflowType, use query_enterprise_workflows."
+};
+
+const permissionToolDescriptions: Record<keyof PermissionMcpInputs, string> = {
+  get_my_permissions:
+    "Read your live permission card, including current grants and registered enterprise names for store review reads and writes. Available to employees and administrators.",
+  query_account_permissions:
+    "List employee permission summaries with query.mode=list or retrieve one account's full authorization configuration with query.mode=detail and employeeId. Use update_account_permissions to save a change.",
+  update_account_permissions:
+    "Replace an employee's clearance and complete set of business grants. Use the current expectedVersion. Send an empty grants array to revoke all business grants.",
+  get_permission_directory:
+    "Read one permission directory section: categories, dimensions, or stores. Returns the selected directory and the authorizationVersion used by configuration writes.",
+  configure_business_category:
+    "Create an evidence category by id or update a category by categoryId. Evidence branches require ownerships and requiredDimensionIds. The fixed update branch requires confidentialityLevel. Provide the current expectedVersion.",
+  configure_business_dimension:
+    "Create or update one business dimension by dimensionId with the current expectedVersion. Select create only for an unused ID and update for an existing dimension.",
+  configure_business_dimension_value:
+    "Create or update one value within dimensionId by valueId with the current expectedVersion. Select create only for an unused value ID within the dimension.",
+  update_business_store:
+    "Save or retire an exact store identity for the registered enterpriseKey. Provide the current expectedVersion.",
+  update_evidence_document_attributes:
+    "Replace an evidence document's business category, file confidentiality and complete scopes using the current expectedVersion. These attributes affect ordinary read access.",
+  get_evidence_document_management_status:
+    "Check safe processing and indexing metadata for an evidence document by documentId, including documents outside the administrator's ordinary read grants.",
+  prepare_authorization_cutover:
+    "Check readiness to enable business authorization and report missing configuration or resource attributes. Returns the version used by activate_authorization_cutover.",
+  activate_authorization_cutover:
+    "Enable business authorization and its read checks after readiness passes. Requires the current expectedVersion and confirm=true.",
+  suspend_authorization_reads:
+    "Pause affected ordinary reads for the organization. Requires the current expectedVersion and confirm=true."
+};
+
 export const SMEDC_MCP_TOOL_CONTRACTS = [
   defineToolContract({
     name: "prepare_order_scope_transition",
@@ -1092,15 +1134,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     defineToolContract({
       name,
       title: name.replaceAll("_", " "),
-      description:
-        "Current same-organization admin enterprise workflow coordination. Requires compatible service and launcher 0.16.0+. Does not grant ordinary business reads, execute scripts, or host schedules. Preview is not authorization; mutations verify current control and expected versions.",
+      description: `${workflowToolDescriptions[name]} Requires an active same-organization administrator and launcher ${ENTERPRISE_WORKFLOW_LAUNCHER_VERSION}+.`,
       inputSchema: WORKFLOW_MCP_INPUT_SCHEMAS[name],
       inputFields: Object.entries(WORKFLOW_MCP_INPUT_SCHEMAS[name].shape).map(
         ([field, schema]) => ({
           name: field,
           required: !schema.isOptional(),
-          description:
-            "Strict workflow contract field; organization is derived from current authentication."
+          description: schema.description ?? field
         })
       ),
       resultShape: [
@@ -1128,7 +1168,8 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
   defineToolContract({
     name: "smedc_list_skills",
     title: "List SMEDC skills",
-    description: "List approved Skill Directory entries by calling authenticated GET /skills.",
+    description:
+      "Find approved SMEDC skills by keyword or exact category and read their requirements and setup guidance.",
     inputSchema: listSkillsInputSchema,
     inputFields: [
       { name: "q", required: false, description: "Keyword query." },
@@ -1140,7 +1181,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "search_document_evidence",
     title: "Search SMEDC evidence chunks",
     description:
-      "Return authorized evidence chunks by calling authenticated POST /v1/evidence/search; never generates answers.",
+      "Search the contents of evidence documents you can read. Returns matching passages, source locations and source-file download status.",
     inputSchema: searchDocumentEvidenceInputSchema,
     inputFields: [
       { name: "query", required: true, description: "Evidence search query." },
@@ -1160,7 +1201,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "list_structured_datasets",
     title: "List SMEDC structured datasets",
     description:
-      "Discover registry-backed structured datasets by calling authenticated GET /v1/structured/datasets. Field canonicalName values are the structured-query field names; sourceColumn and aliases are for mapping user-facing/source labels to canonicalName and for result presentation.",
+      "Discover structured datasets, supported operators and query limits. Use canonicalName in queries and use sourceColumn and aliases to recognize labels in source files.",
     inputSchema: listStructuredDatasetsInputSchema,
     inputFields: [],
     resultShape: [
@@ -1172,7 +1213,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "query_structured_dataset",
     title: "Query SMEDC structured dataset",
     description:
-      "Execute a controlled read-only structured query by calling authenticated POST /v1/structured/query. cost_cards supports scalar directory fields only; download complete CSVs for local recipe/item/store analysis. Prices and revisions remain strings.",
+      "Read authorized structured rows or explicit aggregations with canonical fields from list_structured_datasets. The cost_cards dataset returns scalar directory fields and string prices/revisions. Use download_cost_cards for complete recipe, item and store details.",
     inputSchema: queryStructuredDatasetInputSchema,
     inputFields: [
       {
@@ -1224,7 +1265,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "describe_structured_dataset_coverage",
     title: "Describe SMEDC structured dataset coverage",
     description:
-      "Return readable applied structured source coverage facts by calling authenticated GET /v1/structured/datasets/:dataset/coverage. This tool reports sources only; clients decide completeness and reporting sufficiency.",
+      "Inspect applied source windows or snapshots you can read for a structured dataset. Use this to check source coverage before analysis. For cost cards it returns catalog counts and source IDs.",
     inputSchema: describeStructuredDatasetCoverageInputSchema,
     inputFields: [
       {
@@ -1273,7 +1314,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_partition_import_status",
     title: "Get partition import status",
     description:
-      "Return the current status of one business/dishes/in_store_orders/takeaway_orders partition import job.",
+      "Poll a business, dishes, in-store order or takeaway order import by partitionImportJobId until it reaches a terminal status. For row imports identified by importBatchId, use get_import_status.",
     inputSchema: partitionImportStatusInputSchema,
     inputFields: [
       { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
@@ -1412,7 +1453,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_evidence_document",
     title: "Upload SMEDC evidence document",
     description:
-      "Upload MD/TXT/DOCX evidence by calling authenticated multipart POST /v1/documents/evidence. Requires the admin role.",
+      "Upload a local MD, TXT or DOCX evidence file for indexing. Requires the admin role. Supply the applicable evidence category, confidentiality and business scopes. Poll get_evidence_document_status with the returned document ID.",
     inputSchema: uploadEvidenceDocumentInputSchema,
     inputFields: Object.entries(uploadEvidenceDocumentInputSchema.shape).map(([name, schema]) => ({
       name,
@@ -1425,7 +1466,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_quarantine_certificate",
     title: "Upload SMEDC quarantine certificate",
     description:
-      "Upload one JPG/PNG quarantine certificate linked to a receipt ID by calling authenticated multipart POST /v1/documents/quarantine-certificates. Requires the admin role.",
+      "Upload one local JPG or PNG quarantine certificate linked to an exact receipt ID. Requires the admin role. Supply the applicable enterprise and store scope.",
     inputSchema: uploadQuarantineCertificateInputSchema,
     inputFields: Object.entries(uploadQuarantineCertificateInputSchema.shape).map(
       ([name, schema]) => ({
@@ -1447,7 +1488,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "query_quarantine_certificates",
     title: "Query SMEDC quarantine certificates",
     description:
-      "Query visible quarantine certificates by receipt IDs using authenticated POST /v1/quarantine-certificates/query.",
+      "Find quarantine certificates you can read for one or more exact receipt IDs. Results group matching certificates by receipt.",
     inputSchema: queryQuarantineCertificatesInputSchema,
     inputFields: [{ name: "receiptIds", required: true, description: "1-100 receipt IDs." }],
     resultShape: ["results[]: { receiptId, certificates[] }"]
@@ -1472,7 +1513,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_source_document_download_url",
     title: "Get SMEDC source document download URL",
     description:
-      "Issue an authorized temporary source-file download URL using authenticated POST /v1/source-documents/:sourceDocumentId/download-url.",
+      "Get a short-lived download link for one original file by sourceDocumentId. The service checks current read grants before signing the link.",
     inputSchema: sourceDocumentDownloadUrlInputSchema,
     inputFields: [{ name: "sourceDocumentId", required: true, description: "Source document ID." }],
     resultShape: [
@@ -1488,7 +1529,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_evidence_document_status",
     title: "Get SMEDC evidence document status",
     description:
-      "Read evidence indexing status by calling authenticated GET /v1/documents/evidence/:documentId/status.",
+      "Poll an evidence upload's processing and indexing status by documentId. Administrators checking a document outside their ordinary grants can use get_evidence_document_management_status.",
     inputSchema: evidenceDocumentStatusInputSchema,
     inputFields: [{ name: "documentId", required: true, description: "Evidence document id." }],
     resultShape: ["document", "processing", "documentIndex"]
@@ -1497,7 +1538,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_import_status",
     title: "Get SMEDC structured import status",
     description:
-      "Read structured import status and its terminal outcome by calling authenticated GET /v1/structured/imports/:importBatchId. For cost_cards, currently authorized readers receive the exact applied importBatch.publicationSummary (counts, bounded changes and changesTruncated); upload ownership alone exposes only safe progress. Preserve the server response rather than reconstructing results from current cards.",
+      "Poll a structured row import by importBatchId until terminal. For cost_cards, current read authorization exposes the applied publication summary with counts, bounded changes and changesTruncated. Upload ownership exposes safe progress. For a partitionImportJobId, use get_partition_import_status.",
     inputSchema: importStatusInputSchema,
     inputFields: [
       { name: "importBatchId", required: true, description: "Structured import batch id." }
@@ -1523,7 +1564,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_ledger_pdf_request_status",
     title: "Get ledger PDF request status",
     description:
-      "Read an authorized request using GET /v1/ledger-pdfs/requests/:requestId. Poll queued requests to a terminal status; cursor pages contain at most 200 scope facts. This tool never issues download URLs.",
+      "Poll an authorized ledger PDF ZIP request by requestId. Use the cursor for more scope details. Once ready, call get_ledger_pdf_download_url.",
     inputSchema: ledgerPdfRequestStatusInputSchema,
     inputFields: [
       { name: "requestId", required: true, description: "Service-issued ledger PDF request ID." },
@@ -1600,8 +1641,8 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       title: name.replaceAll("_", " "),
       description:
         name === "get_my_permissions"
-          ? "Read the current server permission card on every call, including complete storeReviewEnterprises.write/read lists of registered enterpriseName choices for store reviews. This is not cached by the launcher; it never grants content access by itself."
-          : `${name.replaceAll("_", " ")}. Requires a current active same-organization administrator. Uses the authenticated server permission service; writes require expectedVersion. Status and configuration responses contain no download links.`,
+          ? permissionToolDescriptions[name]
+          : `${permissionToolDescriptions[name]} Requires an active same-organization administrator.`,
       inputSchema,
       inputFields: Object.entries(inputSchema.shape).map(([field, schema]) => ({
         name: field,
@@ -1609,18 +1650,18 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         description: schema.description ?? field
       })),
       resultShape:
-        name === "get_my_permissions" || name === "get_account_permissions"
+        name === "get_my_permissions"
           ? [
               "current server authorization snapshot: employee, version, mode, clearance, grants, category rules",
-              ...(name === "get_my_permissions"
-                ? [
-                    "storeReviewEnterprises: { complete: true, write: [{ enterpriseKey, enterpriseName }], read: [{ enterpriseKey, enterpriseName }] }"
-                  ]
-                : [])
+              "storeReviewEnterprises: { complete: true, write: [{ enterpriseKey, enterpriseName }], read: [{ enterpriseKey, enterpriseName }] }"
             ]
-          : name === "prepare_authorization_cutover"
-            ? ["authorizationVersion, ready, missing configuration and resource attributes"]
-            : ["server configuration or safe management status; no content links"],
+          : name === "query_account_permissions"
+            ? ["list: accounts[]", "detail: authorization snapshot for the selected employee"]
+            : name === "get_permission_directory"
+              ? ["authorizationVersion", "categories[], dimensions[], or stores[]"]
+              : name === "prepare_authorization_cutover"
+                ? ["authorizationVersion, ready, missing configuration and resource attributes"]
+                : ["server configuration or safe management status; no content links"],
       annotations: {
         readOnlyHint: permissionReadNames.has(name),
         destructiveHint: !permissionReadNames.has(name),

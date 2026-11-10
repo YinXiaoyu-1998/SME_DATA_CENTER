@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { WORKFLOW_MCP_INPUT_SCHEMAS, WORKFLOW_MCP_TOOL_NAMES } from "@smedc/mcp-contract";
+import { WORKFLOW_OPERATION_INPUT_SCHEMAS, WORKFLOW_OPERATION_NAMES } from "@smedc/mcp-contract";
 import type { RequestAuth } from "../request-auth.js";
 import { errorResponse } from "../request-errors.js";
 import type { EnterpriseWorkflowService } from "./service.js";
@@ -11,13 +11,13 @@ export function registerEnterpriseWorkflowRoutes(
     basePath?: string;
   }
 ) {
-  for (const tool of WORKFLOW_MCP_TOOL_NAMES)
+  for (const tool of WORKFLOW_OPERATION_NAMES)
     app.post(
       `${dependencies.basePath ?? "/v1/admin/workflows"}/${tool}`,
       { bodyLimit: 1_100_000 },
       async (request, reply) => {
         if (!(await dependencies.auth.authenticate(request, reply))) return;
-        const parsed = WORKFLOW_MCP_INPUT_SCHEMAS[tool].safeParse(request.body);
+        const parsed = WORKFLOW_OPERATION_INPUT_SCHEMAS[tool].safeParse(request.body);
         if (!parsed.success)
           return reply
             .code(400)

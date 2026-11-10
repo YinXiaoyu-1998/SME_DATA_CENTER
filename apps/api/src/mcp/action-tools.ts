@@ -3,6 +3,7 @@ import {
   COST_CARD_LAUNCHER_VERSION,
   errorToolResult,
   validationErrorToolResult,
+  type PermissionMcpInputs,
   type SmedcMcpToolContract,
   type SmedcMcpToolName
 } from "@smedc/mcp-contract";
@@ -20,12 +21,9 @@ export const ACTION_MCP_TOOL_NAMES = [
   "upsert_store_reviews",
   "prepare_ledger_pdf_download",
   "update_account_permissions",
-  "create_evidence_category",
-  "update_business_category",
-  "create_business_dimension",
-  "update_business_dimension",
-  "create_business_dimension_value",
-  "update_business_dimension_value",
+  "configure_business_category",
+  "configure_business_dimension",
+  "configure_business_dimension_value",
   "update_business_store",
   "update_evidence_document_attributes",
   "activate_authorization_cutover",
@@ -97,50 +95,57 @@ function routeForActionTool(
           Object.entries(input).filter(([key]) => !["employeeId"].includes(key))
         )
       };
-    case "create_evidence_category":
-      return {
-        method: "POST",
-        path: `/v1/admin/permissions/categories`,
-        body: input
-      };
-    case "update_business_category":
-      return {
-        method: "PATCH",
-        path: `/v1/admin/permissions/categories/${encodeURIComponent(String(input["categoryId"]))}`,
-        body: Object.fromEntries(
-          Object.entries(input).filter(([key]) => !["categoryId"].includes(key))
-        )
-      };
-    case "create_business_dimension":
-      return {
-        method: "POST",
-        path: `/v1/admin/permissions/dimensions`,
-        body: input
-      };
-    case "update_business_dimension":
+    case "configure_business_category": {
+      const { expectedVersion, operation } =
+        input as PermissionMcpInputs["configure_business_category"];
+      if (operation.kind === "create_evidence") {
+        const { id, name, retired, ownerships, requiredDimensionIds } = operation;
+        return {
+          method: "POST",
+          path: "/v1/admin/permissions/categories",
+          body: { expectedVersion, id, name, retired, ownerships, requiredDimensionIds }
+        };
+      }
+      const { categoryId, name, retired } = operation;
+      const fields =
+        operation.kind === "update_fixed"
+          ? { confidentialityLevel: operation.confidentialityLevel }
+          : {
+              ownerships: operation.ownerships,
+              requiredDimensionIds: operation.requiredDimensionIds
+            };
       return {
         method: "PATCH",
-        path: `/v1/admin/permissions/dimensions/${encodeURIComponent(String(input["dimensionId"]))}`,
-        body: Object.fromEntries(
-          Object.entries(input).filter(([key]) => !["dimensionId"].includes(key))
-        )
+        path: `/v1/admin/permissions/categories/${encodeURIComponent(categoryId)}`,
+        body: { expectedVersion, name, retired, ...fields }
       };
-    case "create_business_dimension_value":
-      return {
-        method: "POST",
-        path: `/v1/admin/permissions/dimensions/${encodeURIComponent(String(input["dimensionId"]))}/values`,
-        body: Object.fromEntries(
-          Object.entries(input).filter(([key]) => !["dimensionId"].includes(key))
-        )
-      };
-    case "update_business_dimension_value":
-      return {
-        method: "PATCH",
-        path: `/v1/admin/permissions/dimensions/${encodeURIComponent(String(input["dimensionId"]))}/values/${encodeURIComponent(String(input["valueId"]))}`,
-        body: Object.fromEntries(
-          Object.entries(input).filter(([key]) => !["dimensionId", "valueId"].includes(key))
-        )
-      };
+    }
+    case "configure_business_dimension": {
+      const { expectedVersion, operation } =
+        input as PermissionMcpInputs["configure_business_dimension"];
+      const { kind, dimensionId, ...body } = operation;
+      const base = "/v1/admin/permissions/dimensions";
+      return kind === "create"
+        ? { method: "POST", path: base, body: { expectedVersion, id: dimensionId, ...body } }
+        : {
+            method: "PATCH",
+            path: `${base}/${encodeURIComponent(dimensionId)}`,
+            body: { expectedVersion, ...body }
+          };
+    }
+    case "configure_business_dimension_value": {
+      const { expectedVersion, operation } =
+        input as PermissionMcpInputs["configure_business_dimension_value"];
+      const { kind, dimensionId, valueId, ...body } = operation;
+      const base = `/v1/admin/permissions/dimensions/${encodeURIComponent(dimensionId)}/values`;
+      return kind === "create"
+        ? { method: "POST", path: base, body: { expectedVersion, id: valueId, ...body } }
+        : {
+            method: "PATCH",
+            path: `${base}/${encodeURIComponent(valueId)}`,
+            body: { expectedVersion, ...body }
+          };
+    }
     case "update_business_store":
       return {
         method: "POST",
