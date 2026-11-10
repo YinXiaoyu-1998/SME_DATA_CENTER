@@ -159,13 +159,22 @@ export function readHistoricalSupplementIntent(
   if (
     typeof value !== "object" ||
     Array.isArray(value) ||
-    !("actorUserAccountId" in value) ||
     !("reason" in value) ||
-    typeof value.actorUserAccountId !== "string" ||
     typeof value.reason !== "string"
   )
     throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
-  return { actorUserAccountId: value.actorUserAccountId, reason: value.reason };
+  const current = "actorUserAccountId" in value ? value.actorUserAccountId : undefined;
+  const legacy = "actorEmployeeId" in value ? value.actorEmployeeId : undefined;
+  if (
+    (current !== undefined && typeof current !== "string") ||
+    (legacy !== undefined && typeof legacy !== "string") ||
+    (current !== undefined && legacy !== undefined && current !== legacy)
+  )
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
+  const actorUserAccountId = current ?? legacy;
+  if (typeof actorUserAccountId !== "string")
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
+  return { actorUserAccountId, reason: value.reason };
 }
 export async function bindHistoricalSupplementIntent(
   tx: Tx,

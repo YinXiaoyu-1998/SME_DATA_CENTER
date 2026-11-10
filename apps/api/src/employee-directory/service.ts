@@ -182,12 +182,19 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
             if (action === "get_employee") return { employee: await employeeView(row) };
             const update = directoryInputSchemas.update_employee.parse(input);
             if (version(row.version) !== update.expectedVersion) fail("DIRECTORY_CONFLICT");
-            const dept = await tx.businessDepartment.findFirst({
-              where: { ...where, departmentId: update.departmentId, retired: false }
-            });
-            const store = await scopeFor(update.scope.storeId, true);
-            if (!dept) fail("DIRECTORY_NOT_FOUND");
-            if (!read(store?.name ?? null)) fail("DIRECTORY_NOT_FOUND");
+            if (
+              update.status === "departed" &&
+              (update.departmentId !== row.departmentId || update.scope.storeId !== row.storeId)
+            )
+              fail("DIRECTORY_CONFLICT");
+            if (update.status === "active") {
+              const dept = await tx.businessDepartment.findFirst({
+                where: { ...where, departmentId: update.departmentId, retired: false }
+              });
+              const store = await scopeFor(update.scope.storeId, true);
+              if (!dept) fail("DIRECTORY_NOT_FOUND");
+              if (!read(store?.name ?? null)) fail("DIRECTORY_NOT_FOUND");
+            }
             const changed = await tx.employee.update({
               where: { employeeUid: row.employeeUid },
               data: {

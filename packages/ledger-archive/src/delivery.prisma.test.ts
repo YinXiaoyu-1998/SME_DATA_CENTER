@@ -75,6 +75,7 @@ function fixture() {
     }
   };
   const prisma = {
+    businessStore: { findMany: vi.fn(async () => []) },
     $queryRaw: query,
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)),
     userAccount: { findFirst: vi.fn(async () => employee) },

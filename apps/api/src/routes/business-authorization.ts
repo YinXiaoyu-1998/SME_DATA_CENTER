@@ -320,7 +320,10 @@ export function registerBusinessAuthorizationRoutes(
               kind: "fixed",
               key: existing.key!,
               confidentialityLevel: body["confidentialityLevel"],
-              ownerships: [existing.allowStore ? "store" : "group"],
+              ownerships: [
+                ...(existing.allowGroup ? ["group" as const] : []),
+                ...(existing.allowStore ? ["store" as const] : [])
+              ],
               requiredDimensionIds: existing.dimensions.map((d) => d.dimensionId)
             });
           }

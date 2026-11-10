@@ -276,7 +276,9 @@ export function registerQuarantineCertificateRoutes(
       return validationError(
         reply,
         "RESOURCE_SINGLE_STORE_REQUIRED",
-        "A photo requires one explicit enterprise and store name."
+        !upload.storeName?.trim() || upload.storeName.length > 255 || upload.storeFieldCount !== 1
+          ? "A photo requires one valid storeName field."
+          : "A photo requires one valid enterpriseName field."
       );
     const enterpriseKey = normalizeEnterpriseIdentity(upload.enterpriseName).enterpriseKey;
 

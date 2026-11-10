@@ -75,6 +75,7 @@ suite("partition download persistence", () => {
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId } });
   }
   beforeEach(async () => {
+    await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await clearAuthorization();
     await prisma.storageGarbage.deleteMany({
       where: {
@@ -94,6 +95,7 @@ suite("partition download persistence", () => {
     });
   });
   afterAll(async () => {
+    await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await clearAuthorization();
     await prisma.storageGarbage.deleteMany({
       where: {
@@ -1523,8 +1525,44 @@ suite("partition download persistence", () => {
       expect(await prisma.storageGarbage.findFirst({ where: { objectKey } })).not.toBeNull();
     }
   );
+  it("finds a legacy partition by the current formal store name for download", async () => {
+    await partitions();
+    await prisma.businessAuthorizationState.create({ data: { orgId } });
+    await prisma.businessStore.create({
+      data: {
+        orgId,
+        enterpriseKey: "synthetic",
+        name: "Store 0",
+        officialName: "Renamed store",
+        confirmation: "confirmed"
+      }
+    });
+    const request = await repository.prepare(
+      actor,
+      { ...scope, storeNameContains: ["Renamed store"] },
+      "renamed-store"
+    );
+    const result = await repository.validateCurrent(actor, request.requestId);
+    expect(result.manifest).toMatchObject([
+      { storeName: "Renamed store", objectKey: "download-test/source-0" }
+    ]);
+  });
   it("publication and later source additions preserve the fixed manifest", async () => {
     await partitions();
+    await prisma.businessAuthorizationState.upsert({
+      where: { orgId },
+      create: { orgId },
+      update: {}
+    });
+    await prisma.businessStore.create({
+      data: {
+        orgId,
+        enterpriseKey: "synthetic",
+        name: "Store extra",
+        officialName: "Store extra",
+        confirmation: "confirmed"
+      }
+    });
     const request = await repository.prepare(actor, scope, "insert-race");
     const lease = await leaseFor(request.requestId);
     const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/insert.zip`;
@@ -1577,7 +1615,9 @@ suite("partition download persistence", () => {
       ]
     });
     try {
-      await insertion;
+      // Formal-name publication locks the same date range; verify it waits for the
+      // captured manifest, then let both transactions finish in that order.
+      await waitForSourceLockWait();
     } finally {
       barrier.release();
       await Promise.allSettled([publication, insertion]);

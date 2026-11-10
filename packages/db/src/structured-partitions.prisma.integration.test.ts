@@ -478,6 +478,30 @@ suite("structured partition repository", () => {
       await createProcessingJob(suffix);
       await prisma.$executeRaw`UPDATE business_stores SET official_name = ${name}
         WHERE org_id = ${orgId} AND enterprise_key = 'synthetic' AND name = ${originalName}`;
+      const readable = {
+        orgId,
+        clearance: 3,
+        dataset: "business" as const,
+        enterpriseKey: "synthetic",
+        startDate: businessDate,
+        endDate: businessDate,
+        maxPartitions: 10,
+        storeNameContains: [name]
+      };
+      const current = await prisma.structuredPartition.findUniqueOrThrow({
+        where: { id: original.id }
+      });
+      expect(await repository.listReadableManifestRows(readable)).toMatchObject([
+        { storeName: name, objectKey: current.objectKey }
+      ]);
+      const coverage = await repository.listCoverage!({
+        orgId,
+        clearance: 3,
+        dataset: "business",
+        enterpriseKey: "synthetic",
+        storeNameContains: [name]
+      });
+      expect(coverage.enterprises[0]?.stores).toMatchObject([{ storeName: name }]);
       const publish = (storeName: string) =>
         repository.publishSourceAtomically({
           orgId,

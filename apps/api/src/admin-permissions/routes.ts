@@ -267,7 +267,10 @@ export function registerAdminPermissionsRoutes(
         kind: "fixed",
         key: existing.key!,
         confidentialityLevel: body.confidentialityLevel,
-        ownerships: [existing.allowStore ? "store" : "group"],
+        ownerships: [
+          ...(existing.allowGroup ? ["group" as const] : []),
+          ...(existing.allowStore ? ["store" as const] : [])
+        ],
         requiredDimensionIds: existing.dimensions.map((dimension) => dimension.dimensionId)
       });
     }

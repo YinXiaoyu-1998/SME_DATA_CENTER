@@ -817,14 +817,9 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async listReadableManifestRows(input) {
-      if (
-        isOrderPartitionDataset(input.dataset) ||
-        input.storeNameContains !== undefined ||
-        input.authorization?.mode === "enabled" ||
-        input.authorization?.mode === "suspended"
-      ) {
+      {
         return prisma.$queryRaw<PartitionManifestRow[]>(Prisma.sql`
-          SELECT CASE WHEN dataset = 'in_store_orders' THEN COALESCE(order_scope, 'legacy_unknown') ELSE NULL END AS orderScope, business_date AS businessDate, merchant_id AS merchantId, store_name AS storeName,
+          SELECT CASE WHEN dataset = 'in_store_orders' THEN COALESCE(order_scope, 'legacy_unknown') ELSE NULL END AS orderScope, business_date AS businessDate, merchant_id AS merchantId, ${partitionDisplayStoreName} AS storeName,
             row_count AS rowCount, byte_size AS byteSize, checksum_sha256 AS checksumSha256, object_key AS objectKey
           FROM structured_partitions WHERE ${readablePartitionScope(input)}
             AND business_date >= ${parseBusinessDate(input.startDate)}
@@ -834,41 +829,10 @@ export function createPrismaStructuredPartitionRepository(
           ORDER BY business_date ASC, store_key ASC LIMIT ${input.maxPartitions + 1}
         `);
       }
-      const rows = await prisma.structuredPartition.findMany({
-        where: {
-          orgId: input.orgId,
-          confidentialityLevel: { lte: input.clearance },
-          dataset: input.dataset as PartitionDataset,
-          enterpriseKey: input.enterpriseKey,
-          businessDate: {
-            gte: parseBusinessDate(input.startDate),
-            lte: parseBusinessDate(input.endDate)
-          },
-          ...(input.storeIds?.length ? { merchantId: { in: input.storeIds } } : {})
-        },
-        orderBy: [{ businessDate: "asc" }, { storeKey: "asc" }],
-        take: input.maxPartitions + 1,
-        select: {
-          orderScope: true,
-          businessDate: true,
-          merchantId: true,
-          storeName: true,
-          rowCount: true,
-          byteSize: true,
-          checksumSha256: true,
-          objectKey: true
-        }
-      });
-      return rows;
     },
 
     async listCoverage(input) {
-      if (
-        isOrderPartitionDataset(input.dataset) ||
-        input.storeNameContains !== undefined ||
-        input.authorization?.mode === "enabled" ||
-        input.authorization?.mode === "suspended"
-      ) {
+      {
         const where = Prisma.sql`${readablePartitionScope(input)} ${input.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(input.storeNameContains)}` : Prisma.empty}`;
         const [enterprises, stores, scopes] = await Promise.all([
           prisma.$queryRaw<
@@ -887,7 +851,7 @@ export function createPrismaStructuredPartitionRepository(
           prisma.$queryRaw<
             Array<{ enterpriseKey: string; storeId: string | null; storeName: string }>
           >(
-            Prisma.sql`SELECT enterprise_key AS enterpriseKey, MAX(merchant_id) AS storeId, MAX(store_name) AS storeName
+            Prisma.sql`SELECT enterprise_key AS enterpriseKey, MAX(merchant_id) AS storeId, MAX(${partitionDisplayStoreName}) AS storeName
               FROM structured_partitions WHERE ${where} GROUP BY enterprise_key, store_key ORDER BY enterprise_key ASC, store_key ASC`
           ),
           input.dataset === "in_store_orders"
@@ -934,46 +898,6 @@ export function createPrismaStructuredPartitionRepository(
           }))
         };
       }
-      const where = {
-        orgId: input.orgId,
-        dataset: input.dataset as PartitionDataset,
-        confidentialityLevel: { lte: input.clearance },
-        ...(input.enterpriseKey !== undefined ? { enterpriseKey: input.enterpriseKey } : {})
-      };
-      const [enterpriseRows, storeRows] = await Promise.all([
-        prisma.structuredPartition.groupBy({
-          by: ["enterpriseKey"],
-          where,
-          _min: { businessDate: true },
-          _max: { businessDate: true, enterpriseName: true },
-          _count: { _all: true },
-          _sum: { rowCount: true },
-          orderBy: { enterpriseKey: "asc" }
-        }),
-        prisma.structuredPartition.groupBy({
-          by: ["enterpriseKey", "storeKey"],
-          where,
-          _max: { merchantId: true, storeName: true },
-          orderBy: [{ enterpriseKey: "asc" }, { storeKey: "asc" }]
-        })
-      ]);
-      return {
-        dataset: input.dataset,
-        enterprises: enterpriseRows.map((enterprise) => ({
-          enterpriseKey: enterprise.enterpriseKey,
-          enterpriseName: enterprise._max.enterpriseName!,
-          startDate: enterprise._min.businessDate!,
-          endDate: enterprise._max.businessDate!,
-          partitionCount: enterprise._count._all,
-          totalRowCount: enterprise._sum.rowCount ?? 0n,
-          stores: storeRows
-            .filter((store) => store.enterpriseKey === enterprise.enterpriseKey)
-            .map((store) => ({
-              storeId: store._max.merchantId,
-              storeName: store._max.storeName!
-            }))
-        }))
-      };
     },
 
     async enqueueGarbage(objectKey, reason) {
@@ -1240,13 +1164,22 @@ export function readablePartitionScope(input: {
     ${input.enterpriseKey !== undefined ? Prisma.sql`AND enterprise_key = ${input.enterpriseKey}` : Prisma.empty}`;
 }
 
+// Resolve display names only within the same organization and enterprise. UUID is authoritative;
+// legacy rows without a UUID match the stable authorization key exactly.
+export const partitionDisplayStoreName = Prisma.sql`COALESCE((SELECT bs.official_name FROM business_stores bs
+  WHERE bs.org_id = structured_partitions.org_id AND bs.enterprise_key = structured_partitions.enterprise_key
+    AND ((structured_partitions.directory_store_id IS NOT NULL AND bs.store_id = structured_partitions.directory_store_id)
+      OR (structured_partitions.directory_store_id IS NULL AND CAST(bs.name AS BINARY) = CAST(structured_partitions.store_name AS BINARY)))
+  LIMIT 1), structured_partitions.store_name)`;
+
 export function literalStoreNameScope(terms: string[]): Prisma.Sql {
   // LOCATE has no wildcard syntax; binary operands make case and accents literal regardless of table collation.
   if (terms.length === 0)
     throw new StructuredPartitionRepositoryError("INVALID_PARTITION_STORE_NAME_FILTER");
   return Prisma.sql`(${Prisma.join(
     terms.map(
-      (term) => Prisma.sql`LOCATE(CAST(${term} AS BINARY), CAST(store_name AS BINARY)) > 0`
+      (term) =>
+        Prisma.sql`LOCATE(CAST(${term} AS BINARY), CAST(${partitionDisplayStoreName} AS BINARY)) > 0`
     ),
     " OR "
   )})`;

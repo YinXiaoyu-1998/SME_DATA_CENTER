@@ -1524,6 +1524,14 @@ suite("authoritative publication and original lineage", () => {
     expect(
       (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
     ).toMatchObject({ historicalSupplement: intent });
+    // Simulate an in-flight source created before the account-field cutover.
+    const legacyIntent = { actorEmployeeId: admin, reason };
+    const sourceMetadata = (await prisma.document.findUniqueOrThrow({ where: { id: documentId } }))
+      .sourceMetadata as Record<string, unknown>;
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { sourceMetadata: { ...sourceMetadata, historicalSupplement: legacyIntent } as never }
+    });
     await prisma.userAccount.update({ where: { id: admin }, data: { role: "employee" } });
     const beforeDenied = await prisma.businessAuthorizationState.findUniqueOrThrow({
       where: { orgId: publicationOrg }
@@ -1561,7 +1569,7 @@ suite("authoritative publication and original lineage", () => {
     ).toMatchObject({ valid: true, fileConfidentialityLevel: 3 });
     expect(
       (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
-    ).toMatchObject({ historicalSupplement: intent });
+    ).toMatchObject({ historicalSupplement: legacyIntent });
     const audit = await prisma.auditLog.findFirstOrThrow({
       where: {
         orgId: publicationOrg,

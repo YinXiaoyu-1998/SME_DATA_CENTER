@@ -722,7 +722,7 @@ function deliveryItemRows(
   const sourceRows = boundaryIndex === -1 ? afterHeader : afterHeader.slice(0, boundaryIndex);
   return sourceRows
     .map((row, index) => ({ row, sourceRowNumber: header.index + index + 2 }))
-    .filter(({ row }) => /^[+-]?\d+$/.test(row[header.columns.get("序号")!] ?? ""));
+    .filter(({ row }) => /^[+-]?\d+$/.test((row[header.columns.get("序号")!] ?? "").trim()));
 }
 
 function isDeliveryBoundary(row: string[]) {

@@ -85,7 +85,13 @@ suite("fixed category bootstrap through supported administration", () => {
       Object.entries(ownership)
         .filter(
           ([key]) =>
-            !["cost_cards", "store_reviews", "in_store_orders", "takeaway_orders"].includes(key)
+            ![
+              "cost_cards",
+              "store_reviews",
+              "in_store_orders",
+              "takeaway_orders",
+              "employee_profiles"
+            ].includes(key)
         )
         .sort()
     );
@@ -101,7 +107,7 @@ suite("fixed category bootstrap through supported administration", () => {
     expect(
       (await repository.initializeFixedCategories({ orgId, actorId, expectedVersion: "6" })).value
         .createdCount
-    ).toBe(4);
+    ).toBe(5);
     const initialized = await repository.listCategories(orgId);
     expect(
       initialized.find((category) => category.key === "cost_cards")?.confidentialityLevel
@@ -156,7 +162,7 @@ suite("fixed category bootstrap through supported administration", () => {
           url: `/v1/admin/permissions/categories/${category.id}`,
           payload: { expectedVersion: version, name: category.name, confidentialityLevel: 1 }
         });
-        expect(result.statusCode).toBe(200);
+        expect(result.statusCode, result.body).toBe(200);
         version = result.json().authorizationVersion;
       }
       expect((await app.inject({ url: "/v1/admin/permissions/cutover" })).json()).toMatchObject({
@@ -200,7 +206,9 @@ suite("fixed category bootstrap through supported administration", () => {
     const account = await operator.onboard(input);
     const repository = createBusinessAuthorizationRepository({ prisma });
     const categories = await repository.listCategories(orgId);
-    expect(categories.map((c) => c.key).sort()).toEqual(Object.keys(ownership).sort());
+    expect(categories.map((c) => c.key).sort()).toEqual(
+      [...Object.keys(ownership), "employee_profiles"].sort()
+    );
     expect(categories.every((c) => c.confidentialityLevel === null)).toBe(true);
     expect(await repository.loadAuthorizationSnapshot(account.userAccountId, orgId)).toMatchObject({
       mode: "legacy",

@@ -628,7 +628,6 @@ describe("authorized ledger PDF delivery", () => {
         { storeName: "门店", purchaseDate: "2026-10-02", status: "succeeded" }
       ])
     });
-    expect(f.repository.facts).not.toHaveBeenCalled();
     await expect(
       f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
     ).rejects.toThrow("LEDGER_PDF_UNAVAILABLE");

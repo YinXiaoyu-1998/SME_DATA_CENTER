@@ -368,7 +368,10 @@ export function registerStructuredImportRoutes(
         return validationError(
           reply,
           "STRUCTURED_IMPORT_VALIDATION_FAILED",
-          "Structured import metadata could not be derived."
+          error instanceof Error &&
+            error.message === "Delivery receipt metadata 订货机构 is required."
+            ? "Delivery receipt field 订货机构 is required."
+            : "Structured import metadata could not be derived."
         );
       }
     }

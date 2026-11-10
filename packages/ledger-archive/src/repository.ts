@@ -399,7 +399,7 @@ export function createPrismaLedgerArchiveRepository({
       const binding = JSON.stringify([input.orgId, input.scope ?? null]);
       const cursor = decodeCursor(input.cursor, binding, 2);
       const scopeFilter = input.scope
-        ? Prisma.sql`AND CAST(store_name AS BINARY) IN (${Prisma.join(input.scope.storeNames)}) AND purchase_date IN (${Prisma.join(ledgerScopeDates(input.scope))})`
+        ? Prisma.sql`AND CAST(store_name AS BINARY) IN (${Prisma.join(input.scope.storeNames.map((name) => Prisma.sql`CAST(${name} AS BINARY)`))}) AND purchase_date IN (${Prisma.join(ledgerScopeDates(input.scope))})`
         : Prisma.empty;
       const cursorFilter = cursor
         ? Prisma.sql`AND (CAST(store_name AS BINARY) > CAST(${cursor[0]} AS BINARY) OR (CAST(store_name AS BINARY) = CAST(${cursor[0]} AS BINARY) AND purchase_date > ${cursor[1]}))`

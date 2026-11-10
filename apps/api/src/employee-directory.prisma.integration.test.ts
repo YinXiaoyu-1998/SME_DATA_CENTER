@@ -182,6 +182,23 @@ describe.skipIf(process.env["RUN_DIRECTORY_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(409);
+      const otherDepartment = (
+        await call("manage_department", { operation: { kind: "create", name: "后厨" } })
+      ).json();
+      const invalidDeparture = await call("update_employee", {
+        employeeUid,
+        expectedVersion: "0",
+        name: "小王",
+        departmentId: otherDepartment.departmentId,
+        scope: { ownership: "store", storeId: store.storeId },
+        status: "departed"
+      });
+      expect(invalidDeparture.statusCode, invalidDeparture.body).toBe(409);
+      expect((await call("get_employee", { employeeUid })).json().employee).toMatchObject({
+        departmentId: department.departmentId,
+        status: "active",
+        version: "0"
+      });
       const departed = await call("update_employee", {
         employeeUid,
         expectedVersion: "0",
@@ -198,6 +215,24 @@ describe.skipIf(process.env["RUN_DIRECTORY_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(200);
+      const rewriteDeparted = await call("update_employee", {
+        employeeUid,
+        expectedVersion: "1",
+        name: "小王",
+        departmentId: otherDepartment.departmentId,
+        scope: { ownership: "store", storeId: store.storeId },
+        status: "departed"
+      });
+      expect(rewriteDeparted.statusCode).toBe(409);
+      const renameDeparted = await call("update_employee", {
+        employeeUid,
+        expectedVersion: "1",
+        name: "小王更正",
+        departmentId: department.departmentId,
+        scope: { ownership: "store", storeId: store.storeId },
+        status: "departed"
+      });
+      expect(renameDeparted.statusCode, renameDeparted.body).toBe(200);
       expect((await call("list_employees", {})).json().employees).toEqual([]);
       expect((await call("get_employee", { employeeUid })).json().employee).toMatchObject({
         employeeUid,

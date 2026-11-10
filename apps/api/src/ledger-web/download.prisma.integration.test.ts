@@ -481,6 +481,59 @@ it.skipIf(!enabled)(
         const zipped = await zip.file(expectedNames[index]!)!.async("nodebuffer");
         expect(sha256(zipped)).toBe(sha256(pdfs.get(`${pair.storeName}/${pair.purchaseDate}`)!));
       }
+      await prisma.businessStore.update({
+        where: {
+          orgId_enterpriseKey_name: { orgId, enterpriseKey: "synthetic", name: stores[0]! }
+        },
+        data: { officialName: "合成新店" }
+      });
+      const renamedCoverage = await post("coverage", {
+        scope: { storeNames: ["合成新店"], dates: [dates[0]] }
+      });
+      expect(renamedCoverage.status).toBe(200);
+      expect((await renamedCoverage.json()).partitions).toMatchObject([
+        { storeName: "合成新店", purchaseDate: dates[0], status: "ready" }
+      ]);
+      const renamedSelection = [{ storeName: "合成新店", purchaseDate: dates[0]! }];
+      const renamedDownload = await post("downloads", {
+        selection: renamedSelection,
+        idempotencyKey: "renamed-browser-selection"
+      });
+      expect(renamedDownload.status).toBe(202);
+      const renamedTask = await renamedDownload.json();
+      expect(
+        await runWorkerOnce({
+          repository: worker,
+          storage,
+          ledgerJobs: runtime.jobs,
+          workerId: orgId,
+          leaseSeconds: 120
+        })
+      ).toMatchObject({ processed: true, status: "active" });
+      expect((await post(`requests/${renamedTask.requestId}/download-url`)).status).toBe(200);
+      const renamedStatus = await fetch(
+        `${origin}/api/web/v1/ledger/requests/${renamedTask.requestId}`,
+        { headers }
+      );
+      expect((await renamedStatus.json()).partitions).toMatchObject([
+        { storeName: "合成新店", purchaseDate: dates[0], status: "succeeded" }
+      ]);
+      await prisma.businessStore.create({
+        data: {
+          orgId,
+          enterpriseKey: "other-enterprise",
+          name: "Other stable",
+          officialName: "合成新店",
+          confirmation: "confirmed"
+        }
+      });
+      expect(
+        (await post("coverage", { scope: { storeNames: ["合成新店"], dates: [dates[0]] } })).status
+      ).toBe(404);
+      expect(
+        (await post("downloads", { selection: renamedSelection, idempotencyKey: "ambiguous" }))
+          .status
+      ).toBe(404);
       now = new Date(persisted.expiresAt.getTime() - 1);
       expect((await fetch(`${origin}/api/web/v1/ledger/context`, { headers })).status).toBe(200);
       expect(
