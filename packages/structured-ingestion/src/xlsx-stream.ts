@@ -522,6 +522,7 @@ interface SheetParseState {
   mergeMasters: Map<MergeRange, string>;
   collectMergeRanges: boolean;
   preserveNumericText?: boolean;
+  preserveCellWhitespace?: boolean;
   maxRows?: number;
 }
 
@@ -680,7 +681,11 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       } else if (name === "c") {
         state.rowCells.set(
           state.nextColumn,
-          checkedCellText(resolveCell(state), state.limits, state.preserveNumericText)
+          checkedCellText(
+            resolveCell(state),
+            state.limits,
+            state.preserveCellWhitespace || state.preserveNumericText
+          )
         );
         if (state.nextColumn + 1 > state.rowWidth) state.rowWidth = state.nextColumn + 1;
         state.cell = undefined;
@@ -748,6 +753,7 @@ function parseSheetStream(
   return new Promise((resolve, reject) => {
     const state = createSheetState(shared, styles, limits);
     state.preserveNumericText = options.preserveNumericText;
+    state.preserveCellWhitespace = options.preserveCellWhitespace;
     state.maxRows = options.maxRows;
     const parser = sax.parser(true, {
       trim: false,
@@ -890,6 +896,7 @@ function worksheetEntryPath(target: string): string {
 export interface XlsxTextOptions {
   /** Used only by exact-decimal datasets; legacy numeric/date rendering is unchanged. */
   preserveNumericText?: boolean;
+  preserveCellWhitespace?: boolean;
   /** Source-coordinate ceiling for sparse row and merged-cell materialization, not item count. */
   maxRows?: number;
 }
