@@ -58,6 +58,24 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         headers: { authorization: "Bearer synthetic", "content-type": "application/json" },
         payload: JSON.stringify(body)
       });
+    const callMcp = async (name: string, args: unknown, launcherVersion = "0.17.0") => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        remoteAddress: "127.0.0.1",
+        headers: {
+          host: "127.0.0.1:3000",
+          authorization: "Bearer synthetic",
+          accept: "application/json, text/event-stream",
+          "x-smedc-launcher-version": launcherVersion
+        },
+        payload: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const envelope = response.json();
+      expect(envelope.error, response.body).toBeUndefined();
+      return envelope.result;
+    };
     beforeAll(async () => {
       database = await createOwnedIntegrationDatabase(
         process.env["DATABASE_URL"]!,
@@ -130,7 +148,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           id: "enterprise-workflows-v1",
           version: "1.0.0",
           configurationSchemaVersion: 1,
-          minimumLauncherVersion: "0.16.0"
+          minimumLauncherVersion: "0.17.0"
         },
         needsConfiguration: true,
         setupUrl: "/admin/workflow_org/workflows/enterprise"
@@ -1501,33 +1519,31 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       ).toEqual([]);
     });
     it("exposes controlled MCP reads and rejects stale roles, disabled accounts and foreign tenants", async () => {
-      let rpcId = 100;
       const mcp = async (name: string, args: unknown) => {
-        const response = await app.inject({
-          method: "POST",
-          url: "/mcp",
-          remoteAddress: "127.0.0.1",
-          headers: {
-            host: "127.0.0.1:3000",
-            authorization: "Bearer synthetic",
-            "content-type": "application/json",
-            accept: "application/json, text/event-stream",
-            "x-smedc-launcher-version": "0.16.0"
-          },
-          payload: JSON.stringify({
-            jsonrpc: "2.0",
-            id: rpcId++,
-            method: "tools/call",
-            params: { name, arguments: args }
-          })
-        });
-        expect(response.statusCode, response.body).toBe(200);
-        const envelope = response.json();
-        expect(envelope.error, response.body).toBeUndefined();
-        expect(envelope.result.isError, response.body).not.toBe(true);
-        return JSON.parse(envelope.result.content[0].text);
+        const result = await callMcp(name, args);
+        expect(result.isError, result.content[0].text).not.toBe(true);
+        return JSON.parse(result.content[0].text);
       };
-      const state = await mcp("get_enterprise_workflow", selector);
+      const detail = { query: { mode: "detail", ...selector } };
+      const old = await callMcp("query_enterprise_workflows", detail, "0.16.0");
+      expect(JSON.parse(old.content[0].text)).toMatchObject({
+        error: { code: "LAUNCHER_UPGRADE_REQUIRED" }
+      });
+      const unfiltered = await mcp("query_enterprise_workflows", {
+        query: { mode: "list", limit: 1 }
+      });
+      expect(unfiltered.workflows).toHaveLength(1);
+      expect(unfiltered.nextCursor).toEqual(expect.any(String));
+      const continued = await mcp("query_enterprise_workflows", {
+        query: { mode: "list", limit: 1, cursor: unfiltered.nextCursor }
+      });
+      expect(continued.workflows).toHaveLength(1);
+      expect(continued.workflows[0].workflowId).not.toBe(unfiltered.workflows[0].workflowId);
+      const filtered = { enterpriseKey: selector.enterpriseKey, limit: 1 };
+      expect(
+        await mcp("query_enterprise_workflows", { query: { mode: "list", ...filtered } })
+      ).toEqual((await call("list_enterprise_workflows", filtered)).json());
+      const state = await mcp("query_enterprise_workflows", detail);
       expect(state).toMatchObject({
         enterpriseKey: "enterprise",
         workflowType: selector.workflowType
@@ -1586,11 +1602,24 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           })
         ).actions[0].state
       ).toBe("confirmed");
-      await prisma.employee.update({ where: { id: actor.id }, data: { disabled: true } });
+      const expectAdminDenied = async () => {
+        const denied = await callMcp("query_enterprise_workflows", detail);
+        expect(JSON.parse(denied.content[0].text)).toMatchObject({
+          error: { code: "WORKFLOW_ADMIN_REQUIRED" }
+        });
+      };
+      await prisma.employee.update({ where: { id: actor.id }, data: { role: "employee" } });
+      await expectAdminDenied();
+      await prisma.employee.update({
+        where: { id: actor.id },
+        data: { role: "admin", disabled: true }
+      });
+      await expectAdminDenied();
       expect((await call("get_enterprise_workflow", selector)).statusCode).toBe(403);
       await prisma.employee.update({ where: { id: actor.id }, data: { disabled: false } });
       const originalOrg = actor.orgId;
       actor.orgId = "foreign-org";
+      await expectAdminDenied();
       expect((await call("get_enterprise_workflow", selector)).statusCode).toBe(403);
       actor.orgId = originalOrg;
     });
@@ -2853,10 +2882,11 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           })
         ).statusCode
       ).toBe(409);
-      expect(
-        (await action({ kind: "record_receipts", ...binding, receipts: [transferReceipt] }))
-          .statusCode
-      ).toBe(200);
+      const recovered = await callMcp("record_workflow_action", {
+        workflowId,
+        operation: { kind: "record_receipts", ...binding, receipts: [transferReceipt] }
+      });
+      expect(recovered.isError, recovered.content[0].text).toBe(false);
       // A later safe read must refresh the source, even for exactly the same date/store scope.
       const fresh = await action({
         kind: "intent",

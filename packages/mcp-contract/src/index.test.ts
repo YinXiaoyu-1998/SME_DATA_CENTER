@@ -51,8 +51,9 @@ const validInputs = {
     orderScope: "settled_only",
     sourceChecksumSha256: "a".repeat(64)
   },
-  list_enterprise_workflows: {},
-  get_enterprise_workflow: { enterpriseKey: "enterprise", workflowType: "meituan-daily-ingestion" },
+  query_enterprise_workflows: {
+    query: { mode: "detail", enterpriseKey: "enterprise", workflowType: "meituan-daily-ingestion" }
+  },
   prepare_enterprise_workflow_change: {
     enterpriseKey: "enterprise",
     workflowType: "meituan-daily-ingestion",
@@ -212,44 +213,32 @@ const validInputs = {
     endDate: "20260731"
   },
   get_my_permissions: {},
-  list_account_permissions: {},
-  get_account_permissions: { employeeId: "actor" },
+  query_account_permissions: { query: { mode: "detail", employeeId: "actor" } },
   update_account_permissions: {
     employeeId: "actor",
     expectedVersion: "7",
     clearance: 2,
     grants: []
   },
-  list_business_categories: {},
-  create_evidence_category: {
-    id: "memo",
-    name: "Memo",
+  get_permission_directory: { section: "categories" },
+  configure_business_category: {
     expectedVersion: "7",
-    ownerships: ["group"],
-    requiredDimensionIds: []
+    operation: {
+      kind: "create_evidence",
+      id: "memo",
+      name: "Memo",
+      ownerships: ["group"],
+      requiredDimensionIds: []
+    }
   },
-  update_business_category: {
-    categoryId: "business",
-    name: "Business",
+  configure_business_dimension: {
     expectedVersion: "7",
-    confidentialityLevel: 1
+    operation: { kind: "create", dimensionId: "region", name: "Region" }
   },
-  list_business_dimensions: {},
-  create_business_dimension: { id: "region", name: "Region", expectedVersion: "7" },
-  update_business_dimension: { dimensionId: "region", name: "Region", expectedVersion: "7" },
-  create_business_dimension_value: {
-    dimensionId: "region",
-    id: "east",
-    name: "East",
-    expectedVersion: "7"
+  configure_business_dimension_value: {
+    expectedVersion: "7",
+    operation: { kind: "create", dimensionId: "region", valueId: "east", name: "East" }
   },
-  update_business_dimension_value: {
-    dimensionId: "region",
-    valueId: "east",
-    name: "East",
-    expectedVersion: "7"
-  },
-  list_business_stores: {},
   update_business_store: { enterpriseKey: "enterprise", name: "Store A ", expectedVersion: "7" },
   update_evidence_document_attributes: {
     documentId: "doc",
@@ -263,6 +252,72 @@ const validInputs = {
   activate_authorization_cutover: { expectedVersion: "7", confirm: true },
   suspend_authorization_reads: { expectedVersion: "7", confirm: true }
 } satisfies Record<SmedcMcpToolName, Record<string, unknown>>;
+
+const invalidConsolidatedInputCases = [
+  {
+    tool: "query_account_permissions",
+    cases: [
+      { label: "detail without employee ID", input: { query: { mode: "detail" } } },
+      { label: "list with employee ID", input: { query: { mode: "list", employeeId: "actor" } } }
+    ]
+  },
+  {
+    tool: "query_enterprise_workflows",
+    cases: [
+      {
+        label: "detail without type",
+        input: { query: { mode: "detail", enterpriseKey: "enterprise" } }
+      },
+      {
+        label: "pagination on detail",
+        input: { query: { ...validInputs.query_enterprise_workflows.query, limit: 10 } }
+      }
+    ]
+  },
+  {
+    tool: "get_permission_directory",
+    cases: [{ label: "unknown section", input: { section: "accounts" } }]
+  },
+  {
+    tool: "configure_business_category",
+    cases: [
+      {
+        label: "fixed category with evidence ownership",
+        input: {
+          expectedVersion: "7",
+          operation: {
+            kind: "update_fixed",
+            categoryId: "vip",
+            name: "VIP",
+            confidentialityLevel: 2,
+            ownerships: ["group"]
+          }
+        }
+      }
+    ]
+  },
+  {
+    tool: "configure_business_dimension",
+    cases: [
+      {
+        label: "missing expected version",
+        input: { operation: validInputs.configure_business_dimension.operation }
+      }
+    ]
+  },
+  {
+    tool: "configure_business_dimension_value",
+    cases: [
+      {
+        label: "update without value ID",
+        input: {
+          expectedVersion: "7",
+          operation: { kind: "update", dimensionId: "region", name: "East" }
+        }
+      }
+    ]
+  }
+] as const;
 
 const invalidInputCases = [
   { tool: "prepare_order_scope_transition", cases: [{ label: "missing scope", input: {} }] },
@@ -621,26 +676,19 @@ const invalidInputCases = [
   ...(
     [
       "get_my_permissions",
-      "list_account_permissions",
-      "get_account_permissions",
+      "query_account_permissions",
       "update_account_permissions",
-      "list_business_categories",
-      "create_evidence_category",
-      "update_business_category",
-      "list_business_dimensions",
-      "create_business_dimension",
-      "update_business_dimension",
-      "create_business_dimension_value",
-      "update_business_dimension_value",
-      "list_business_stores",
+      "get_permission_directory",
+      "configure_business_category",
+      "configure_business_dimension",
+      "configure_business_dimension_value",
       "update_business_store",
       "update_evidence_document_attributes",
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
       "suspend_authorization_reads",
-      "list_enterprise_workflows",
-      "get_enterprise_workflow",
+      "query_enterprise_workflows",
       "prepare_enterprise_workflow_change",
       "save_enterprise_workflow",
       "manage_workflow_installation",
@@ -688,26 +736,19 @@ describe("SMEDC MCP contract", () => {
       "prepare_ledger_pdf_download",
       "get_ledger_pdf_download_url",
       "get_my_permissions",
-      "list_account_permissions",
-      "get_account_permissions",
+      "query_account_permissions",
       "update_account_permissions",
-      "list_business_categories",
-      "create_evidence_category",
-      "update_business_category",
-      "list_business_dimensions",
-      "create_business_dimension",
-      "update_business_dimension",
-      "create_business_dimension_value",
-      "update_business_dimension_value",
-      "list_business_stores",
+      "get_permission_directory",
+      "configure_business_category",
+      "configure_business_dimension",
+      "configure_business_dimension_value",
       "update_business_store",
       "update_evidence_document_attributes",
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
       "suspend_authorization_reads",
-      "list_enterprise_workflows",
-      "get_enterprise_workflow",
+      "query_enterprise_workflows",
       "prepare_enterprise_workflow_change",
       "save_enterprise_workflow",
       "manage_workflow_installation",
@@ -889,7 +930,7 @@ describe("SMEDC MCP contract", () => {
       { name: "enterpriseName", required: false },
       { name: "storeNameContains", required: false }
     ]);
-    expect(coverage?.description).toContain("/v1/structured/datasets/:dataset/coverage");
+    expect(coverage?.description).toContain("applied source windows");
     expect(coverage?.resultShape).toEqual([
       "dataset",
       "metadataPolicy",
@@ -961,7 +1002,7 @@ describe("SMEDC MCP contract", () => {
   it("rejects table-driven invalid schema cases for every business tool", () => {
     expect(invalidInputCases.map((entry) => entry.tool)).toEqual(SMEDC_MCP_TOOL_NAMES);
 
-    for (const { tool, cases } of invalidInputCases) {
+    for (const { tool, cases } of [...invalidInputCases, ...invalidConsolidatedInputCases]) {
       for (const testCase of cases) {
         expect(safeParseTool(tool, testCase.input).success, `${tool}: ${testCase.label}`).toBe(
           false
@@ -1633,26 +1674,19 @@ describe("current business authorization contracts", () => {
   it("exposes server-controlled permission administration instead of arbitrary API or SQL dispatch", () => {
     const names = [
       "get_my_permissions",
-      "list_account_permissions",
-      "get_account_permissions",
+      "query_account_permissions",
       "update_account_permissions",
-      "list_business_categories",
-      "create_evidence_category",
-      "update_business_category",
-      "list_business_dimensions",
-      "create_business_dimension",
-      "update_business_dimension",
-      "create_business_dimension_value",
-      "update_business_dimension_value",
-      "list_business_stores",
+      "get_permission_directory",
+      "configure_business_category",
+      "configure_business_dimension",
+      "configure_business_dimension_value",
       "update_business_store",
       "update_evidence_document_attributes",
       "get_evidence_document_management_status",
       "prepare_authorization_cutover",
       "activate_authorization_cutover",
       "suspend_authorization_reads",
-      "list_enterprise_workflows",
-      "get_enterprise_workflow",
+      "query_enterprise_workflows",
       "prepare_enterprise_workflow_change",
       "save_enterprise_workflow",
       "manage_workflow_installation",
@@ -1697,7 +1731,7 @@ describe("current business authorization contracts", () => {
   });
 });
 
-it("validates complete actual evidence dimension values and controlled fixed-category edits", () => {
+it("validates complete actual evidence dimension values", () => {
   const evidence = contractsByName.get("upload_evidence_document")!.inputSchema;
   const scope = {
     enterpriseKey: "enterprise",
@@ -1714,22 +1748,6 @@ it("validates complete actual evidence dimension values and controlled fixed-cat
       scopes: [{ ...scope, dimensions: { project: ["X", "Y"] } }]
     }).success
   ).toBe(false);
-  const category = contractsByName.get("update_business_category")!.inputSchema;
-  expect(
-    category.safeParse({
-      ...validInputs.update_business_category,
-      ownerships: ["store"],
-      requiredDimensionIds: []
-    }).success
-  ).toBe(false);
-  expect(
-    category.safeParse({
-      ...validInputs.update_business_category,
-      confidentialityLevel: undefined,
-      ownerships: ["group"],
-      requiredDimensionIds: ["project"]
-    }).success
-  ).toBe(true);
 });
 
 it("defines cost-card selection and archive inputs without server detail selectors", () => {

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import {
+  WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION,
   workflowActionIdentitySchema,
   workflowLivePolicyAllows,
   type WorkflowLivePolicy,
@@ -13,7 +14,7 @@ import {
   type WorkflowRunSnapshot,
   type AuthorizationSnapshot
 } from "@smedc/domain";
-import { ENTERPRISE_WORKFLOW_LAUNCHER_VERSION, type WorkflowMcpInputs } from "@smedc/mcp-contract";
+import type { WorkflowOperationInputs } from "@smedc/mcp-contract";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 import { z } from "zod";
 import {
@@ -495,7 +496,7 @@ export async function actionOperation(
   actor: Actor,
   auth: AuthorizationSnapshot,
   workflow: Workflow,
-  op: WorkflowMcpInputs["record_workflow_action"]["operation"],
+  op: WorkflowOperationInputs["record_workflow_action"]["operation"],
   now: Date
 ) {
   if (op.kind === "get")
@@ -611,7 +612,7 @@ export async function actionOperation(
         proof.identityHash !== hash(action.identity) ||
         (identity.manifestHash && identity.manifestHash !== proof.manifestHash) ||
         proof.resultHash !== receipt.resultHash ||
-        !launcherVersionAtLeast(proof.launcherVersion, ENTERPRISE_WORKFLOW_LAUNCHER_VERSION) ||
+        !launcherVersionAtLeast(proof.launcherVersion, WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION) ||
         proof.verifiedAt !== receipt.verifiedAt ||
         Date.parse(proof.verifiedAt) < action.createdAt.getTime() - 60000 ||
         Date.parse(proof.verifiedAt) > now.getTime() + 60000 ||

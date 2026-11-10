@@ -18,7 +18,7 @@ import {
   workflowTypeSchema,
   workflowVersionSchema
 } from "@smedc/domain";
-import { WORKFLOW_MCP_INPUT_SCHEMAS } from "@smedc/mcp-contract";
+import { WORKFLOW_OPERATION_INPUT_SCHEMAS } from "@smedc/mcp-contract";
 
 /** 自动任务面与权限面共用同一个组织路径参数。 */
 export const workflowOrgParams = z
@@ -26,14 +26,16 @@ export const workflowOrgParams = z
   .strict();
 
 /** 每个工具沿用 MCP 面同一份输入 schema；浏览器面只是第二个认证面。 */
-export const workflowListBody = WORKFLOW_MCP_INPUT_SCHEMAS.list_enterprise_workflows;
-export const workflowGetBody = WORKFLOW_MCP_INPUT_SCHEMAS.get_enterprise_workflow;
-export const workflowPrepareBody = WORKFLOW_MCP_INPUT_SCHEMAS.prepare_enterprise_workflow_change;
-export const workflowSaveBody = WORKFLOW_MCP_INPUT_SCHEMAS.save_enterprise_workflow;
-export const workflowInstallationBody = WORKFLOW_MCP_INPUT_SCHEMAS.manage_workflow_installation;
-export const workflowRunBody = WORKFLOW_MCP_INPUT_SCHEMAS.manage_workflow_run;
-export const workflowActionBody = WORKFLOW_MCP_INPUT_SCHEMAS.record_workflow_action;
-export const workflowStatusBody = WORKFLOW_MCP_INPUT_SCHEMAS.get_workflow_status;
+export const workflowListBody = WORKFLOW_OPERATION_INPUT_SCHEMAS.list_enterprise_workflows;
+export const workflowGetBody = WORKFLOW_OPERATION_INPUT_SCHEMAS.get_enterprise_workflow;
+export const workflowPrepareBody =
+  WORKFLOW_OPERATION_INPUT_SCHEMAS.prepare_enterprise_workflow_change;
+export const workflowSaveBody = WORKFLOW_OPERATION_INPUT_SCHEMAS.save_enterprise_workflow;
+export const workflowInstallationBody =
+  WORKFLOW_OPERATION_INPUT_SCHEMAS.manage_workflow_installation;
+export const workflowRunBody = WORKFLOW_OPERATION_INPUT_SCHEMAS.manage_workflow_run;
+export const workflowActionBody = WORKFLOW_OPERATION_INPUT_SCHEMAS.record_workflow_action;
+export const workflowStatusBody = WORKFLOW_OPERATION_INPUT_SCHEMAS.get_workflow_status;
 
 // ---- 响应 ----
 

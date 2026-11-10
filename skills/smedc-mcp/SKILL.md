@@ -38,6 +38,13 @@ tenant activation; package installation alone does not activate a live tenant. F
 those tools are available. Permission checks always happen on the service; cached identity is
 not a permission card and does not authorize content.
 
+The six consolidated tools are part of the launcher `0.17.0` candidate and require the matching
+service. Use the legacy signatures in the references with approved `0.16.0` and its matching
+pre-cutover service. Once a verified release and its matching service are active, reload the
+MCP host and verify that the launcher discovers 50 tools, including the six new names. After
+cutover, the thirteen replaced names fail. If the launcher and service contracts disagree, report
+the version mismatch to the operator and stop the affected operation.
+
 ## Cost Cards (Published Launcher, Service Gated)
 
 For cost-card original uploads, directory lookup, same-name disambiguation, local CSV

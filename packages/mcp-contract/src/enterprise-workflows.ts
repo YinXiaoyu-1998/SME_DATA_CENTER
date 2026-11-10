@@ -206,15 +206,13 @@ const actionOperation = z.discriminatedUnion("kind", [
     })
     .strict()
 ]);
-export const WORKFLOW_MCP_INPUT_SCHEMAS = {
-  list_enterprise_workflows: z
-    .object({
-      enterpriseKey: workflowEnterpriseKeySchema.optional(),
-      limit: z.number().int().min(1).max(100).optional(),
-      cursor: workflowIdSchema.optional()
-    })
-    .strict(),
-  get_enterprise_workflow: z.object(selector).strict(),
+const workflowList = {
+  enterpriseKey: workflowEnterpriseKeySchema.optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  cursor: workflowIdSchema.optional()
+};
+
+const sharedWorkflowInputs = {
   prepare_enterprise_workflow_change: z
     .object({ ...selector, ...expected, change: workflowChangeSchema })
     .strict(),
@@ -244,15 +242,35 @@ export const WORKFLOW_MCP_INPUT_SCHEMAS = {
     })
     .strict()
 } as const;
-export const WORKFLOW_MCP_TOOL_NAMES = Object.keys(WORKFLOW_MCP_INPUT_SCHEMAS) as Array<
-  keyof typeof WORKFLOW_MCP_INPUT_SCHEMAS
->;
-export type WorkflowMcpToolName = keyof typeof WORKFLOW_MCP_INPUT_SCHEMAS;
-export type WorkflowMcpInputs = {
-  [K in WorkflowMcpToolName]: z.infer<(typeof WORKFLOW_MCP_INPUT_SCHEMAS)[K]>;
+export const WORKFLOW_OPERATION_INPUT_SCHEMAS = {
+  list_enterprise_workflows: z.object(workflowList).strict(),
+  get_enterprise_workflow: z.object(selector).strict(),
+  ...sharedWorkflowInputs
+} as const;
+export type WorkflowOperationName = keyof typeof WORKFLOW_OPERATION_INPUT_SCHEMAS;
+export type WorkflowOperationInputs = {
+  [K in WorkflowOperationName]: z.infer<(typeof WORKFLOW_OPERATION_INPUT_SCHEMAS)[K]>;
 };
+export const WORKFLOW_OPERATION_NAMES = Object.keys(
+  WORKFLOW_OPERATION_INPUT_SCHEMAS
+) as WorkflowOperationName[];
+
+export const WORKFLOW_MCP_INPUT_SCHEMAS = {
+  query_enterprise_workflows: z
+    .object({
+      query: z.discriminatedUnion("mode", [
+        z.object({ mode: z.literal("list"), ...workflowList }).strict(),
+        z.object({ mode: z.literal("detail"), ...selector }).strict()
+      ])
+    })
+    .strict(),
+  ...sharedWorkflowInputs
+} as const;
+export type WorkflowMcpToolName = keyof typeof WORKFLOW_MCP_INPUT_SCHEMAS;
+export const WORKFLOW_MCP_TOOL_NAMES = Object.keys(
+  WORKFLOW_MCP_INPUT_SCHEMAS
+) as WorkflowMcpToolName[];
 export const WORKFLOW_TOOL_READ_ONLY = new Set<WorkflowMcpToolName>([
-  "list_enterprise_workflows",
-  "get_enterprise_workflow",
+  "query_enterprise_workflows",
   "get_workflow_status"
 ]);

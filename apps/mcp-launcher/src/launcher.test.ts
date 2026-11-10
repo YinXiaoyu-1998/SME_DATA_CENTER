@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.16.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.17.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1224,7 +1224,7 @@ it("passes SDK cancellation into requestId bundle transfers and rejects mixed sc
   }
 });
 
-it("retains strict permission schemas and fixed/evidence refinements at the launcher MCP boundary", async () => {
+it("rejects invalid permission arguments at the launcher MCP boundary", async () => {
   const server = new McpServer({ name: "permission-schema", version: "1.0.0" });
   const remote = vi.fn<typeof fetch>(async () => {
     throw new Error("must not forward invalid input");
@@ -1241,20 +1241,33 @@ it("retains strict permission schemas and fixed/evidence refinements at the laun
     for (const [name, args] of [
       ["get_my_permissions", { orgId: "foreign" }],
       [
-        "update_business_category",
+        "configure_business_category",
         {
-          categoryId: "business",
-          name: "Business",
           expectedVersion: "7",
-          confidentialityLevel: 1,
-          ownerships: ["store"],
-          requiredDimensionIds: []
+          operation: {
+            kind: "update_fixed",
+            categoryId: "business",
+            name: "Business",
+            confidentialityLevel: 1,
+            ownerships: ["store"],
+            requiredDimensionIds: []
+          }
         }
       ],
       ["activate_authorization_cutover", { expectedVersion: "7", confirm: false }]
     ] as const) {
       const result = await client.callTool({ name, arguments: args });
-      expect(result.isError).toBe(true);
+      expect(result).toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining(
+              `Input validation error: Invalid arguments for tool ${name}`
+            )
+          }
+        ]
+      });
     }
     expect(remote).not.toHaveBeenCalled();
   } finally {

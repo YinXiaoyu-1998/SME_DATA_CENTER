@@ -125,7 +125,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.16.0");
+    expect(manifest.version).toBe("0.17.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -151,8 +151,114 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.16.0");
+      expect(client.getServerVersion()?.version).toBe("0.17.0");
       const tools = await client.listTools();
+      const names = tools.tools.map((tool) => tool.name);
+      expect(names).toHaveLength(50);
+      expect(new Set(names).size).toBe(50);
+      const retiredNames = [
+        "list_account_permissions",
+        "get_account_permissions",
+        "list_business_categories",
+        "list_business_dimensions",
+        "list_business_stores",
+        "create_evidence_category",
+        "update_business_category",
+        "create_business_dimension",
+        "update_business_dimension",
+        "create_business_dimension_value",
+        "update_business_dimension_value",
+        "list_enterprise_workflows",
+        "get_enterprise_workflow"
+      ];
+      for (const name of retiredNames) {
+        expect(names).not.toContain(name);
+        const result = await client.callTool({ name, arguments: {} });
+        expect(result).toMatchObject({
+          isError: true,
+          content: [{ type: "text", text: expect.stringMatching(/not found|unknown/i) }]
+        });
+      }
+      expect(tools.tools.find((tool) => tool.name === "get_permission_directory")).toMatchObject({
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          additionalProperties: false,
+          required: ["section"],
+          properties: { section: { enum: ["categories", "dimensions", "stores"] } }
+        }
+      });
+      const evidenceFields = ["name", "ownerships", "requiredDimensionIds"] as const;
+      const dimensionFields = ["dimensionId", "name"] as const;
+      const valueFields = [...dimensionFields, "valueId"] as const;
+      const branchCases = {
+        query_account_permissions: [
+          "query",
+          [
+            ["list", []],
+            ["detail", ["employeeId"]]
+          ]
+        ],
+        query_enterprise_workflows: [
+          "query",
+          [
+            ["list", [], ["enterpriseKey", "cursor", "limit"]],
+            ["detail", ["enterpriseKey", "workflowType"]]
+          ]
+        ],
+        configure_business_category: [
+          "operation",
+          [
+            ["create_evidence", ["id", ...evidenceFields], ["retired"]],
+            ["update_evidence", ["categoryId", ...evidenceFields], ["retired"]],
+            ["update_fixed", ["categoryId", "name", "confidentialityLevel"], ["retired"]]
+          ]
+        ],
+        configure_business_dimension: [
+          "operation",
+          [
+            ["create", dimensionFields, ["retired"]],
+            ["update", dimensionFields, ["retired"]]
+          ]
+        ],
+        configure_business_dimension_value: [
+          "operation",
+          [
+            ["create", valueFields, ["retired"]],
+            ["update", valueFields, ["retired"]]
+          ]
+        ]
+      } as const;
+      type DiscoveryBranch = {
+        properties?: Record<string, { const?: string }>;
+        required?: string[];
+      };
+      for (const [name, [selector, expectedBranches]] of Object.entries(branchCases)) {
+        const tool = tools.tools.find((tool) => tool.name === name);
+        const readOnly = selector === "query";
+        const discriminator = readOnly ? "mode" : "kind";
+        expect(tool, name).toMatchObject({
+          annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly },
+          inputSchema: {
+            additionalProperties: false,
+            required: readOnly ? ["query"] : ["expectedVersion", "operation"]
+          }
+        });
+        const nested = tool?.inputSchema.properties?.[selector] as
+          { oneOf?: DiscoveryBranch[]; anyOf?: DiscoveryBranch[] } | undefined;
+        const branches = nested?.oneOf ?? nested?.anyOf;
+        expect(branches, name).toHaveLength(expectedBranches.length);
+        for (const [literal, fields, optional = []] of expectedBranches) {
+          const branch = branches?.find(
+            (candidate) => candidate.properties?.[discriminator]?.const === literal
+          );
+          const required = [discriminator, ...fields];
+          expect(branch, `${name} ${literal}`).toMatchObject({ additionalProperties: false });
+          expect([...branch!.required!].sort()).toEqual(required.sort());
+          expect(Object.keys(branch!.properties!).sort()).toEqual(
+            [...required, ...optional].sort()
+          );
+        }
+      }
       expect(
         tools.tools.find((tool) => tool.name === "upsert_store_reviews")?.inputSchema
       ).toMatchObject({
@@ -180,10 +286,10 @@ describe("published launcher artifact", () => {
           "prepare_ledger_pdf_download",
           "get_ledger_pdf_download_url",
           "get_my_permissions",
-          "get_account_permissions",
+          "query_account_permissions",
           "update_account_permissions",
-          "list_business_categories",
-          "update_business_category",
+          "get_permission_directory",
+          "configure_business_category",
           "update_evidence_document_attributes",
           "prepare_authorization_cutover",
           "activate_authorization_cutover",

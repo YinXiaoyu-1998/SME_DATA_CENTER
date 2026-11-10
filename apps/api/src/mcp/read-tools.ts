@@ -3,6 +3,7 @@ import {
   COST_CARD_LAUNCHER_VERSION,
   errorToolResult,
   validationErrorToolResult,
+  type PermissionMcpInputs,
   type SmedcMcpToolContract,
   type SmedcMcpToolName
 } from "@smedc/mcp-contract";
@@ -38,11 +39,8 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_ledger_pdf_request_status",
   "get_ledger_pdf_download_url",
   "get_my_permissions",
-  "list_account_permissions",
-  "get_account_permissions",
-  "list_business_categories",
-  "list_business_dimensions",
-  "list_business_stores",
+  "query_account_permissions",
+  "get_permission_directory",
   "get_evidence_document_management_status",
   "prepare_authorization_cutover"
 ] as const satisfies readonly SmedcMcpToolName[];
@@ -137,19 +135,20 @@ function routeForReadOnlyTool(
       return { method: "POST", path: "/v1/cost-cards/manifest", body: input };
     case "get_my_permissions":
       return { method: "GET", path: `/v1/permissions/me` };
-    case "list_account_permissions":
-      return { method: "GET", path: `/v1/admin/permissions/accounts` };
-    case "get_account_permissions":
+    case "query_account_permissions": {
+      const { query } = input as PermissionMcpInputs["query_account_permissions"];
       return {
         method: "GET",
-        path: `/v1/admin/permissions/accounts/${encodeURIComponent(String(input["employeeId"]))}`
+        path:
+          query.mode === "list"
+            ? "/v1/admin/permissions/accounts"
+            : `/v1/admin/permissions/accounts/${encodeURIComponent(query.employeeId)}`
       };
-    case "list_business_categories":
-      return { method: "GET", path: `/v1/admin/permissions/categories` };
-    case "list_business_dimensions":
-      return { method: "GET", path: `/v1/admin/permissions/dimensions` };
-    case "list_business_stores":
-      return { method: "GET", path: `/v1/admin/permissions/stores` };
+    }
+    case "get_permission_directory": {
+      const { section } = input as PermissionMcpInputs["get_permission_directory"];
+      return { method: "GET", path: `/v1/admin/permissions/${section}` };
+    }
     case "get_evidence_document_management_status":
       return {
         method: "GET",

@@ -987,6 +987,17 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       const toolNames = (
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
+      expect(new Set(toolNames).size).toBe(47);
+      expect(toolNames).toEqual(
+        expect.arrayContaining([
+          "query_account_permissions",
+          "get_permission_directory",
+          "configure_business_category",
+          "configure_business_dimension",
+          "configure_business_dimension_value",
+          "query_enterprise_workflows"
+        ])
+      );
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
       expect(toolNames).not.toContain("refresh_ledger_pdfs");
       const removed = await postMcp(
@@ -1620,6 +1631,49 @@ describe("HTTP and official MCP business authorization parity", () => {
       await app.close();
     }
   });
+  it.each([
+    ["query_account_permissions", { query: { mode: "detail" } }],
+    [
+      "configure_business_category",
+      {
+        expectedVersion: "7",
+        operation: {
+          kind: "update_fixed",
+          categoryId: "vip",
+          name: "VIP",
+          confidentialityLevel: 2,
+          ownerships: ["group"],
+          requiredDimensionIds: []
+        }
+      }
+    ]
+  ] as const)("rejects an invalid branch for %s through /mcp", async (name, args) => {
+    const fixture = permissionFixture();
+    fixture.snapshot.role = "admin";
+    const app = buildMcpTestServer({ businessAuthorizationService: fixture.service });
+    try {
+      const response = await postMcp(
+        app,
+        { jsonrpc: "2.0", id: 91, method: "tools/call", params: { name, arguments: args } },
+        { "mcp-protocol-version": "2025-11-25", "x-smedc-launcher-version": "0.17.0" },
+        { employee: adminEmployee }
+      );
+      expect(response.statusCode).toBe(200);
+      expect(parseJsonRpc(response.payload).result).toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining(
+              `MCP error ${ErrorCode.InvalidParams}: Input validation error: Invalid arguments for tool ${name}`
+            )
+          }
+        ]
+      });
+    } finally {
+      await app.close();
+    }
+  });
   it("reads full admin self/other configuration live and applies current role, tenant and version checks", async () => {
     const fixture = permissionFixture();
     fixture.snapshot.role = "admin";
@@ -1641,11 +1695,24 @@ describe("HTTP and official MCP business authorization parity", () => {
           url: `/v1/admin/permissions/accounts/${employeeId}`,
           headers
         });
-        const mcp = await call(app, "get_account_permissions", { employeeId }, adminEmployee);
+        const mcp = await call(
+          app,
+          "query_account_permissions",
+          { query: { mode: "detail", employeeId } },
+          adminEmployee
+        );
         expect(mcp.payload).toEqual(http.json());
         expect(http.json().categories).toHaveLength(2);
         expect(JSON.stringify(mcp.payload)).not.toContain("downloadUrl");
       }
+      const listed = await app.inject({ url: "/v1/admin/permissions/accounts", headers });
+      const listMcp = await call(
+        app,
+        "query_account_permissions",
+        { query: { mode: "list" } },
+        adminEmployee
+      );
+      expect(listMcp.payload).toEqual(listed.json());
       const card = await call(app, "get_my_permissions", {}, adminEmployee);
       expect(card.payload).toMatchObject({
         authorizationVersion: "7",
@@ -1669,8 +1736,8 @@ describe("HTTP and official MCP business authorization parity", () => {
       expect(ordinary.payload).toMatchObject({ error: { code: "DOCUMENT_NOT_FOUND" } });
       const foreign = await call(
         app,
-        "get_account_permissions",
-        { employeeId: "foreign" },
+        "query_account_permissions",
+        { query: { mode: "detail", employeeId: "foreign" } },
         adminEmployee
       );
       expect(foreign.payload).toMatchObject({ error: { code: "AUTHORIZATION_ACCOUNT_NOT_FOUND" } });
@@ -1684,8 +1751,8 @@ describe("HTTP and official MCP business authorization parity", () => {
       });
       const deniedMcp = await call(
         app,
-        "get_account_permissions",
-        { employeeId: employee.id },
+        "query_account_permissions",
+        { query: { mode: "detail", employeeId: employee.id } },
         adminEmployee
       );
       expect(denied.statusCode).toBe(403);

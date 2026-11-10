@@ -7,7 +7,7 @@ import {
   workflowActionReceiptSchema,
   type WorkflowMigrationChunk
 } from "@smedc/domain";
-import type { WorkflowMcpInputs } from "@smedc/mcp-contract";
+import type { WorkflowOperationInputs } from "@smedc/mcp-contract";
 import {
   audit,
   dbType,
@@ -102,7 +102,7 @@ export async function migrationOperation(
   tx: Tx,
   actor: Actor,
   workflow: Workflow,
-  op: WorkflowMcpInputs["manage_workflow_installation"]["operation"],
+  op: WorkflowOperationInputs["manage_workflow_installation"]["operation"],
   now: Date
 ) {
   if (op.kind === "migration_preview") {

@@ -3,7 +3,9 @@ import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 
 export const WORKFLOW_SCHEMA_VERSION = 1;
 export const WORKFLOW_CAPABILITY_VERSION = "1.0.0";
-export const WORKFLOW_MINIMUM_LAUNCHER_VERSION = "0.16.0";
+export const WORKFLOW_MINIMUM_LAUNCHER_VERSION = "0.17.0";
+// Installation readiness records and transfer proofs retain the version at which they were recorded.
+export const WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION = "0.16.0";
 export const ENTERPRISE_WORKFLOW_CAPABILITY = Object.freeze({
   id: "enterprise-workflows-v1",
   version: WORKFLOW_CAPABILITY_VERSION,
