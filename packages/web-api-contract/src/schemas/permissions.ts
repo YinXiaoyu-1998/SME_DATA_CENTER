@@ -5,7 +5,7 @@ export const permissionOrgParams = z
   .object({ orgId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) })
   .strict();
 
-const employeeId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+const userAccountId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const categoryId = z.string().min(1).max(64);
 const dimensionId = z.string().min(1).max(64);
 const documentId = z.string().min(1).max(64);
@@ -50,7 +50,7 @@ const scope = z.discriminatedUnion("ownership", [
 
 // ---- 请求 ----
 
-export const permissionAccountParams = permissionOrgParams.extend({ employeeId });
+export const permissionAccountParams = permissionOrgParams.extend({ userAccountId });
 
 export const permissionCategoryParams = permissionOrgParams.extend({ id: categoryId });
 
@@ -229,7 +229,7 @@ const storedGrant = z
 const snapshot = z
   .object({
     orgId: z.string(),
-    employeeId: z.string(),
+    userAccountId: z.string(),
     role,
     disabled: z.boolean(),
     clearance: z.number().int(),
@@ -262,7 +262,7 @@ const account = snapshot.extend({ displayName: z.string(), email: z.string(), id
 /** GET /permissions/accounts：同企业账号目录。 */
 export const permissionAccountsResponse = z.object({ accounts: z.array(account) }).strict();
 
-/** GET /permissions/accounts/:employeeId：单个账号的授权快照。 */
+/** GET /permissions/accounts/:userAccountId：单个账号的授权快照。 */
 export const permissionAccountResponse = snapshot;
 
 export const permissionAccountUpdateResponse = versioned(
@@ -270,7 +270,16 @@ export const permissionAccountUpdateResponse = versioned(
 );
 
 const storeRow = z
-  .object({ orgId: z.string(), enterpriseKey: z.string(), name: z.string(), retired: z.boolean() })
+  .object({
+    orgId: z.string(),
+    enterpriseKey: z.string(),
+    name: z.string(),
+    retired: z.boolean(),
+    storeId: z.string().uuid().optional(),
+    officialName: z.string().optional(),
+    confirmation: z.enum(["pending", "confirmed", "historical"]).optional(),
+    version: z.string().optional()
+  })
   .strict();
 
 export const permissionStoresResponse = z

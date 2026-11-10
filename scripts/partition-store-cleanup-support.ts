@@ -228,7 +228,7 @@ export function createStoreCleanupRepository(prisma: PrismaClient) {
             where: { orgId: scope.orgId, id: { notIn: rows.map((row) => row.id) } }
           }),
           importJobs: await tx.partitionImportJob.count({ where: { orgId: scope.orgId } }),
-          employees: await tx.employee.count({ where: { orgId: scope.orgId } })
+          employees: await tx.userAccount.count({ where: { orgId: scope.orgId } })
         };
         return {
           version: 1,

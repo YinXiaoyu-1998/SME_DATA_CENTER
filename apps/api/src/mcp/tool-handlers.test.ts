@@ -102,7 +102,7 @@ describe("live SMEDC MCP tool handler map", () => {
     });
     expect(fixture.appendDenied).toHaveBeenCalledExactlyOnceWith({
       orgId: "default-org",
-      actorEmployeeId: "emp_factory",
+      actorUserAccountId: "emp_factory",
       uploadSurface: "structured_dataset",
       audit
     });

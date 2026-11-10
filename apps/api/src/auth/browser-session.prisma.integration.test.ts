@@ -23,7 +23,7 @@ describeIntegration("Prisma shared browser sessions", () => {
   let fingerprint: string;
   const identity = () => ({
     identityId: "browser_ui_identity",
-    employeeId: "browser_ui_admin",
+    userAccountId: "browser_ui_admin",
     orgId,
     credentialFingerprint: fingerprint
   });
@@ -31,7 +31,7 @@ describeIntegration("Prisma shared browser sessions", () => {
     const passwordHash = await hashPassword("synthetic browser test password");
     fingerprint = hashOpaqueSecret(passwordHash);
     await prisma.organization.create({ data: { id: orgId, name: "浏览器测试企业" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: "browser_ui_admin",
         orgId,
@@ -45,7 +45,7 @@ describeIntegration("Prisma shared browser sessions", () => {
       data: {
         id: "browser_ui_identity",
         orgId,
-        employeeId: "browser_ui_admin",
+        userAccountId: "browser_ui_admin",
         normalizedEmail: "browser-ui@example.invalid",
         passwordHash
       }
@@ -55,7 +55,7 @@ describeIntegration("Prisma shared browser sessions", () => {
     await prisma.authSecurityEvent.deleteMany({ where: { orgId } });
     await prisma.passwordSetupGrant.deleteMany({ where: { identityId: "browser_ui_identity" } });
     await prisma.loginIdentity.deleteMany({ where: { orgId } });
-    await prisma.employee.deleteMany({ where: { orgId } });
+    await prisma.userAccount.deleteMany({ where: { orgId } });
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });
@@ -71,11 +71,17 @@ describeIntegration("Prisma shared browser sessions", () => {
       role: "admin",
       orgId
     });
-    await prisma.employee.update({ where: { id: "browser_ui_admin" }, data: { role: "employee" } });
+    await prisma.userAccount.update({
+      where: { id: "browser_ui_admin" },
+      data: { role: "employee" }
+    });
     expect(await sessions.authenticate(secret)).toMatchObject({ role: "employee" });
-    await prisma.employee.update({ where: { id: "browser_ui_admin" }, data: { disabled: true } });
+    await prisma.userAccount.update({
+      where: { id: "browser_ui_admin" },
+      data: { disabled: true }
+    });
     expect(await sessions.authenticate(secret)).toBeNull();
-    await prisma.employee.update({
+    await prisma.userAccount.update({
       where: { id: "browser_ui_admin" },
       data: { role: "admin", disabled: false }
     });
@@ -94,7 +100,7 @@ describeIntegration("Prisma shared browser sessions", () => {
   it("revokes browser sessions as soon as an operator starts password reset", async () => {
     const secret = await sessions.issue(identity(), null, audit);
     await createPrismaAuthOperatorRepository(prisma).resetPassword({
-      employeeId: "browser_ui_admin",
+      userAccountId: "browser_ui_admin",
       grantTokenHash: "b".repeat(64),
       grantExpiresAt: new Date(Date.now() + 60_000),
       now: new Date()

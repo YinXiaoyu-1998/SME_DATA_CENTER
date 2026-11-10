@@ -6,7 +6,7 @@ export function legacyAuthorization(
 ): AuthorizationSnapshot {
   return {
     orgId: employee.orgId,
-    employeeId: employee.id,
+    userAccountId: employee.id,
     role: employee.role,
     disabled: employee.disabled,
     clearance: employee.clearance,

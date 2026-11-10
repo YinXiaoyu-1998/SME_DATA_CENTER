@@ -102,7 +102,7 @@ export function parseStoreReviewQuery(value: unknown): StoreReviewQuery {
 }
 export function hashStoreReviewQueryScope(input: {
   orgId: string;
-  employeeId: string;
+  userAccountId: string;
   enterpriseKey: string;
   authorizationVersion: string;
   query: StoreReviewQuery;

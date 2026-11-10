@@ -54,7 +54,7 @@ export function createPrismaEmployeeRepository(
 
   return {
     async findByEmail(email: string) {
-      const employee = await prisma.employee.findUnique({
+      const employee = await prisma.userAccount.findUnique({
         where: { email },
         include: {
           organization: {
@@ -66,7 +66,7 @@ export function createPrismaEmployeeRepository(
       return employee ? toAuthenticatedEmployee(employee) : null;
     },
     async findById(id: string) {
-      const employee = await prisma.employee.findUnique({
+      const employee = await prisma.userAccount.findUnique({
         where: { id },
         include: {
           organization: {

@@ -1,5 +1,6 @@
 import type { PartitionDatasetName } from "@smedc/domain";
 import {
+  FormalStoreIntakeError,
   persistStructuredSourceReadRequirements,
   activateEvidenceReadRequirement,
   lookupShelfLives
@@ -498,13 +499,36 @@ export async function runWorkerOnce(input: {
       }
 
       await input.repository.beginStructuredImportApply(transition());
-      await input.repository.completeStructuredImport({
-        ...transition(),
-        result,
-        batchInsertSize:
-          input.structuredImportBatchInsertSize ??
-          PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportBatchInsertSize
-      });
+      try {
+        await input.repository.completeStructuredImport({
+          ...transition(),
+          result,
+          batchInsertSize:
+            input.structuredImportBatchInsertSize ??
+            PHASE3_RUNTIME_LIMIT_DEFAULTS.structuredImportBatchInsertSize
+        });
+      } catch (error) {
+        if (!(error instanceof FormalStoreIntakeError)) throw error;
+        const source = result.rows.find((row) => row.sourceRowNumber === error.details.rowNumber);
+        await input.repository.rejectStructuredImport({
+          ...transition(),
+          result: {
+            ...result,
+            validationErrors: [
+              {
+                code: error.code,
+                message: error.message,
+                sheetName: source?.sourceSheetName ?? null,
+                sheetIndex: source?.sourceSheetIndex ?? null,
+                rowNumber: error.details.rowNumber ?? null,
+                column: error.details.field
+              }
+            ],
+            validationErrorCount: 1
+          }
+        });
+        return { processed: true, documentId: run.documentId, status: "rejected" };
+      }
       return {
         processed: true,
         documentId: run.documentId,
@@ -883,7 +907,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: "structured_import.validating",
               targetType: "import_batch",
               targetId: batch.id,
@@ -902,7 +926,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: AUDIT_ACTIONS.documentProcessingStarted,
               targetType: "document",
               targetId: run.documentId,
@@ -1080,7 +1104,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: AUDIT_ACTIONS.documentActivated,
             targetType: "document",
             targetId: input.documentId,
@@ -1119,7 +1143,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: (await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } })).orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: "structured_import.applying",
             targetType: "import_batch",
             targetId: input.importBatchId,
@@ -1165,7 +1189,7 @@ export function createPrismaProcessingWorkerRepository(
         if (!batch)
           throw new Error(`Structured import batch ${input.importBatchId} cannot complete.`);
 
-        await persistStructuredSourceReadRequirements(tx, {
+        const ledgerStoreKey = await persistStructuredSourceReadRequirements(tx, {
           orgId: run.orgId,
           sourceDocumentId: input.documentId,
           dataset: batch.dataset,
@@ -1239,13 +1263,13 @@ export function createPrismaProcessingWorkerRepository(
         if (batch.dataset === ImportDataset.delivery_ledger) {
           await markLedgerPartitionsChanged(
             tx,
-            ledgerPartitionsFromRows(run.orgId, input.result.rows)
+            ledgerPartitionsFromRows(run.orgId, input.result.rows, ledgerStoreKey)
           );
         }
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: AUDIT_ACTIONS.structuredImportApplied,
             targetType: "import_batch",
             targetId: batch.id,
@@ -1322,7 +1346,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: "structured_import.rejected",
             targetType: "import_batch",
             targetId: input.importBatchId,
@@ -1479,7 +1503,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: "structured_import.failed",
               targetType: "import_batch",
               targetId: batch?.id ?? input.documentId,
@@ -1531,7 +1555,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: AUDIT_ACTIONS.documentProcessingFailed,
               targetType: "document",
               targetId: input.documentId,
@@ -1610,6 +1634,8 @@ export class ProcessingLeaseLostError extends Error {
 }
 
 function toProcessingError(error: unknown, jobType?: string): ProcessingError {
+  if (error instanceof FormalStoreIntakeError)
+    return new ProcessingError(error.code, error.message, false);
   if (error instanceof ProcessingError) {
     return error;
   }

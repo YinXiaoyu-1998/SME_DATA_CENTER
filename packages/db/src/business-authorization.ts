@@ -85,7 +85,7 @@ function preservesSourceTuples(
 }
 export async function persistBusinessGrants(
   tx: Tx,
-  input: { orgId: string; employeeId: string; grants: BusinessGrant[] },
+  input: { orgId: string; userAccountId: string; grants: BusinessGrant[] },
   categories: BusinessCategoryRule[]
 ) {
   for (const grant of input.grants) {
@@ -93,14 +93,14 @@ export async function persistBusinessGrants(
       throw new Error("INVALID_BUSINESS_GRANT");
   }
   await tx.businessGrant.deleteMany({
-    where: { orgId: input.orgId, employeeId: input.employeeId }
+    where: { orgId: input.orgId, userAccountId: input.userAccountId }
   });
   for (const grant of input.grants) {
     await tx.businessGrant.create({
       data: {
         orgId: input.orgId,
         id: grant.id,
-        employeeId: input.employeeId,
+        userAccountId: input.userAccountId,
         enterpriseKey: grant.enterpriseKey,
         ownership: grant.ownership,
         allStores: grant.stores?.kind === "all"
@@ -149,7 +149,7 @@ export class ResourceAttributesError extends Error {
   }
 }
 export interface HistoricalSupplementIntent {
-  actorEmployeeId: string;
+  actorUserAccountId: string;
   reason: string;
 }
 export function readHistoricalSupplementIntent(
@@ -159,23 +159,32 @@ export function readHistoricalSupplementIntent(
   if (
     typeof value !== "object" ||
     Array.isArray(value) ||
-    !("actorEmployeeId" in value) ||
     !("reason" in value) ||
-    typeof value.actorEmployeeId !== "string" ||
     typeof value.reason !== "string"
   )
     throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
-  return { actorEmployeeId: value.actorEmployeeId, reason: value.reason };
+  const current = "actorUserAccountId" in value ? value.actorUserAccountId : undefined;
+  const legacy = "actorEmployeeId" in value ? value.actorEmployeeId : undefined;
+  if (
+    (current !== undefined && typeof current !== "string") ||
+    (legacy !== undefined && typeof legacy !== "string") ||
+    (current !== undefined && legacy !== undefined && current !== legacy)
+  )
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
+  const actorUserAccountId = current ?? legacy;
+  if (typeof actorUserAccountId !== "string")
+    throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
+  return { actorUserAccountId, reason: value.reason };
 }
 export async function bindHistoricalSupplementIntent(
   tx: Tx,
   orgId: string,
-  actorEmployeeId: string,
+  actorUserAccountId: string,
   reason?: string,
   businessDates: readonly string[] = []
 ): Promise<HistoricalSupplementIntent | undefined> {
   if (reason === undefined) return undefined;
-  const intent = { actorEmployeeId, reason: reason.trim() };
+  const intent = { actorUserAccountId, reason: reason.trim() };
   await validateHistoricalSupplement(tx, orgId, intent, businessDates);
   return intent;
 }
@@ -209,11 +218,11 @@ async function validateHistoricalSupplement(
   const actor = currentRead
     ? (
         await tx.$queryRaw<{ id: string }[]>(
-          Prisma.sql`SELECT id FROM employees WHERE org_id = ${orgId} AND id = ${intent.actorEmployeeId} AND role = 'admin' AND disabled = false FOR SHARE`
+          Prisma.sql`SELECT id FROM employees WHERE org_id = ${orgId} AND id = ${intent.actorUserAccountId} AND role = 'admin' AND disabled = false FOR SHARE`
         )
       )[0]
-    : await tx.employee.findFirst({
-        where: { orgId, id: intent.actorEmployeeId, role: "admin", disabled: false },
+    : await tx.userAccount.findFirst({
+        where: { orgId, id: intent.actorUserAccountId, role: "admin", disabled: false },
         select: { id: true }
       });
   if (!actor) throw new ResourceAttributesError("AUTHORIZATION_ADMIN_REQUIRED");
@@ -290,7 +299,7 @@ export async function requireCurrentDirectoryEligibility(
     await tx.auditLog.create({
       data: {
         orgId: input.orgId,
-        actorEmployeeId: input.historicalSupplement.actorEmployeeId,
+        actorUserAccountId: input.historicalSupplement.actorUserAccountId,
         action: "resource.historical_supplement.authorized",
         targetType: "business_resource",
         targetId: input.targetId,
@@ -490,7 +499,7 @@ export function createBusinessAuthorizationRepository({
       await client.auditLog.create({
         data: {
           orgId: data.orgId,
-          actorEmployeeId: null,
+          actorUserAccountId: null,
           action: "permissions.operator.change",
           targetType: "business_authorization_audit",
           targetId: audit.id,
@@ -507,23 +516,25 @@ export function createBusinessAuthorizationRepository({
       });
   }
   async function loadAuthorizationSnapshot(
-    employeeId: string,
+    userAccountId: string,
     orgId: string,
     tx?: Tx
   ): Promise<AuthorizationSnapshot> {
     if (!tx)
-      return prisma.$transaction((client) => loadAuthorizationSnapshot(employeeId, orgId, client));
-    const employee = await tx.employee.findUnique({
-      where: { orgId_id: { orgId, id: employeeId } }
+      return prisma.$transaction((client) =>
+        loadAuthorizationSnapshot(userAccountId, orgId, client)
+      );
+    const employee = await tx.userAccount.findUnique({
+      where: { orgId_id: { orgId, id: userAccountId } }
     });
     if (!employee || employee.orgId !== orgId) throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
     return {
       ...(await loadOrganizationAuthorization(tx, orgId)),
-      employeeId,
+      userAccountId,
       role: employee.role,
       disabled: employee.disabled,
       clearance: employee.clearance,
-      grants: (await loadBusinessGrants(tx, orgId, employeeId)).get(employeeId) ?? []
+      grants: (await loadBusinessGrants(tx, orgId, userAccountId)).get(userAccountId) ?? []
     };
   }
   async function loadOrganizationAuthorization(tx: Tx, orgId: string) {
@@ -602,7 +613,7 @@ export function createBusinessAuthorizationRepository({
           await tx.$queryRaw(
             Prisma.sql`SELECT id FROM employees WHERE org_id = ${context.orgId} AND id = ${context.actorId} FOR SHARE`
           );
-          const actor = await tx.employee.findUnique({
+          const actor = await tx.userAccount.findUnique({
             where: { orgId_id: { orgId: context.orgId, id: context.actorId } }
           });
           if (!actor || actor.orgId !== context.orgId || actor.disabled || actor.role !== "admin")
@@ -627,7 +638,7 @@ export function createBusinessAuthorizationRepository({
     } catch (error) {
       // The rejected mutation has rolled back. Record its result without advancing the version.
       // Do not copy driver messages or attempted resource data into the audit.
-      const actor = await prisma.employee.findUnique({
+      const actor = await prisma.userAccount.findUnique({
         where: { orgId_id: { orgId: context.orgId, id: context.actorId } }
       });
       const state = await prisma.businessAuthorizationState.findUnique({
@@ -717,7 +728,7 @@ export function createBusinessAuthorizationRepository({
     },
     async listAccounts(orgId: string, actorId: string) {
       return prisma.$transaction(async (tx) => {
-        const rows = await tx.employee.findMany({
+        const rows = await tx.userAccount.findMany({
           where: { orgId },
           select: {
             id: true,
@@ -737,7 +748,7 @@ export function createBusinessAuthorizationRepository({
           ...organization,
           ...account,
           id,
-          employeeId: id,
+          userAccountId: id,
           grants: grants.get(id) ?? []
         }));
       });
@@ -748,35 +759,35 @@ export function createBusinessAuthorizationRepository({
     listDimensions: (orgId: string) =>
       prisma.businessDimension.findMany({ where: { orgId }, include: { values: true } }),
     async configureAccountRole(
-      input: AuthorizationWriteContext & { employeeId: string; role: unknown }
+      input: AuthorizationWriteContext & { userAccountId: string; role: unknown }
     ) {
       if (!operator) throw new Error("AUTHORIZATION_OPERATOR_REQUIRED");
       return mutate(
         input,
         "account.role.configure",
-        input.employeeId,
+        input.userAccountId,
         async (tx, assertWithinDeadline) => {
           const role = input.role;
           if (role !== "admin" && role !== "employee") throw new Error("INVALID_ACCOUNT_ROLE");
-          const before = await tx.employee.findUnique({
-            where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
+          const before = await tx.userAccount.findUnique({
+            where: { orgId_id: { orgId: input.orgId, id: input.userAccountId } },
             select: { role: true, disabled: true }
           });
           if (!before) throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
           if (before.role === "admin" && !before.disabled && role === "employee") {
-            const otherAdmins = await tx.employee.count({
+            const otherAdmins = await tx.userAccount.count({
               where: {
                 orgId: input.orgId,
                 role: "admin",
                 disabled: false,
-                id: { not: input.employeeId }
+                id: { not: input.userAccountId }
               }
             });
             if (!otherAdmins) throw new Error("AUTHORIZATION_LAST_ADMIN_REQUIRED");
           }
           assertWithinDeadline();
-          await tx.employee.update({
-            where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
+          await tx.userAccount.update({
+            where: { orgId_id: { orgId: input.orgId, id: input.userAccountId } },
             data: { role }
           });
           return { before: { role: before.role }, after: { role } };
@@ -785,14 +796,14 @@ export function createBusinessAuthorizationRepository({
     },
     configureAccount(
       input: AuthorizationWriteContext & {
-        employeeId: string;
+        userAccountId: string;
         clearance: number;
         grants: BusinessGrant[];
       }
     ) {
-      return mutate(input, "account.permissions.configure", input.employeeId, async (tx) => {
+      return mutate(input, "account.permissions.configure", input.userAccountId, async (tx) => {
         if (!isBusinessClearance(input.clearance)) throw new Error("INVALID_ACCOUNT_CLEARANCE");
-        const before = await loadAuthorizationSnapshot(input.employeeId, input.orgId, tx);
+        const before = await loadAuthorizationSnapshot(input.userAccountId, input.orgId, tx);
         const reviewCategory = before.categories.find(
           (category) => category.key === "store_reviews"
         );
@@ -816,8 +827,8 @@ export function createBusinessAuthorizationRepository({
             throw new Error("ENTERPRISE_NAME_REQUIRED");
         }
         await persistBusinessGrants(tx, input, before.categories);
-        await tx.employee.update({
-          where: { orgId_id: { orgId: input.orgId, id: input.employeeId } },
+        await tx.userAccount.update({
+          where: { orgId_id: { orgId: input.orgId, id: input.userAccountId } },
           data: { clearance: input.clearance }
         });
         return {
@@ -897,10 +908,10 @@ export function createBusinessAuthorizationRepository({
       });
     },
     loadAuthorizationSnapshot,
-    loadPermissionCard(employeeId: string, orgId: string) {
+    loadPermissionCard(userAccountId: string, orgId: string) {
       return prisma.$transaction(
         async (tx) => {
-          const snapshot = await loadAuthorizationSnapshot(employeeId, orgId, tx);
+          const snapshot = await loadAuthorizationSnapshot(userAccountId, orgId, tx);
           return {
             ...snapshot,
             storeReviewEnterprises: await loadStoreReviewEnterpriseOptions(tx, snapshot)
@@ -987,12 +998,18 @@ export function createBusinessAuthorizationRepository({
         if (
           input.kind === "fixed" &&
           (!input.key ||
-            !Object.hasOwn(FIXED_BUSINESS_CATEGORY_OWNERSHIP, input.key) ||
-            input.ownerships.length !== 1 ||
-            input.ownerships[0] !==
-              FIXED_BUSINESS_CATEGORY_OWNERSHIP[
-                input.key as keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP
-              ])
+            (input.key !== "employee_profiles" &&
+              !Object.hasOwn(FIXED_BUSINESS_CATEGORY_OWNERSHIP, input.key)) ||
+            (input.key === "employee_profiles"
+              ? input.ownerships.length !== 2 ||
+                !input.ownerships.includes("group") ||
+                !input.ownerships.includes("store") ||
+                input.requiredDimensionIds.length !== 0
+              : input.ownerships.length !== 1 ||
+                input.ownerships[0] !==
+                  FIXED_BUSINESS_CATEGORY_OWNERSHIP[
+                    input.key as keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP
+                  ]))
         )
           throw new Error("INVALID_FIXED_CATEGORY");
         const where = { orgId_id: { orgId: input.orgId, id: input.id } };
@@ -1046,6 +1063,7 @@ export function createBusinessAuthorizationRepository({
       return mutate(input, "store.configure", input.name, async (tx) => {
         if (!input.name.trim()) throw new Error("STORE_NAME_REQUIRED");
         const identity = await saveEnterpriseIdentity(tx, input.orgId, input);
+        const enterpriseKey = identity.after.enterpriseKey;
         if (!identity.before)
           await writeAudit(tx, {
             orgId: input.orgId,
@@ -1057,25 +1075,46 @@ export function createBusinessAuthorizationRepository({
             outcome: "succeeded",
             version: BigInt(input.expectedVersion) + 1n
           });
-        const where = {
-          orgId_enterpriseKey_name: {
-            orgId: input.orgId,
-            enterpriseKey: identity.after.enterpriseKey,
-            name: input.name
-          }
-        };
-        const before = await tx.businessStore.findUnique({ where });
-        return {
-          before,
-          after: {
-            ...(await tx.businessStore.upsert({
-              where,
-              create: { ...where.orgId_enterpriseKey_name, retired: input.retired ?? false },
-              update: { retired: input.retired ?? before?.retired ?? false }
-            })),
-            enterpriseName: identity.after.enterpriseName
-          }
-        };
+        await tx.$queryRaw`SELECT enterprise_key FROM business_enterprise_identities WHERE org_id = ${input.orgId} AND BINARY enterprise_key = BINARY ${enterpriseKey} FOR UPDATE`;
+        const rows = await tx.$queryRaw<
+          Array<{ name: string }>
+        >`SELECT name FROM business_stores WHERE org_id = ${input.orgId} AND enterprise_key = ${enterpriseKey} AND BINARY official_name = BINARY ${input.name} FOR UPDATE`;
+        const before = rows[0]
+          ? await tx.businessStore.findFirst({
+              where: { orgId: input.orgId, enterpriseKey, name: rows[0].name }
+            })
+          : null;
+        if (
+          before?.confirmation === "historical" ||
+          (before && before.confirmation !== "confirmed")
+        )
+          throw new Error("STORE_DIRECTORY_CONFIRMATION_REQUIRED");
+        if (
+          before &&
+          input.retired === true &&
+          (await tx.employee.count({
+            where: { orgId: input.orgId, enterpriseKey, storeId: before.storeId, status: "active" }
+          }))
+        )
+          throw new Error("STORE_DIRECTORY_IN_USE");
+        const after = before
+          ? await tx.businessStore.update({
+              where: {
+                orgId_enterpriseKey_name: { orgId: input.orgId, enterpriseKey, name: before.name }
+              },
+              data: { retired: input.retired ?? before.retired, version: { increment: 1 } }
+            })
+          : await tx.businessStore.create({
+              data: {
+                orgId: input.orgId,
+                enterpriseKey,
+                name: input.name,
+                officialName: input.name,
+                confirmation: "confirmed",
+                retired: input.retired ?? false
+              }
+            });
+        return { before, after: { ...after, enterpriseName: identity.after.enterpriseName } };
       });
     },
     putResource(input: ResourceAuthorizationWrite) {

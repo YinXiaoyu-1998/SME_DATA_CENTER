@@ -18,16 +18,16 @@ const runIntegration = process.env["RUN_WORKER_PRISMA_INTEGRATION"] === "1";
 const describeIntegration = runIntegration ? describe : describe.skip;
 const databaseUrl = process.env["DATABASE_URL"] ?? "";
 const orgId = "worker-prisma-test-org";
-const employeeId = "worker_prisma_test_employee";
+const userAccountId = "worker_prisma_test_employee";
 
 describeIntegration("Prisma structured import worker repository", () => {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
 
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Worker Prisma Test" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
-        id: employeeId,
+        id: userAccountId,
         orgId,
         email: "worker-prisma-test@example.invalid",
         displayName: "Worker Prisma Test",
@@ -43,7 +43,7 @@ describeIntegration("Prisma structured import worker repository", () => {
 
   afterAll(async () => {
     await clearTestRecords(prisma);
-    await prisma.employee.deleteMany({ where: { id: employeeId } });
+    await prisma.userAccount.deleteMany({ where: { id: userAccountId } });
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });
@@ -540,7 +540,7 @@ async function createStructuredRun(
       contentType: "text/csv",
       byteSize: 1n,
       checksumSha256: "0".repeat(64),
-      uploaderId: employeeId,
+      uploaderId: userAccountId,
       sourceSystem: "worker_prisma_test"
     }
   });

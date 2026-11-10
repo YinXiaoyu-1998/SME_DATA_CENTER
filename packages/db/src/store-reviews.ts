@@ -1,3 +1,4 @@
+import { requireFormalStoreForIntake } from "./formal-store-intake.js";
 import { compileStructuredReadScope } from "./business-authorization-sql.js";
 import {
   ResourceAttributesError,
@@ -40,7 +41,7 @@ import { categoriesInclude } from "./business-authorization-records.js";
 export class StoreReviewRepositoryError extends Error {
   constructor(
     readonly code: string,
-    readonly details: { index?: number } = {}
+    readonly details: { index?: number; field?: string } = {}
   ) {
     super(code);
     this.name = "StoreReviewRepositoryError";
@@ -107,7 +108,7 @@ export function createPrismaStoreReviewRepository({
           );
           const shapeHash = hashStoreReviewQueryScope({
             orgId: actor.orgId,
-            employeeId: actor.id,
+            userAccountId: actor.id,
             enterpriseKey,
             authorizationVersion: snapshot.authorizationVersion,
             query
@@ -129,8 +130,22 @@ export function createPrismaStoreReviewRepository({
             enterpriseKey,
             ...authorization.params
           ];
+          let queryStoreKeys = query.storeNames;
+          if (queryStoreKeys?.length) {
+            const stores = await tx.businessStore.findMany({
+              where: {
+                orgId: actor.orgId,
+                enterpriseKey,
+                confirmation: "confirmed",
+                officialName: { in: queryStoreKeys }
+              },
+              select: { officialName: true, name: true }
+            });
+            const byOfficialName = new Map(stores.map((store) => [store.officialName, store.name]));
+            queryStoreKeys = queryStoreKeys.map((name) => byOfficialName.get(name) ?? name);
+          }
           for (const [values, column] of [
-            [query.storeNames, "store_name"],
+            [queryStoreKeys, "store_name"],
             [query.sources, "source"],
             [query.replyStatuses, "reply_status"]
           ] as const)
@@ -179,7 +194,7 @@ export function createPrismaStoreReviewRepository({
               updatedAt: Date;
             }>
           >(
-            `SELECT v.id, v.source, v.store_name AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.feedback_id AS feedbackId, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.reply_status AS replyStatus, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
+            `SELECT v.id, v.source, COALESCE(s.official_name, v.store_name) AS storeName, v.reviewed_at AS reviewedAt, v.reviewer_name AS reviewerName, v.feedback_id AS feedbackId, v.content, CAST(v.scores AS CHAR CHARACTER SET utf8mb4) AS scores, v.merchant_reply AS merchantReply, v.reply_status AS replyStatus, v.created_at AS createdAt, v.updated_at AS updatedAt FROM store_reviews v LEFT JOIN business_stores s ON s.org_id = v.org_id AND s.enterprise_key = v.enterprise_key AND BINARY s.name = BINARY v.store_name AND s.confirmation = 'confirmed' WHERE ${conditions.join(" AND ")} ORDER BY v.reviewed_at DESC, v.id DESC LIMIT ? OFFSET ?`,
             ...params,
             limit + 1,
             offset
@@ -262,35 +277,44 @@ export function createPrismaStoreReviewRepository({
           const enterprises = await tx.businessEnterpriseIdentity.findMany({
             where: { orgId: actor.orgId }
           });
-          const stores = await tx.businessStore.findMany({ where: { orgId: actor.orgId } });
-          const rows = parsed.reviews
-            .map((row, index) => {
-              const identity = normalizeEnterpriseIdentity(row.enterpriseName);
-              if (
-                !enterprises.some(
-                  (e) =>
-                    e.enterpriseKey === identity.enterpriseKey &&
-                    e.enterpriseName === identity.enterpriseName
-                ) ||
-                !stores.some(
-                  (s) =>
-                    s.enterpriseKey === identity.enterpriseKey &&
-                    s.name === row.storeName &&
-                    !s.retired
-                )
+          const stores = new Map<string, string>();
+          const rows = [];
+          for (const [index, row] of parsed.reviews.entries()) {
+            const identity = normalizeEnterpriseIdentity(row.enterpriseName);
+            if (
+              !enterprises.some(
+                (enterprise) =>
+                  enterprise.enterpriseKey === identity.enterpriseKey &&
+                  enterprise.enterpriseName === identity.enterpriseName
               )
-                throw new StoreReviewRepositoryError("STORE_REVIEW_IDENTITY_NOT_AVAILABLE");
-              return {
-                input: row,
+            )
+              throw new StoreReviewRepositoryError("STORE_REVIEW_IDENTITY_NOT_AVAILABLE", {
                 index,
+                field: `reviews[${index}].enterpriseName`
+              });
+            const key = JSON.stringify([identity.enterpriseKey, row.storeName]);
+            let storeName = stores.get(key);
+            if (storeName === undefined) {
+              const store = await requireFormalStoreForIntake(tx, {
+                orgId: actor.orgId,
                 enterpriseKey: identity.enterpriseKey,
-                source: row.source,
-                storeName: row.storeName,
-                reviewerName: row.reviewerName,
-                reviewedAt: new Date(row.reviewedAt)
-              };
-            })
-            .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+                name: row.storeName,
+                location: { field: `reviews[${index}].storeName`, index }
+              });
+              storeName = store.storeKey;
+              stores.set(key, storeName);
+            }
+            rows.push({
+              input: row,
+              index,
+              enterpriseKey: identity.enterpriseKey,
+              source: row.source,
+              storeName,
+              reviewerName: row.reviewerName,
+              reviewedAt: new Date(row.reviewedAt)
+            });
+          }
+          rows.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
           // Several platform IDs may share one legacy identity; query that group once.
           const identities = [...new Map(rows.map((row) => [key(row), row])).values()];
           const existingRows: StoreReview[] = [];
@@ -456,7 +480,7 @@ export function createPrismaStoreReviewRepository({
           await tx.auditLog.create({
             data: {
               orgId: actor.orgId,
-              actorEmployeeId: actor.id,
+              actorUserAccountId: actor.id,
               action: "store_reviews.upsert",
               targetType: "store_review_batch",
               result: "succeeded",

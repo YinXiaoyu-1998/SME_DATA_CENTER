@@ -25,7 +25,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
   identity: LoginIdentityRecord | null = {
     id: "identity-1",
     orgId: "org-1",
-    employeeId: "employee-1",
+    userAccountId: "employee-1",
     passwordHash: null,
     disabled: false,
     employeeDisabled: false,
@@ -56,7 +56,7 @@ class MemoryAuthRepository implements AuthCoreRepository {
   logoutInput: unknown = null;
   authenticationRecord: AccessAuthenticationRecord | null = {
     identityId: "identity-1",
-    employeeId: "employee-1",
+    userAccountId: "employee-1",
     orgId: "org-1",
     organizationName: "示例餐饮管理有限公司",
     displayName: "Test Person",
@@ -292,7 +292,7 @@ describe("AuthCore", () => {
     ).resolves.toEqual({
       ok: true,
       identityId: "identity-1",
-      employeeId: "employee-1",
+      userAccountId: "employee-1",
       orgId: "org-1",
       credentialFingerprint: hashOpaqueSecret(passwordHash)
     });
@@ -302,7 +302,7 @@ describe("AuthCore", () => {
         type: "password_login_succeeded",
         outcome: "succeeded",
         identityId: "identity-1",
-        employeeId: "employee-1",
+        userAccountId: "employee-1",
         ...browserEventAudit
       })
     );
@@ -356,7 +356,7 @@ describe("AuthCore", () => {
     const session = await core.createSession(
       {
         identityId: "identity-1",
-        employeeId: "employee-1",
+        userAccountId: "employee-1",
         orgId: "org-1"
       },
       oauthAudit
@@ -381,7 +381,7 @@ describe("AuthCore", () => {
       status: "rotated",
       sessionId: "session-1",
       identityId: "identity-1",
-      employeeId: "employee-1",
+      userAccountId: "employee-1",
       orgId: "org-1"
     };
     const core = new AuthCore(repository);
@@ -515,7 +515,7 @@ describe("device authorization flow", () => {
 
     const completed = await core.completeDeviceAuthorization(
       "ABCDEFGH",
-      { identityId: "identity-1", employeeId: "employee-1", orgId: "org-1" },
+      { identityId: "identity-1", userAccountId: "employee-1", orgId: "org-1" },
       browserAudit
     );
 
@@ -523,7 +523,7 @@ describe("device authorization flow", () => {
     expect(repository.deviceCompleteInput?.userCodeHash).toBe(hashOpaqueSecret("ABCDEFGH"));
     expect(repository.deviceCompleteInput).toMatchObject({
       identityId: "identity-1",
-      employeeId: "employee-1",
+      userAccountId: "employee-1",
       orgId: "org-1",
       audit: browserAudit
     });
@@ -549,7 +549,7 @@ describe("device authorization flow", () => {
     repository.deviceRedeemResult = {
       status: "redeemed",
       identityId: "identity-1",
-      employeeId: "employee-1",
+      userAccountId: "employee-1",
       orgId: "org-1"
     };
 
@@ -562,7 +562,7 @@ describe("device authorization flow", () => {
     expect(result).toEqual({
       status: "redeemed",
       identityId: "identity-1",
-      employeeId: "employee-1",
+      userAccountId: "employee-1",
       orgId: "org-1"
     });
     expect(repository.deviceRedeemInput?.deviceCodeHash).toBe(hashOpaqueSecret("eh_dc_secret"));

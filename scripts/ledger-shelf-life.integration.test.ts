@@ -43,7 +43,7 @@ describe.skipIf(process.env["RUN_LEDGER_SHELF_LIFE_INTEGRATION"] !== "1")(
       writeFileSync(join(fixtureDirectory, "mapping.json"), JSON.stringify(mappings));
       for (const org of [orgId, "shelf-life-other"]) {
         await prisma.organization.create({ data: { id: org, name: "Synthetic" } });
-        const employee = await prisma.employee.create({
+        const employee = await prisma.userAccount.create({
           data: {
             orgId: org,
             email: `${org}@example.invalid`,

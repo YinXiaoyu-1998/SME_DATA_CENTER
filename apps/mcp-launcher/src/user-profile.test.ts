@@ -12,14 +12,14 @@ const adminProfile = {
 describe("launcher cached user profile", () => {
   it("selects exactly the five public fields from the live employee envelope", () => {
     const profile = parseCurrentUserProfileResponse({
-      employee: { id: "emp_internal", orgId: "org_internal", disabled: false, ...adminProfile }
+      userAccount: { id: "emp_internal", orgId: "org_internal", disabled: false, ...adminProfile }
     });
 
     expect(profile).toEqual(adminProfile);
     expect(JSON.stringify(profile)).not.toMatch(/"(?:id|orgId|disabled)":/);
     expect(
       parseCurrentUserProfileResponse({
-        employee: { ...adminProfile, role: "employee", clearance: 3 }
+        userAccount: { ...adminProfile, role: "employee", clearance: 3 }
       })
     ).toEqual({
       ...adminProfile,
@@ -40,17 +40,17 @@ describe("launcher cached user profile", () => {
     ["clearance", "0"]
   ])("rejects an invalid %s value of %j", (field, value) => {
     expect(() =>
-      parseCurrentUserProfileResponse({ employee: { ...adminProfile, [field]: value } })
+      parseCurrentUserProfileResponse({ userAccount: { ...adminProfile, [field]: value } })
     ).toThrow();
   });
 
   it.each(Object.keys(adminProfile))("requires the %s field", (field) => {
     const incomplete: Record<string, unknown> = { ...adminProfile };
     delete incomplete[field];
-    expect(() => parseCurrentUserProfileResponse({ employee: incomplete })).toThrow();
+    expect(() => parseCurrentUserProfileResponse({ userAccount: incomplete })).toThrow();
   });
 
-  it.each([null, [], "invalid", {}, { employee: null }, { employee: [] }, adminProfile])(
+  it.each([null, [], "invalid", {}, { userAccount: null }, { userAccount: [] }, adminProfile])(
     "rejects a malformed response %j",
     (value) => {
       expect(() => parseCurrentUserProfileResponse(value)).toThrow();

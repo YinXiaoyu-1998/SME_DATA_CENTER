@@ -1,3 +1,4 @@
+import { ledgerStoreKeySql } from "./store-identity.js";
 import {
   Prisma,
   type PrismaClient,
@@ -139,14 +140,14 @@ function dateString(value: Date): string {
 function actorFields(actor: LedgerActor) {
   return {
     actorKind: actor.kind,
-    actorEmployeeId: actor.kind === "employee" ? actor.employeeId : null,
+    actorUserAccountId: actor.kind === "employee" ? actor.userAccountId : null,
     actorLabel: actor.kind === "operator" ? actor.label : null,
     reconciliationRunId: actor.kind === "system_reconciler" ? actor.reconciliationRunId : null
   };
 }
 function requestActor(request: LedgerArtifactRequest): LedgerActor {
-  if (request.actorKind === "employee" && request.actorEmployeeId)
-    return { kind: "employee", employeeId: request.actorEmployeeId };
+  if (request.actorKind === "employee" && request.actorUserAccountId)
+    return { kind: "employee", userAccountId: request.actorUserAccountId };
   if (request.actorKind === "operator" && request.actorLabel)
     return { kind: "operator", label: request.actorLabel };
   if (request.actorKind === "system_reconciler" && request.reconciliationRunId)
@@ -316,7 +317,8 @@ export function createPrismaLedgerArchiveRepository({
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.actor.kind === "employee" ? input.actor.employeeId : null,
+                actorUserAccountId:
+                  input.actor.kind === "employee" ? input.actor.userAccountId : null,
                 action: "ledger_pdf.refresh_requested",
                 targetType: "ledger_artifact_request",
                 targetId: request.id,
@@ -397,7 +399,7 @@ export function createPrismaLedgerArchiveRepository({
       const binding = JSON.stringify([input.orgId, input.scope ?? null]);
       const cursor = decodeCursor(input.cursor, binding, 2);
       const scopeFilter = input.scope
-        ? Prisma.sql`AND CAST(store_name AS BINARY) IN (${Prisma.join(input.scope.storeNames)}) AND purchase_date IN (${Prisma.join(ledgerScopeDates(input.scope))})`
+        ? Prisma.sql`AND CAST(store_name AS BINARY) IN (${Prisma.join(input.scope.storeNames.map((name) => Prisma.sql`CAST(${name} AS BINARY)`))}) AND purchase_date IN (${Prisma.join(ledgerScopeDates(input.scope))})`
         : Prisma.empty;
       const cursorFilter = cursor
         ? Prisma.sql`AND (CAST(store_name AS BINARY) > CAST(${cursor[0]} AS BINARY) OR (CAST(store_name AS BINARY) = CAST(${cursor[0]} AS BINARY) AND purchase_date > ${cursor[1]}))`
@@ -406,7 +408,7 @@ export function createPrismaLedgerArchiveRepository({
       // partitions remain discoverable. Exact names are deliberately binary, never normalized.
       const rows = await prisma.$queryRaw<{ storeName: string; purchaseDate: string }[]>(Prisma.sql`
         SELECT store_name AS storeName, purchase_date AS purchaseDate FROM (
-          SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) COLLATE utf8mb4_0900_bin AS store_name,
+          SELECT DISTINCT ${ledgerStoreKeySql} COLLATE utf8mb4_0900_bin AS store_name,
             JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) COLLATE utf8mb4_0900_bin AS purchase_date
           FROM delivery_ledger_rows r JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
           JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id
@@ -582,7 +584,8 @@ export function createPrismaLedgerArchiveRepository({
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.actor.kind === "employee" ? input.actor.employeeId : null,
+                actorUserAccountId:
+                  input.actor.kind === "employee" ? input.actor.userAccountId : null,
                 action: "ledger_pdf.refresh_requested",
                 targetType: "ledger_artifact_request",
                 targetId: request.id,

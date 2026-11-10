@@ -32,6 +32,10 @@
 
 可分发企业工作流、已结账来源口径和换机接管的权威规格为 [Issue #298](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/298)。[图解使用指南](guides/automation-user-guide.html) 面向餐饮管理人员，说明功能完成后的首次安装、旧版更新、已有设置复用及换机步骤，不代表当前已经上线。
 
+## 已确认的员工档案与正式门店设计（尚未实现）
+
+[ADR 0028](adr/0028-employee-directory-store-identity.md) 记录员工档案授权、目录、离职交互与门店正式名称规则。实施与验收以 [Issue #327](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/327) 为准。
+
 ## 历史与过程记录
 
 这些文档保留当时的决定或验证证据，允许出现旧版本、撤回方案和当时尚未完成的工作。执行当前任务必须回到上表。

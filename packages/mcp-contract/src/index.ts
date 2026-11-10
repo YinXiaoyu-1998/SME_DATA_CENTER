@@ -1,3 +1,4 @@
+import { DIRECTORY_MCP_TOOL_NAMES, DIRECTORY_MCP_INPUT_SCHEMAS } from "./employee-directory.js";
 import {
   ENTERPRISE_WORKFLOW_LAUNCHER_VERSION,
   WORKFLOW_MCP_INPUT_SCHEMAS,
@@ -873,13 +874,13 @@ export const PERMISSION_MCP_INPUT_SCHEMAS = {
     .object({
       query: z.discriminatedUnion("mode", [
         z.object({ mode: z.literal("list") }).strict(),
-        z.object({ mode: z.literal("detail"), employeeId: permissionId }).strict()
+        z.object({ mode: z.literal("detail"), userAccountId: permissionId }).strict()
       ])
     })
     .strict(),
   update_account_permissions: z
     .object({
-      employeeId: permissionId,
+      userAccountId: permissionId,
       expectedVersion: permissionVersion,
       clearance: z.number().int().min(0).max(3),
       grants: z.array(permissionGrant).max(1000)
@@ -1009,7 +1010,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url",
   ...PERMISSION_MCP_TOOL_NAMES,
-  ...WORKFLOW_MCP_TOOL_NAMES
+  ...WORKFLOW_MCP_TOOL_NAMES,
+  ...DIRECTORY_MCP_TOOL_NAMES
 ] as const;
 
 export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
@@ -1086,7 +1088,7 @@ const permissionToolDescriptions: Record<keyof PermissionMcpInputs, string> = {
   get_my_permissions:
     "Read your live permission card, including current grants and registered enterprise names for store review reads and writes. Available to employees and administrators.",
   query_account_permissions:
-    "List employee permission summaries with query.mode=list or retrieve one account's full authorization configuration with query.mode=detail and employeeId. Use update_account_permissions to save a change.",
+    "List employee permission summaries with query.mode=list or retrieve one account's full authorization configuration with query.mode=detail and userAccountId. Use update_account_permissions to save a change.",
   update_account_permissions:
     "Replace an employee's clearance and complete set of business grants. Use the current expectedVersion. Send an empty grants array to revoke all business grants.",
   get_permission_directory:
@@ -1112,6 +1114,28 @@ const permissionToolDescriptions: Record<keyof PermissionMcpInputs, string> = {
 };
 
 export const SMEDC_MCP_TOOL_CONTRACTS = [
+  ...DIRECTORY_MCP_TOOL_NAMES.map((name) =>
+    defineToolContract({
+      name,
+      title: name.replaceAll("_", " "),
+      description:
+        "Access the current organization employee and formal directory using a controlled operation. Requires launcher 0.18.0 or later.",
+      inputSchema: DIRECTORY_MCP_INPUT_SCHEMAS[name],
+      inputFields: [
+        {
+          name: "request",
+          required: true,
+          description: "Directory action and its strictly validated fields."
+        }
+      ],
+      resultShape: ["Authorized directory or employee results; creation returns only employeeUid."],
+      annotations: {
+        readOnlyHint: name === "query_employee_directory",
+        destructiveHint: name === "manage_employee_directory",
+        idempotentHint: name === "query_employee_directory"
+      }
+    })
+  ),
   defineToolContract({
     name: "prepare_order_scope_transition",
     title: "Prepare order source scope transition",
@@ -2099,3 +2123,11 @@ function isZodObject(value: unknown): value is z.ZodObject<z.ZodRawShape> {
 function isZodType(value: unknown): value is z.ZodType {
   return typeof value === "object" && value !== null && "safeParse" in value;
 }
+
+export {
+  directoryInputSchemas,
+  queryEmployeeDirectoryInput,
+  manageEmployeeDirectoryInput
+} from "./employee-directory.js";
+
+export { DIRECTORY_MCP_TOOL_NAMES, DIRECTORY_MCP_INPUT_SCHEMAS } from "./employee-directory.js";

@@ -43,7 +43,7 @@ function fixture() {
   const record: LedgerBundleRecord = {
     requestId: "r",
     orgId: "org",
-    employeeId: "e",
+    userAccountId: "e",
     status: "queued",
     manifest: {
       version: 1,
@@ -265,7 +265,7 @@ describe("bundle durable lease and expiration boundaries", () => {
     }));
     const tx = {
       $queryRaw: vi.fn(async () => []),
-      employee: { findFirst: vi.fn(async () => ({ clearance: 0, disabled: true })) },
+      userAccount: { findFirst: vi.fn(async () => ({ clearance: 0, disabled: true })) },
       document: {
         findMany: vi.fn(async () => [
           {
@@ -317,7 +317,7 @@ describe("bundle durable lease and expiration boundaries", () => {
     });
     expect(await archive.selectBundle(f.record)).toEqual(f.record.manifest.entries);
     expect(await archive.completeBundle(input)).toBe(true);
-    expect(tx.employee.findFirst).not.toHaveBeenCalled();
+    expect(tx.userAccount.findFirst).not.toHaveBeenCalled();
     expect(tx.ledgerArtifactRequest.update).toHaveBeenCalledTimes(1);
     pointers[0]!.dataRevision++;
     expect(await archive.completeBundle(input)).toBe(false);

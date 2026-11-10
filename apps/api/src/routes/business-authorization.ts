@@ -162,14 +162,14 @@ export function registerBusinessAuthorizationRoutes(
           ? service.activateAuthorizationCutover(actor, body["expectedVersion"], true)
           : service.repository.suspendAuthorizationReads({
               orgId: actor.orgId,
-              actorId: actor.employeeId,
+              actorId: actor.userAccountId,
               expectedVersion: body["expectedVersion"],
               confirm: true
             });
       }
     );
   route("GET", selfPath, false, async (service, actor) => {
-    const card = await service.permissionCard({ id: actor.employeeId, orgId: actor.orgId });
+    const card = await service.permissionCard({ id: actor.userAccountId, orgId: actor.orgId });
     return {
       ...card,
       categories: card.categories.filter((category) =>
@@ -178,14 +178,14 @@ export function registerBusinessAuthorizationRoutes(
     };
   });
   route("GET", `${adminBase}/accounts`, true, async (service, actor) => ({
-    accounts: await service.repository.listAccounts(actor.orgId, actor.employeeId)
+    accounts: await service.repository.listAccounts(actor.orgId, actor.userAccountId)
   }));
-  route("GET", `${adminBase}/accounts/:employeeId`, true, async (service, actor, params) =>
-    service.repository.loadAuthorizationSnapshot(params["employeeId"]!, actor.orgId)
+  route("GET", `${adminBase}/accounts/:userAccountId`, true, async (service, actor, params) =>
+    service.repository.loadAuthorizationSnapshot(params["userAccountId"]!, actor.orgId)
   );
   route(
     "PATCH",
-    `${adminBase}/accounts/:employeeId`,
+    `${adminBase}/accounts/:userAccountId`,
     true,
     async (service, actor, params, body, reply) => {
       if (
@@ -205,8 +205,8 @@ export function registerBusinessAuthorizationRoutes(
         return invalid(reply);
       return service.repository.configureAccount({
         orgId: actor.orgId,
-        actorId: actor.employeeId,
-        employeeId: params["employeeId"]!,
+        actorId: actor.userAccountId,
+        userAccountId: params["userAccountId"]!,
         expectedVersion: body["expectedVersion"],
         clearance: body["clearance"],
         grants
@@ -230,7 +230,7 @@ export function registerBusinessAuthorizationRoutes(
         return invalid(reply);
       return service.repository.initializeFixedCategories({
         orgId: actor.orgId,
-        actorId: actor.employeeId,
+        actorId: actor.userAccountId,
         expectedVersion: body["expectedVersion"]
       });
     }
@@ -251,7 +251,7 @@ export function registerBusinessAuthorizationRoutes(
       return invalid(reply);
     return service.repository.putStore({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body["expectedVersion"],
       ...(typeof body["enterpriseKey"] === "string"
         ? { enterpriseKey: body["enterpriseKey"] }
@@ -288,7 +288,7 @@ export function registerBusinessAuthorizationRoutes(
             return invalid(reply);
           const context = {
             orgId: actor.orgId,
-            actorId: actor.employeeId,
+            actorId: actor.userAccountId,
             expectedVersion: body["expectedVersion"],
             id,
             name: body["name"],
@@ -320,7 +320,10 @@ export function registerBusinessAuthorizationRoutes(
               kind: "fixed",
               key: existing.key!,
               confidentialityLevel: body["confidentialityLevel"],
-              ownerships: [existing.allowStore ? "store" : "group"],
+              ownerships: [
+                ...(existing.allowGroup ? ["group" as const] : []),
+                ...(existing.allowStore ? ["store" as const] : [])
+              ],
               requiredDimensionIds: existing.dimensions.map((d) => d.dimensionId)
             });
           }
@@ -361,7 +364,7 @@ export function registerBusinessAuthorizationRoutes(
           return invalid(reply);
         return service.repository.defineDimensionValue({
           orgId: actor.orgId,
-          actorId: actor.employeeId,
+          actorId: actor.userAccountId,
           expectedVersion: body["expectedVersion"],
           id,
           dimensionId: params["dimensionId"]!,
@@ -402,7 +405,7 @@ export function registerBusinessAuthorizationRoutes(
         return invalid(reply);
       return service.repository.configureEvidenceDocument({
         orgId: actor.orgId,
-        actorId: actor.employeeId,
+        actorId: actor.userAccountId,
         expectedVersion: body["expectedVersion"],
         documentId: params["documentId"]!,
         categoryId: body["categoryId"],

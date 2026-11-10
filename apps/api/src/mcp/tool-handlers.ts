@@ -1,3 +1,4 @@
+import { createDirectoryMcpToolHandlers } from "./directory-tools.js";
 import { createWorkflowMcpToolHandlers } from "./workflow-tools.js";
 import {
   errorToolResult,
@@ -78,6 +79,12 @@ export function createSmedcMcpToolHandlers(
   });
 
   return {
+    ...createDirectoryMcpToolHandlers({
+      bearerToken: options.bearerToken,
+      audit: options.audit,
+      delegationProof: options.delegationProof,
+      inject: options.inject
+    }),
     ...createWorkflowMcpToolHandlers({
       bearerToken: options.bearerToken,
       audit: options.audit,

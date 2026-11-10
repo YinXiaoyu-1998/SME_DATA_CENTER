@@ -1,3 +1,4 @@
+import { ledgerStoreKeySql, ledgerStoreKeyFromMetadata } from "./store-identity.js";
 import { canReadLedgerPdf, currentLedgerAuthorization } from "./pdf-authorization.js";
 import { readLedgerSourceMetadata } from "./source-reader.js";
 import { Prisma } from "@prisma/client";
@@ -17,11 +18,12 @@ export async function lockLedgerSourceMutation(
 
 export function ledgerPartitionsFromRows(
   orgId: string,
-  rows: { payload: Record<string, unknown> }[]
+  rows: { payload: Record<string, unknown> }[],
+  storeKey?: string
 ): LedgerPartitionKey[] {
   const keys = new Map<string, LedgerPartitionKey>();
   for (const { payload } of rows) {
-    const storeName = payload["store_name"];
+    const storeName = storeKey ?? payload["store_name"];
     const purchaseDate = payload["purchase_date"];
     if (typeof storeName !== "string" || !storeName || typeof purchaseDate !== "string")
       throw new Error("LEDGER_PARTITION_KEY_INVALID");
@@ -63,14 +65,14 @@ export async function ledgerPartitionsForReceipt(
   receiptId: string
 ): Promise<LedgerPartitionKey[]> {
   const rows = await tx.$queryRaw<{ storeName: string; purchaseDate: string }[]>(Prisma.sql`
-    SELECT ANY_VALUE(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name'))) AS storeName,
+    SELECT ANY_VALUE(${ledgerStoreKeySql}) AS storeName,
       JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) AS purchaseDate
     FROM delivery_ledger_rows r JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
       JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id
     WHERE r.org_id = ${orgId} AND d.status = 'active' AND d.archived_at IS NULL
       AND b.status = 'applied' AND b.archived_at IS NULL
       AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.receipt_id')) AS BINARY) = CAST(${receiptId} AS BINARY)
-    GROUP BY CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY), JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date'))
+    GROUP BY CAST(${ledgerStoreKeySql} AS BINARY), JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date'))
   `);
   return rows.map((row) => ({
     orgId,
@@ -86,11 +88,12 @@ export async function ledgerPartitionsForDocument(
 ): Promise<LedgerPartitionKey[]> {
   const rows = await tx.deliveryLedgerRow.findMany({
     where: { orgId, sourceDocumentId: documentId },
-    select: { payload: true }
+    select: { payload: true, sourceDocument: { select: { sourceMetadata: true } } }
   });
   const keys = ledgerPartitionsFromRows(
     orgId,
-    rows.map((row) => ({ payload: row.payload as Record<string, unknown> }))
+    rows.map((row) => ({ payload: row.payload as Record<string, unknown> })),
+    ledgerStoreKeyFromMetadata(rows[0]?.sourceDocument.sourceMetadata)
   );
   const certificate = await tx.quarantineCertificate.findFirst({
     where: { orgId, sourceDocumentId: documentId }
@@ -114,11 +117,11 @@ export async function ledgerPartitionsForDocument(
 /** Mutation hints never reveal a hidden ledger partition through a known receipt/photo. */
 export async function readableLedgerPartitionHints(
   tx: Prisma.TransactionClient,
-  employeeId: string,
+  userAccountId: string,
   keys: LedgerPartitionKey[]
 ): Promise<LedgerPartitionKey[]> {
   if (!keys.length) return [];
-  const snapshot = await currentLedgerAuthorization(tx, employeeId, keys[0]!.orgId);
+  const snapshot = await currentLedgerAuthorization(tx, userAccountId, keys[0]!.orgId);
   if (snapshot.disabled) return [];
   const visible: LedgerPartitionKey[] = [];
   for (const key of keys) {

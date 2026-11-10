@@ -6,6 +6,7 @@ import {
   type WebApiAuth,
   type WebApiRoute
 } from "./route-types.js";
+import { employeeDirectoryWebApiRoutes } from "./routes/employee-directory.js";
 import { ledgerWebApiRoutes } from "./routes/ledger.js";
 import { permissionsWebApiRoutes } from "./routes/permissions.js";
 import { sessionWebApiRoutes } from "./routes/session.js";
@@ -26,6 +27,7 @@ export type { WebApiAuth, WebApiMethod, WebApiRoute } from "./route-types.js";
  */
 export const WEB_API_ROUTES: readonly WebApiRoute[] = Object.freeze([
   ...sessionWebApiRoutes,
+  ...employeeDirectoryWebApiRoutes,
   ...permissionsWebApiRoutes,
   ...workflowsWebApiRoutes,
   ...ledgerWebApiRoutes

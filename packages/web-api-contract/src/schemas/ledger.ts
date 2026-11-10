@@ -4,7 +4,7 @@ import { z } from "zod";
 /** 台账下载中心只下发定位身份所需的字段；邮箱、角色、密级与凭据指纹不出现在这里。 */
 export const ledgerContextIdentitySchema = z
   .object({
-    employeeId: z.string().min(1),
+    userAccountId: z.string().min(1),
     orgId: z.string().min(1),
     displayName: z.string().min(1),
     organizationName: z.string().min(1)

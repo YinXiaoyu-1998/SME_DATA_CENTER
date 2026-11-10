@@ -32,7 +32,7 @@ describeIntegration("Prisma auth core repository", () => {
     await prisma.organization.create({
       data: { id: "auth-test-org", name: "示例餐饮管理有限公司" }
     });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: "auth_test_employee",
         orgId: "auth-test-org",
@@ -46,7 +46,7 @@ describeIntegration("Prisma auth core repository", () => {
       data: {
         id: "auth_test_identity",
         orgId: "auth-test-org",
-        employeeId: "auth_test_employee",
+        userAccountId: "auth_test_employee",
         normalizedEmail: "person@example.com"
       }
     });
@@ -69,7 +69,7 @@ describeIntegration("Prisma auth core repository", () => {
       where: { identity: { orgId: "auth-test-org" } }
     });
     await prisma.loginIdentity.deleteMany({ where: { orgId: "auth-test-org" } });
-    await prisma.employee.deleteMany({ where: { orgId: "auth-test-org" } });
+    await prisma.userAccount.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.auditLog.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.businessCategory.deleteMany({ where: { orgId: "auth-test-org" } });
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId: "auth-test-org" } });
@@ -150,7 +150,7 @@ describeIntegration("Prisma auth core repository", () => {
     });
     const durableSessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: "31".repeat(32),
       accessTokenHash: "32".repeat(32),
@@ -246,7 +246,7 @@ describeIntegration("Prisma auth core repository", () => {
       issued.userCode,
       {
         identityId: "auth_test_identity",
-        employeeId: "auth_test_employee",
+        userAccountId: "auth_test_employee",
         orgId: "auth-test-org"
       },
       browserAudit
@@ -261,7 +261,7 @@ describeIntegration("Prisma auth core repository", () => {
     expect(redeemed).toEqual({
       status: "redeemed",
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org"
     });
 
@@ -292,7 +292,7 @@ describeIntegration("Prisma auth core repository", () => {
     const now = new Date("2026-07-24T14:00:00.000Z");
     const sessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: "7".repeat(64),
       accessTokenHash: "70".repeat(32),
@@ -353,7 +353,7 @@ describeIntegration("Prisma auth core repository", () => {
     });
     const sessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: hashOpaqueSecret(presentedCredential),
       accessTokenHash: "71".repeat(32),
@@ -406,7 +406,7 @@ describeIntegration("Prisma auth core repository", () => {
     const issuedAt = new Date("2026-07-24T15:30:00.000Z");
     const sessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: "ce".repeat(32),
       accessTokenHash: "cf".repeat(32),
@@ -441,7 +441,7 @@ describeIntegration("Prisma auth core repository", () => {
     const now = new Date("2026-07-24T15:00:00.000Z");
     await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: "c".repeat(64),
       accessTokenHash: "d".repeat(64),
@@ -460,7 +460,7 @@ describeIntegration("Prisma auth core repository", () => {
         clearance: 0
       }
     );
-    await prisma.employee.update({
+    await prisma.userAccount.update({
       where: { id: "auth_test_employee" },
       data: { disabled: true }
     });
@@ -470,7 +470,7 @@ describeIntegration("Prisma auth core repository", () => {
       }
     );
 
-    await prisma.employee.update({
+    await prisma.userAccount.update({
       where: { id: "auth_test_employee" },
       data: { disabled: false }
     });
@@ -489,23 +489,23 @@ describeIntegration("Prisma auth core repository", () => {
       now
     });
 
-    expect(await prisma.employee.findUnique({ where: { id: onboarded.employeeId } })).toMatchObject(
-      {
-        clearance: 2,
-        role: "employee"
-      }
-    );
+    expect(
+      await prisma.userAccount.findUnique({ where: { id: onboarded.userAccountId } })
+    ).toMatchObject({
+      clearance: 2,
+      role: "employee"
+    });
     expect(
       await prisma.loginIdentity.findUnique({
         where: { normalizedEmail: "onboarded@example.com" }
       })
-    ).toMatchObject({ employeeId: onboarded.employeeId, id: onboarded.identityId });
+    ).toMatchObject({ userAccountId: onboarded.userAccountId, id: onboarded.identityId });
     expect(
       await prisma.passwordSetupGrant.findUnique({ where: { tokenHash: "e".repeat(64) } })
     ).toMatchObject({ identityId: onboarded.identityId, purpose: "initial_setup" });
 
     await operatorRepository.resetPassword({
-      employeeId: onboarded.employeeId,
+      userAccountId: onboarded.userAccountId,
       grantTokenHash: "0".repeat(64),
       grantExpiresAt: new Date(now.getTime() + 86_400_000),
       now
@@ -520,7 +520,7 @@ describeIntegration("Prisma auth core repository", () => {
     await Promise.all(
       Array.from({ length: 6 }, (_, index) =>
         operatorRepository.resetPassword({
-          employeeId: onboarded.employeeId,
+          userAccountId: onboarded.userAccountId,
           grantTokenHash: `a${index}`.padEnd(64, "a"),
           grantExpiresAt: new Date(now.getTime() + 86_400_000),
           now
@@ -581,7 +581,7 @@ describeIntegration("Prisma auth core repository", () => {
       })
     ).rejects.toMatchObject({ code: "P2002" });
     expect(
-      await prisma.employee.findUnique({ where: { email: "rolled-back@example.com" } })
+      await prisma.userAccount.findUnique({ where: { email: "rolled-back@example.com" } })
     ).toBeNull();
   });
 
@@ -589,7 +589,7 @@ describeIntegration("Prisma auth core repository", () => {
     const now = new Date("2026-07-24T17:00:00.000Z");
     const sessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: "1a".repeat(32),
       accessTokenHash: "1b".repeat(32),
@@ -648,7 +648,7 @@ describeIntegration("Prisma auth core repository", () => {
     const now = new Date("2026-07-24T18:00:00.000Z");
     const sessionId = await repository.createSessionBundle({
       identityId: "auth_test_identity",
-      employeeId: "auth_test_employee",
+      userAccountId: "auth_test_employee",
       orgId: "auth-test-org",
       credentialHash: "2a".repeat(32),
       accessTokenHash: "2b".repeat(32),
@@ -674,7 +674,7 @@ describeIntegration("Prisma auth core repository", () => {
   });
 
   it("stores normalized emails with exact binary semantics", async () => {
-    await prisma.employee.createMany({
+    await prisma.userAccount.createMany({
       data: [
         {
           id: "auth_email_ascii",
@@ -700,13 +700,13 @@ describeIntegration("Prisma auth core repository", () => {
         {
           id: "auth_identity_ascii",
           orgId: "auth-test-org",
-          employeeId: "auth_email_ascii",
+          userAccountId: "auth_email_ascii",
           normalizedEmail: "jose@example.com"
         },
         {
           id: "auth_identity_accent",
           orgId: "auth-test-org",
-          employeeId: "auth_email_accent",
+          userAccountId: "auth_email_accent",
           normalizedEmail: "josé@example.com"
         }
       ]

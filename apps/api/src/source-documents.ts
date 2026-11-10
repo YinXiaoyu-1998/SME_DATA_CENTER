@@ -54,7 +54,7 @@ export function createPrismaSourceDocumentRepository(
         snapshot.disabled ||
         snapshot.mode === "suspended" ||
         snapshot.orgId !== input.orgId ||
-        snapshot.employeeId !== input.employee.id
+        snapshot.userAccountId !== input.employee.id
       )
         return [];
       const modern = snapshot.mode === "enabled";
@@ -135,7 +135,7 @@ export function createPrismaSourceDocumentRepository(
         await tx.auditLog.createMany({
           data: [...new Set(input.sourceDocumentIds)].map((sourceDocumentId) => ({
             orgId: input.orgId,
-            actorEmployeeId: input.employee.id,
+            actorUserAccountId: input.employee.id,
             action: AUDIT_ACTIONS.documentDownloaded,
             targetType: "document",
             targetId: sourceDocumentId,

@@ -203,15 +203,16 @@ no arbitrary HTTP/SQL proxy. `get_my_permissions` reads live state on every call
 inspect complete configuration for themselves and any same-organization account even without
 content grants. Management/status outputs have no signed content links.
 
-The consolidated permission MCP entries below apply to published launcher `0.17.0` and its
-matching service. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
+The consolidated permission operations are available in published launcher `0.17.0` and its
+matching service. The account path and field names below describe the `0.18.0` source candidate
+and require coordinated rollout. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
 for the inputs and release gate.
 
 | MCP tool                                                         | HTTP operation                                                                                   |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `get_my_permissions`                                             | `GET /v1/permissions/me`                                                                         |
-| `query_account_permissions`                                      | `GET /v1/admin/permissions/accounts[/:employeeId]`, selected by `query.mode`                     |
-| `update_account_permissions`                                     | `PATCH /v1/admin/permissions/accounts/:employeeId`                                               |
+| `query_account_permissions`                                      | `GET /v1/admin/permissions/accounts[/:userAccountId]`, selected by `query.mode`                  |
+| `update_account_permissions`                                     | `PATCH /v1/admin/permissions/accounts/:userAccountId`                                            |
 | `get_permission_directory`                                       | `GET /v1/admin/permissions/{categories,dimensions,stores}`, selected by `section`                |
 | `configure_business_category`                                    | `POST /v1/admin/permissions/categories` or `PATCH /v1/admin/permissions/categories/:categoryId`  |
 | `configure_business_dimension`                                   | `POST /v1/admin/permissions/dimensions` or `PATCH /v1/admin/permissions/dimensions/:dimensionId` |
@@ -238,6 +239,21 @@ unchanged and refer to an already saved enterprise key. The operator `store.set`
 optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return HTTP 400 without
 partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
 and store configuration never grant content access or set a category level or tenant mode.
+
+### Employee and business directories (0.18.0 source candidate)
+
+All operations take the registered `enterpriseKey`. HTTP uses `POST /v1/directory/{action}`;
+browser routes under `/api/web/v1/orgs/:orgId/directory` use the signed-in session and CSRF
+checks. The service derives tenant identity from the authenticated account. MCP groups the same
+operations in `query_employee_directory` and `manage_employee_directory` with `request.action`.
+
+An enabled account can list active departments and confirmed active stores. Employee records
+require the configured `employee_profiles` level and the complete current business scope.
+Administrators can add records without read authority, and receive the employee UID. Editing,
+departing or restoring existing records requires the applicable read authority; a transfer
+also checks the destination. Existing items are versioned. Active employee assignments prevent
+retiring a store or department. See the [directory reference](../../skills/smedc-mcp/references/employee-directory.md)
+for operation shapes and the rollout gate.
 
 ### In-store orders (published 0.15.0, service migration gated)
 
@@ -401,7 +417,7 @@ Existing `/v1` and MCP routes retain their current bearer authentication and con
 
 API POSTs require Cookie, matching Origin and `x-csrf-token`; login forms use their existing
 short-lived CSRF cookie and body token. Authenticated API GETs require the browser cookie. Responses are no-store.
-Context returns `identity.{employeeId,orgId,displayName,organizationName}`, `csrfToken`, and
+Context returns `identity.{userAccountId,orgId,displayName,organizationName}`, `csrfToken`, and
 `limits.{files,bytes,stores,dates,pageSize}`. Organization is always derived from the session.
 
 Coverage accepts exactly one of `{scope,cursor?}` or `{selection,cursor?}`. Scope has optional

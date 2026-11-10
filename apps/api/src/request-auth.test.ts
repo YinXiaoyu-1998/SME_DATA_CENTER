@@ -29,6 +29,9 @@ function minimalContext(
   authenticateOfficialAccessToken: ApiServerContext["authenticateOfficialAccessToken"]
 ): ApiServerContext {
   return {
+    directory: () => {
+      throw new Error("not used");
+    },
     workflows: () => {
       throw new Error("unused");
     },
@@ -114,7 +117,7 @@ describe("request authentication", () => {
     let loads = 0;
     const current: AuthorizationSnapshot = {
       orgId: enabledEmployee.orgId,
-      employeeId: enabledEmployee.id,
+      userAccountId: enabledEmployee.id,
       role: "employee",
       disabled: false,
       clearance: 3,

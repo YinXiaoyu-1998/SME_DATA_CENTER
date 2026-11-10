@@ -21,7 +21,7 @@ const grant = (overrides: Partial<BusinessGrant> = {}): BusinessGrant => ({
 });
 const snapshot = (grants = [grant()]): AuthorizationSnapshot => ({
   orgId: "org",
-  employeeId: "employee",
+  userAccountId: "employee",
   role: "admin",
   disabled: false,
   clearance: 2,

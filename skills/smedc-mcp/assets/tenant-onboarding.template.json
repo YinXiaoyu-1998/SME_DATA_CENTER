@@ -44,7 +44,7 @@
   },
   "accounts": [
     {
-      "employeeId": null,
+      "userAccountId": null,
       "displayName": null,
       "email": null,
       "role": null,

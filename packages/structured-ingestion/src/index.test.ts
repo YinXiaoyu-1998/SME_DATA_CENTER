@@ -58,6 +58,50 @@ describe("structured ingestion", () => {
     expect(JSON.stringify(result.rows)).not.toContain("supplier_unit_address");
   });
 
+  test.each(["csv", "xlsx"] as const)(
+    "retains the exact submitted ordering organization in a %s receipt",
+    async (fileType) => {
+      const metadataRows = [
+        ["单据号", "SH2608250117", "订货机构", " 合成  门店 "],
+        ["送货机构", " 测试供应商 ", "收货日期", "2026-08-26"]
+      ];
+      const result = await parseStructuredFile({
+        dataset: "delivery_ledger",
+        fileName: `delivery.${fileType}`,
+        fileType,
+        content:
+          fileType === "csv"
+            ? Buffer.from(deliveryLedgerCsv({ metadataRows }))
+            : await workbookBuffer([deliveryLedgerRows({ metadataRows })]),
+        limits: limitsFor({ maxStructuredImportRows: 20 })
+      });
+      expect(result.rows[0]?.payload).toMatchObject({
+        store_name: " 合成  门店 ",
+        supplier_name: "测试供应商"
+      });
+    }
+  );
+
+  test("accepts whitespace around delivery receipt sequence while retaining exact store name", async () => {
+    const result = await parseStructuredFile({
+      dataset: "delivery_ledger",
+      fileName: "delivery.csv",
+      fileType: "csv",
+      content: Buffer.from(
+        deliveryLedgerCsv({
+          metadataRows: [
+            ["单据号", "SH2608250117", "订货机构", " 合成门店 "],
+            ["送货机构", "供应商", "收货日期", "2026-08-26"]
+          ],
+          itemRows: [[" 1 ", "物品", "件", "1", "80"]]
+        })
+      ),
+      limits: limitsFor({ maxStructuredImportRows: 20 })
+    });
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.payload.store_name).toBe(" 合成门店 ");
+  });
+
   test("profiles receipt metadata without generating ledger entry UUIDs", async () => {
     const profile = await profileStructuredFile({
       dataset: "delivery_ledger",

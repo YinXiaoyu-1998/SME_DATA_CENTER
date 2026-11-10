@@ -36,7 +36,7 @@ suite("partition download persistence", () => {
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic" } });
     await prisma.organization.create({ data: { id: otherCleanupOrgId, name: "Other Synthetic" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: actor.id,
         orgId,
@@ -75,6 +75,7 @@ suite("partition download persistence", () => {
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId } });
   }
   beforeEach(async () => {
+    await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await clearAuthorization();
     await prisma.storageGarbage.deleteMany({
       where: {
@@ -88,12 +89,13 @@ suite("partition download persistence", () => {
     await prisma.processingRun.deleteMany({ where: { orgId } });
     await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
     await prisma.structuredPartition.deleteMany({ where: { orgId } });
-    await prisma.employee.update({
+    await prisma.userAccount.update({
       where: { id: actor.id },
       data: { disabled: false, clearance: 3 }
     });
   });
   afterAll(async () => {
+    await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await clearAuthorization();
     await prisma.storageGarbage.deleteMany({
       where: {
@@ -108,7 +110,7 @@ suite("partition download persistence", () => {
     await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
     await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await prisma.partitionImportJob.deleteMany({ where: { orgId } });
-    await prisma.employee.deleteMany({ where: { orgId } });
+    await prisma.userAccount.deleteMany({ where: { orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await prisma.structuredPartition.deleteMany({ where: { orgId: otherCleanupOrgId } });
     await prisma.organization.delete({ where: { id: otherCleanupOrgId } });
@@ -180,7 +182,7 @@ suite("partition download persistence", () => {
       data: {
         orgId,
         id: "legacy-order-grant",
-        employeeId: actor.id,
+        userAccountId: actor.id,
         enterpriseKey: "synthetic",
         ownership: "store",
         allStores: true,
@@ -188,7 +190,13 @@ suite("partition download persistence", () => {
       }
     });
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: "synthetic", name: "Store 0" }
+      data: {
+        orgId,
+        enterpriseKey: "synthetic",
+        name: "Store 0",
+        officialName: "Store 0",
+        confirmation: "confirmed"
+      }
     });
     await prisma.businessResource.create({
       data: {
@@ -480,7 +488,7 @@ suite("partition download persistence", () => {
       data: {
         orgId,
         id: "download-grant",
-        employeeId: actor.id,
+        userAccountId: actor.id,
         enterpriseKey: "synthetic",
         ownership: "store",
         categories: { create: { categoryId: "download-business" } }
@@ -488,7 +496,13 @@ suite("partition download persistence", () => {
     });
     for (let i = 0; i < 3; i++) {
       await prisma.businessStore.create({
-        data: { orgId, enterpriseKey: "synthetic", name: `Store ${i}` }
+        data: {
+          orgId,
+          enterpriseKey: "synthetic",
+          name: `Store ${i}`,
+          officialName: `Store ${i}`,
+          confirmation: "confirmed"
+        }
       });
       await prisma.businessResource.create({
         data: {
@@ -532,7 +546,7 @@ suite("partition download persistence", () => {
     await prisma.businessGrantStore.delete({
       where: { orgId_grantId_storeName: { orgId, grantId: "download-grant", storeName: "Store 1" } }
     });
-    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 0 } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { clearance: 0 } });
     await prisma.structuredPartition.updateMany({
       where: { orgId },
       data: { confidentialityLevel: 3 }
@@ -557,7 +571,7 @@ suite("partition download persistence", () => {
       code: "PARTITION_DOWNLOAD_FORBIDDEN"
     });
     expect(await repository.read(actor, request.requestId)).toMatchObject({ status: "succeeded" });
-    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 3 } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { clearance: 3 } });
     const deniedAudit = vi.fn(async () => {});
     const app = urlApp(repository, vi.fn(), deniedAudit);
     try {
@@ -579,12 +593,12 @@ suite("partition download persistence", () => {
     await grantStore(1);
     await grantStore(2);
     expect((await repository.validateCurrent(actor, request.requestId)).manifest).toHaveLength(2);
-    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 0 } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { clearance: 0 } });
     await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
       code: "PARTITION_DOWNLOAD_FORBIDDEN"
     });
     expect(await repository.read(actor, request.requestId)).toMatchObject({ status: "succeeded" });
-    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 3 } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { clearance: 3 } });
     expect((await repository.validateCurrent(actor, request.requestId)).request.status).toBe(
       "succeeded"
     );
@@ -595,7 +609,7 @@ suite("partition download persistence", () => {
         })
       ).manifest
     ).toEqual(before);
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: "download-other-admin",
         orgId,
@@ -613,7 +627,7 @@ suite("partition download persistence", () => {
         repository.validateCurrent({ ...actor, id: "download-other-admin" }, request.requestId)
       ).rejects.toMatchObject({ code: "PARTITION_DOWNLOAD_NOT_FOUND" });
     } finally {
-      await prisma.employee.delete({ where: { id: "download-other-admin" } });
+      await prisma.userAccount.delete({ where: { id: "download-other-admin" } });
     }
   });
   it("worker lease reclaim fences old uploads and publishes with the new exclusive owner", async () => {
@@ -852,7 +866,7 @@ suite("partition download persistence", () => {
   it("reloads employee authority instead of trusting the supplied actor", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "auth");
-    await prisma.employee.update({ where: { id: actor.id }, data: { disabled: true } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { disabled: true } });
     await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
       code: "PARTITION_DOWNLOAD_FORBIDDEN"
     });
@@ -1100,7 +1114,7 @@ suite("partition download persistence", () => {
       checksumSha256: "b".repeat(64),
       expiresAt: request.expiresAt
     });
-    await prisma.employee.update({ where: { id: actor.id }, data: { disabled: true } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { disabled: true } });
     await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
       code: "PARTITION_DOWNLOAD_FORBIDDEN"
     });
@@ -1113,7 +1127,7 @@ suite("partition download persistence", () => {
   it("denies a new link after current clearance is lowered without failing the task", async () => {
     await partitions();
     const request = await repository.prepare(actor, scope, "clearance");
-    await prisma.employee.update({ where: { id: actor.id }, data: { clearance: 0 } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { clearance: 0 } });
     await expect(repository.validateCurrent(actor, request.requestId)).rejects.toMatchObject({
       code: "PARTITION_DOWNLOAD_FORBIDDEN"
     });
@@ -1204,7 +1218,7 @@ suite("partition download persistence", () => {
         objectKey: "download-test/other-org"
       }
     });
-    const employee = await prisma.employee.findUniqueOrThrow({ where: { id: actor.id } });
+    const employee = await prisma.userAccount.findUniqueOrThrow({ where: { id: actor.id } });
     const inventory = await cleanup.buildStoreCleanupInventory(cleanupScope);
     expect(inventory.preserved).toEqual({ partitions: 1, importJobs: 1, employees: 1 });
     expect(inventory.targets.map((row) => row.id)).toEqual(["download_part_0"]);
@@ -1237,7 +1251,7 @@ suite("partition download persistence", () => {
     expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: sourceRun.id } })).toEqual(
       sourceRun
     );
-    expect(await prisma.employee.findUniqueOrThrow({ where: { id: employee.id } })).toEqual(
+    expect(await prisma.userAccount.findUniqueOrThrow({ where: { id: employee.id } })).toEqual(
       employee
     );
     expect(
@@ -1410,7 +1424,7 @@ suite("partition download persistence", () => {
                   data: { checksumSha256: "b".repeat(64) }
                 })
                 .then((row) => row)
-            : prisma.employee
+            : prisma.userAccount
                 .update({ where: { id: actor.id }, data: { disabled: true } })
                 .then((row) => row);
       try {
@@ -1511,8 +1525,44 @@ suite("partition download persistence", () => {
       expect(await prisma.storageGarbage.findFirst({ where: { objectKey } })).not.toBeNull();
     }
   );
+  it("finds a legacy partition by the current formal store name for download", async () => {
+    await partitions();
+    await prisma.businessAuthorizationState.create({ data: { orgId } });
+    await prisma.businessStore.create({
+      data: {
+        orgId,
+        enterpriseKey: "synthetic",
+        name: "Store 0",
+        officialName: "Renamed store",
+        confirmation: "confirmed"
+      }
+    });
+    const request = await repository.prepare(
+      actor,
+      { ...scope, storeNameContains: ["Renamed store"] },
+      "renamed-store"
+    );
+    const result = await repository.validateCurrent(actor, request.requestId);
+    expect(result.manifest).toMatchObject([
+      { storeName: "Renamed store", objectKey: "download-test/source-0" }
+    ]);
+  });
   it("publication and later source additions preserve the fixed manifest", async () => {
     await partitions();
+    await prisma.businessAuthorizationState.upsert({
+      where: { orgId },
+      create: { orgId },
+      update: {}
+    });
+    await prisma.businessStore.create({
+      data: {
+        orgId,
+        enterpriseKey: "synthetic",
+        name: "Store extra",
+        officialName: "Store extra",
+        confirmation: "confirmed"
+      }
+    });
     const request = await repository.prepare(actor, scope, "insert-race");
     const lease = await leaseFor(request.requestId);
     const objectKey = `partition-downloads/${orgId}/${request.requestId}/1/insert.zip`;
@@ -1565,7 +1615,9 @@ suite("partition download persistence", () => {
       ]
     });
     try {
-      await insertion;
+      // Formal-name publication locks the same date range; verify it waits for the
+      // captured manifest, then let both transactions finish in that order.
+      await waitForSourceLockWait();
     } finally {
       barrier.release();
       await Promise.allSettled([publication, insertion]);

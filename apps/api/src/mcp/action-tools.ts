@@ -90,9 +90,9 @@ function routeForActionTool(
     case "update_account_permissions":
       return {
         method: "PATCH",
-        path: `/v1/admin/permissions/accounts/${encodeURIComponent(String(input["employeeId"]))}`,
+        path: `/v1/admin/permissions/accounts/${encodeURIComponent(String(input["userAccountId"]))}`,
         body: Object.fromEntries(
-          Object.entries(input).filter(([key]) => !["employeeId"].includes(key))
+          Object.entries(input).filter(([key]) => !["userAccountId"].includes(key))
         )
       };
     case "configure_business_category": {

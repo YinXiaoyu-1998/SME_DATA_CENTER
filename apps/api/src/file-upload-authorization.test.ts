@@ -23,7 +23,8 @@ vi.mock("@prisma/adapter-mariadb", () => ({
   PrismaMariaDb: class PrismaMariaDb {}
 }));
 
-vi.mock("@prisma/client", () => ({
+vi.mock("@prisma/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@prisma/client")>()),
   PrismaClient: class PrismaClient {
     constructor() {
       return prisma;
@@ -90,7 +91,7 @@ describe("file upload authorization", () => {
     expect(completed).not.toHaveBeenCalled();
     expect(auditRepository.appendDenied).toHaveBeenCalledExactlyOnceWith({
       orgId: employee.orgId,
-      actorEmployeeId: employee.id,
+      actorUserAccountId: employee.id,
       uploadSurface: "structured_dataset",
       audit: requestAudit
     });
@@ -182,7 +183,7 @@ describe("Prisma upload authorization audit repository", () => {
 
     await repository.appendDenied({
       orgId: employee.orgId,
-      actorEmployeeId: employee.id,
+      actorUserAccountId: employee.id,
       uploadSurface: "structured_dataset",
       audit: requestAudit
     });
@@ -191,7 +192,7 @@ describe("Prisma upload authorization audit repository", () => {
     expect(prisma.auditLog.create).toHaveBeenCalledExactlyOnceWith({
       data: {
         orgId: "org_1",
-        actorEmployeeId: "emp_1",
+        actorUserAccountId: "emp_1",
         action: "file_upload.denied",
         targetType: "file_upload",
         targetId: null,
@@ -210,7 +211,7 @@ describe("Prisma upload authorization audit repository", () => {
   it("exposes only safe audit inputs and the three transport-level upload surfaces", () => {
     type DeniedInput = Parameters<UploadAuthorizationAuditRepository["appendDenied"]>[0];
     expectTypeOf<keyof DeniedInput>().toEqualTypeOf<
-      "orgId" | "actorEmployeeId" | "uploadSurface" | "audit"
+      "orgId" | "actorUserAccountId" | "uploadSurface" | "audit"
     >();
     expectTypeOf<DeniedInput["audit"]>().toEqualTypeOf<RequestAuditContext>();
     expectTypeOf<DeniedInput["uploadSurface"]>().toEqualTypeOf<FileUploadSurface>();

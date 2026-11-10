@@ -23,7 +23,12 @@ import {
   type Tx,
   type Workflow
 } from "./repository.js";
-import { configuration, integration, validateConfiguration } from "./configuration.js";
+import {
+  configuration,
+  integration,
+  validateConfiguration,
+  workflowStoreKeys
+} from "./configuration.js";
 import { getInstallation, requireReady } from "./installations.js";
 import { supportsWorkflowPackageVersion } from "./package-compatibility.js";
 const backfillSchema = z
@@ -90,7 +95,7 @@ export async function requireBinding(
   if (
     !run ||
     run.installationId !== binding.installationId ||
-    run.employeeId !== actor.id ||
+    run.userAccountId !== actor.id ||
     run.assignmentEpoch !== binding.assignmentEpoch ||
     run.finishedAt
   )
@@ -105,13 +110,8 @@ export async function requireBinding(
   if (!current) fail("WORKFLOW_CONFIGURATION_REQUIRED");
   const source = await integration(tx, workflow);
   const livePolicy = workflowLivePolicy(current, source.configuration);
-  const stores = await tx.businessStore.findMany({
-    where: { orgId: actor.orgId, enterpriseKey: workflow.enterpriseKey, retired: false },
-    select: { name: true }
-  });
-  livePolicy.stores = livePolicy.stores.filter((name) =>
-    stores.some((store) => store.name === name)
-  );
+  const storeKeys = await workflowStoreKeys(tx, workflow, livePolicy.stores);
+  livePolicy.stores = livePolicy.stores.filter((name) => storeKeys.has(name));
   const original = workflowLivePolicy(snapshot.configuration, snapshot.integration);
   const previous =
     run.restrictivePolicy === null
@@ -273,7 +273,7 @@ export async function runOperation(
         orgId: actor.orgId,
         workflowId: workflow.id,
         installationId: op.installationId,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         configurationVersion: workflow.version,
         integrationVersion: source.version,
         controlVersion: workflow.controlVersion,
@@ -310,7 +310,7 @@ export async function runOperation(
         id: op.runId,
         orgId: actor.orgId,
         workflowId: workflow.id,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         installationId: op.installationId,
         assignmentEpoch: op.assignmentEpoch
       }

@@ -15,7 +15,7 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
       await prisma.organization.create({
         data: { id: orgId, name: "Never infer this organization name" }
       });
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: {
           id: `${orgId}_admin`,
           orgId,
@@ -58,7 +58,7 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
     await prisma.businessStore.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.document.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId: { in: organizations } } });
-    await prisma.employee.deleteMany({ where: { orgId: { in: organizations } } });
+    await prisma.userAccount.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.organization.deleteMany({ where: { id: { in: organizations } } });
     await prisma.$disconnect();
   });
@@ -66,8 +66,20 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
     expect(await metadata.listEnterprises(organizations[0]!)).toEqual([]);
     await prisma.businessStore.createMany({
       data: [
-        { orgId: organizations[0]!, enterpriseKey: "declared-enterprise", name: "本企业门店" },
-        { orgId: organizations[1]!, enterpriseKey: "foreign-enterprise", name: "外企业门店" }
+        {
+          orgId: organizations[0]!,
+          enterpriseKey: "declared-enterprise",
+          name: "本企业门店",
+          officialName: "本企业门店",
+          confirmation: "confirmed"
+        },
+        {
+          orgId: organizations[1]!,
+          enterpriseKey: "foreign-enterprise",
+          name: "外企业门店",
+          officialName: "外企业门店",
+          confirmation: "confirmed"
+        }
       ]
     });
     expect(await metadata.listEnterprises(organizations[0]!)).toEqual([]);

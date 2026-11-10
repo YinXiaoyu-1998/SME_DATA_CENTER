@@ -379,7 +379,7 @@ export async function publishCostCards(
   await tx.auditLog.create({
     data: {
       orgId: input.orgId,
-      actorEmployeeId: null,
+      actorUserAccountId: null,
       clientSource: "worker",
       action: "structured_import.applied",
       targetType: "import_batch",
@@ -418,7 +418,7 @@ export async function archiveCostCard(
   await tx.auditLog.create({
     data: {
       orgId: input.orgId,
-      actorEmployeeId: input.actorId,
+      actorUserAccountId: input.actorId,
       action: "cost_card.archived",
       targetType: "cost_card",
       targetId: card.id,

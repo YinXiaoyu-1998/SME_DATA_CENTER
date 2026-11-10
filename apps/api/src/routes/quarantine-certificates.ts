@@ -1,4 +1,4 @@
-import { ResourceAttributesError } from "@smedc/db";
+import { FormalStoreIntakeError, ResourceAttributesError } from "@smedc/db";
 import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -276,7 +276,9 @@ export function registerQuarantineCertificateRoutes(
       return validationError(
         reply,
         "RESOURCE_SINGLE_STORE_REQUIRED",
-        "A photo requires one explicit enterprise and store name."
+        !upload.storeName?.trim() || upload.storeName.length > 255 || upload.storeFieldCount !== 1
+          ? "A photo requires one valid storeName field."
+          : "A photo requires one valid enterpriseName field."
       );
     const enterpriseKey = normalizeEnterpriseIdentity(upload.enterpriseName).enterpriseKey;
 
@@ -319,7 +321,7 @@ export function registerQuarantineCertificateRoutes(
     try {
       const certificate = await dependencies.quarantineCertificates().createCertificate({
         orgId: employee.orgId,
-        actorEmployeeId: employee.id,
+        actorUserAccountId: employee.id,
         sourceDocumentId,
         title: `检疫证明 ${normalizedReceiptId} - ${file.fileName}`,
         receiptId: normalizedReceiptId,
@@ -341,6 +343,8 @@ export function registerQuarantineCertificateRoutes(
       return reply.code(201).send(certificateResponse(certificate));
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof FormalStoreIntakeError)
+        return validationError(reply, error.code, error.message);
       if (error instanceof ResourceAttributesError)
         return validationError(
           reply,

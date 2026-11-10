@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   reconcileFactory: vi.fn(),
   bundle: vi.fn()
 }));
-vi.mock("@prisma/client", () => ({
+vi.mock("@prisma/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@prisma/client")>()),
   PrismaClient: class {
     $disconnect = mocks.disconnect;
   }

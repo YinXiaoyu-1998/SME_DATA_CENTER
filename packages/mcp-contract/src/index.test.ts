@@ -43,6 +43,14 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  query_employee_directory: { request: { action: "list_directory", enterpriseKey: "synthetic" } },
+  manage_employee_directory: {
+    request: {
+      action: "manage_store",
+      enterpriseKey: "synthetic",
+      operation: { kind: "create", name: "Store" }
+    }
+  },
   prepare_order_scope_transition: {
     enterpriseName: "Synthetic",
     startDate: "2026-10-26",
@@ -213,9 +221,9 @@ const validInputs = {
     endDate: "20260731"
   },
   get_my_permissions: {},
-  query_account_permissions: { query: { mode: "detail", employeeId: "actor" } },
+  query_account_permissions: { query: { mode: "detail", userAccountId: "actor" } },
   update_account_permissions: {
-    employeeId: "actor",
+    userAccountId: "actor",
     expectedVersion: "7",
     clearance: 2,
     grants: []
@@ -258,7 +266,7 @@ const invalidConsolidatedInputCases = [
     tool: "query_account_permissions",
     cases: [
       { label: "detail without employee ID", input: { query: { mode: "detail" } } },
-      { label: "list with employee ID", input: { query: { mode: "list", employeeId: "actor" } } }
+      { label: "list with employee ID", input: { query: { mode: "list", userAccountId: "actor" } } }
     ]
   },
   {
@@ -325,7 +333,7 @@ const invalidInputCases = [
   { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
     tool: "smedc_get_current_user",
-    cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
+    cases: [{ label: "cross-employee selector", input: { userAccountId: "someone-else" } }]
   },
   {
     tool: "smedc_list_skills",
@@ -694,7 +702,9 @@ const invalidInputCases = [
       "manage_workflow_installation",
       "manage_workflow_run",
       "record_workflow_action",
-      "get_workflow_status"
+      "get_workflow_status",
+      "query_employee_directory",
+      "manage_employee_directory"
     ] as const
   ).map((tool) => ({
     tool,
@@ -754,7 +764,9 @@ describe("SMEDC MCP contract", () => {
       "manage_workflow_installation",
       "manage_workflow_run",
       "record_workflow_action",
-      "get_workflow_status"
+      "get_workflow_status",
+      "query_employee_directory",
+      "manage_employee_directory"
     ]);
     expect(
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")
@@ -779,7 +791,9 @@ describe("SMEDC MCP contract", () => {
     );
 
     expect(currentUser?.inputSchema.safeParse({}).success).toBe(true);
-    expect(currentUser?.inputSchema.safeParse({ employeeId: "someone-else" }).success).toBe(false);
+    expect(currentUser?.inputSchema.safeParse({ userAccountId: "someone-else" }).success).toBe(
+      false
+    );
     expect(currentUser?.resultShape).toEqual([
       "user: { displayName, email, role, clearance, organizationName }"
     ]);

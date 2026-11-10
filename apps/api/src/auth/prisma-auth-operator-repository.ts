@@ -19,7 +19,7 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         if (!organization) {
           throw new Error("Organization not found.");
         }
-        const employee = await tx.employee.create({
+        const employee = await tx.userAccount.create({
           data: {
             orgId: input.orgId,
             email: input.normalizedEmail,
@@ -40,13 +40,13 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         }).loadAuthorizationSnapshot(employee.id, input.orgId, tx);
         await persistBusinessGrants(
           tx,
-          { orgId: input.orgId, employeeId: employee.id, grants: input.initialGrants ?? [] },
+          { orgId: input.orgId, userAccountId: employee.id, grants: input.initialGrants ?? [] },
           snapshot.categories
         );
         await tx.auditLog.create({
           data: {
             orgId: input.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: "operator.account.initial_permissions",
             targetType: "employee",
             targetId: employee.id,
@@ -65,7 +65,7 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         const identity = await tx.loginIdentity.create({
           data: {
             orgId: input.orgId,
-            employeeId: employee.id,
+            userAccountId: employee.id,
             normalizedEmail: input.normalizedEmail
           },
           select: { id: true }
@@ -84,7 +84,7 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
             eventType: "account_onboarded",
             outcome: "succeeded",
             orgId: input.orgId,
-            employeeId: employee.id,
+            userAccountId: employee.id,
             identityId: identity.id,
             createdAt: input.now
           }
@@ -95,12 +95,12 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
             outcome: "succeeded",
             reason: "initial_setup",
             orgId: input.orgId,
-            employeeId: employee.id,
+            userAccountId: employee.id,
             identityId: identity.id,
             createdAt: input.now
           }
         });
-        return { employeeId: employee.id, identityId: identity.id };
+        return { userAccountId: employee.id, identityId: identity.id };
       });
     },
 
@@ -108,11 +108,11 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
       return prisma.$transaction(async (tx) => {
         const identities = await tx.loginIdentity.findMany({
           where: {
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             provider: "local_password",
             disabled: false
           },
-          select: { id: true, employeeId: true, orgId: true },
+          select: { id: true, userAccountId: true, orgId: true },
           take: 2
         });
         if (identities.length === 0) {
@@ -160,12 +160,12 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
             outcome: "succeeded",
             reason: "password_reset",
             orgId: identity.orgId,
-            employeeId: identity.employeeId,
+            userAccountId: identity.userAccountId,
             identityId: identity.id,
             createdAt: input.now
           }
         });
-        return { employeeId: identity.employeeId, identityId: identity.id };
+        return { userAccountId: identity.userAccountId, identityId: identity.id };
       });
     },
 
@@ -173,36 +173,38 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
       return prisma.$transaction(async (tx) => {
         const identity = await tx.loginIdentity.findUnique({
           where: { normalizedEmail: input.normalizedEmail },
-          select: { id: true, employeeId: true, orgId: true }
+          select: { id: true, userAccountId: true, orgId: true }
         });
         if (!identity) {
           return null;
         }
 
         await tx.$queryRaw(
-          Prisma.sql`SELECT id FROM employees WHERE id = ${identity.employeeId} FOR UPDATE`
+          Prisma.sql`SELECT id FROM employees WHERE id = ${identity.userAccountId} FOR UPDATE`
         );
 
         const uploadedDocumentCount = await tx.document.count({
-          where: { uploaderId: identity.employeeId }
+          where: { uploaderId: identity.userAccountId }
         });
         if (uploadedDocumentCount > 0) {
           throw new Error("Test account still owns uploaded documents; clean test data first.");
         }
 
         const identities = await tx.loginIdentity.findMany({
-          where: { employeeId: identity.employeeId },
+          where: { userAccountId: identity.userAccountId },
           select: { id: true }
         });
         const identityIds = identities.map((row) => row.id);
         const sessions = await tx.authSession.findMany({
-          where: { employeeId: identity.employeeId },
+          where: { userAccountId: identity.userAccountId },
           select: { id: true }
         });
         const sessionIds = sessions.map((row) => row.id);
 
         await tx.oAuthAccessToken.deleteMany({
-          where: { OR: [{ employeeId: identity.employeeId }, { identityId: { in: identityIds } }] }
+          where: {
+            OR: [{ userAccountId: identity.userAccountId }, { identityId: { in: identityIds } }]
+          }
         });
         await tx.durableCredential.deleteMany({
           where: { sessionId: { in: sessionIds } }
@@ -210,7 +212,7 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
         await tx.authSecurityEvent.deleteMany({
           where: {
             OR: [
-              { employeeId: identity.employeeId },
+              { userAccountId: identity.userAccountId },
               { identityId: { in: identityIds } },
               { sessionId: { in: sessionIds } }
             ]
@@ -226,15 +228,15 @@ export function createPrismaAuthOperatorRepository(prisma: PrismaClient): AuthOp
           where: { identityId: { in: identityIds } }
         });
         await tx.auditLog.deleteMany({
-          where: { actorEmployeeId: identity.employeeId }
+          where: { actorUserAccountId: identity.userAccountId }
         });
         await tx.loginIdentity.deleteMany({
           where: { id: { in: identityIds } }
         });
-        await tx.employee.delete({ where: { id: identity.employeeId } });
+        await tx.userAccount.delete({ where: { id: identity.userAccountId } });
 
         return {
-          employeeId: identity.employeeId,
+          userAccountId: identity.userAccountId,
           identityIds
         };
       });

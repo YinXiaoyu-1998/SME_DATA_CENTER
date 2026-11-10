@@ -5,7 +5,7 @@ export type LedgerScope = { storeNames: string[] } & (
   | { startDate: string; endDate: string; dates?: never }
 );
 export type LedgerActor =
-  | { kind: "employee"; employeeId: string }
+  | { kind: "employee"; userAccountId: string }
   | { kind: "operator"; label: string }
   | { kind: "system_reconciler"; reconciliationRunId: string };
 export type LedgerSourceRef = {

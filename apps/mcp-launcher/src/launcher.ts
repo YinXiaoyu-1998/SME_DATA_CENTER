@@ -15,6 +15,7 @@ import {
   SMEDC_MCP_TOOL_NAMES,
   PERMISSION_MCP_TOOL_NAMES,
   WORKFLOW_MCP_TOOL_NAMES,
+  DIRECTORY_MCP_TOOL_NAMES,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -87,6 +88,8 @@ export type LauncherBusinessToolName =
   | "prepare_authorization_cutover"
   | "activate_authorization_cutover"
   | "suspend_authorization_reads"
+  | "query_employee_directory"
+  | "manage_employee_directory"
   | "query_enterprise_workflows"
   | "prepare_enterprise_workflow_change"
   | "save_enterprise_workflow"
@@ -262,6 +265,9 @@ export function registerLauncherTools(
           : LEDGER_PDF_TOOL_NAMES.has(tool.name) ||
               PERMISSION_TOOL_NAMES.has(tool.name) ||
               WORKFLOW_TOOL_NAMES.has(tool.name) ||
+              DIRECTORY_MCP_TOOL_NAMES.includes(
+                tool.name as (typeof DIRECTORY_MCP_TOOL_NAMES)[number]
+              ) ||
               [
                 "prepare_order_scope_transition",
                 "download_cost_cards",

@@ -39,7 +39,7 @@ suite("cost card API to worker publication", () => {
   const authorization = createBusinessAuthorizationRepository({ prisma });
   const orgId = "cost_card_worker_org",
     adminId = "cost_card_worker_admin",
-    employeeId = "cost_card_worker_employee";
+    userAccountId = "cost_card_worker_employee";
   const enterpriseName = "Synthetic cost-card enterprise";
   const enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
   const worker = createPrismaProcessingWorkerRepository(databaseUrl);
@@ -60,9 +60,9 @@ suite("cost card API to worker publication", () => {
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic" } });
     for (const [id, role, clearance] of [
       [adminId, "admin", 0],
-      [employeeId, "employee", 2]
+      [userAccountId, "employee", 2]
     ] as const)
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: { id, orgId, role, clearance, email: `${id}@example.invalid`, displayName: id }
       });
     await prisma.businessAuthorizationState.create({
@@ -74,7 +74,7 @@ suite("cost card API to worker publication", () => {
       storageAdapter: storage,
       uploadAuthorizationAuditRepository: { appendDenied: async () => undefined },
       authenticateAccessToken: async (id) => {
-        const employee = await prisma.employee.findFirst({ where: { id, orgId } });
+        const employee = await prisma.userAccount.findFirst({ where: { id, orgId } });
         return employee ? { ...employee, organizationName: "Synthetic" } : null;
       },
       cursorSigningSecret: "synthetic-cost-card-cursor-secret",
@@ -110,7 +110,7 @@ suite("cost card API to worker publication", () => {
     expect(initialized.statusCode).toBe(200);
     expect(initialized.json()).toMatchObject({
       authorizationVersion: "2",
-      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length }
+      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length + 1 }
     });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }
@@ -131,7 +131,7 @@ suite("cost card API to worker publication", () => {
         })
       ).statusCode
     ).toBe(200);
-    expect((await upload(original, "employee", employeeId)).statusCode).toBe(403);
+    expect((await upload(original, "employee", userAccountId)).statusCode).toBe(403);
     expect(
       (await upload(original, "override", adminId, [{ name: "confidentialityLevel", value: "0" }]))
         .statusCode
@@ -141,7 +141,7 @@ suite("cost card API to worker publication", () => {
     const firstId = accepted.json().importBatch.importBatchId;
     expect(accepted.json().importBatch).not.toHaveProperty("publicationSummary");
     await grantEmployee(true);
-    const pending = await status(firstId, employeeId);
+    const pending = await status(firstId, userAccountId);
     expect(pending.statusCode).toBe(200);
     expect(pending.json().importBatch.status).toBe("pending");
     expect(pending.json().importBatch).not.toHaveProperty("publicationSummary");
@@ -159,17 +159,17 @@ suite("cost card API to worker publication", () => {
     expect((await status(firstId, adminId)).json().importBatch).not.toHaveProperty(
       "publicationSummary"
     );
-    expect((await status(firstId, employeeId)).json().importBatch.publicationSummary).toEqual(
+    expect((await status(firstId, userAccountId)).json().importBatch.publicationSummary).toEqual(
       first.publicationSummary
     );
-    expect((await status(firstId, employeeId)).json().document).not.toHaveProperty(
+    expect((await status(firstId, userAccountId)).json().document).not.toHaveProperty(
       "storageObjectKey"
     );
     const secondResponse = await upload(csv([row("spu1"), row("spu2")]), "second");
     expect(secondResponse.statusCode).toBe(202);
     expect(await runImport()).toMatchObject({ status: "active" });
     const secondId = secondResponse.json().importBatch.importBatchId;
-    const second = (await status(secondId, employeeId)).json().importBatch;
+    const second = (await status(secondId, userAccountId)).json().importBatch;
     expect(second.publicationSummary).toMatchObject({
       counts: { inserted: 0, updated: 1, unchanged: 1, restored: 0 },
       changes: [{ operation: "updated", changedFields: ["recipes.removed"] }]
@@ -177,14 +177,14 @@ suite("cost card API to worker publication", () => {
     const current = await prisma.costCard.findMany({ where: { orgId }, orderBy: { spuId: "asc" } });
     expect(current[0]!).toMatchObject({ id: before[0]!.id, recipeCount: 1, revision: 2n });
     expect(current[1]).toEqual(before[1]);
-    expect((await status(firstId, employeeId)).json().importBatch.publicationSummary).toEqual(
+    expect((await status(firstId, userAccountId)).json().importBatch.publicationSummary).toEqual(
       first.publicationSummary
     );
     await prisma.document.update({
       where: { id: first.sourceDocumentId },
       data: { status: "archived", archivedAt: clock }
     });
-    expect((await status(firstId, employeeId)).json().importBatch.publicationSummary).toEqual(
+    expect((await status(firstId, userAccountId)).json().importBatch.publicationSummary).toEqual(
       first.publicationSummary
     );
     expect(
@@ -222,7 +222,7 @@ suite("cost card API to worker publication", () => {
     });
     expect(invalidBatch.status).toBe("rejected");
     expect(invalidBatch.publicationSummary).toBeNull();
-    const invalidStatus = await status(invalidBatch.id, employeeId);
+    const invalidStatus = await status(invalidBatch.id, userAccountId);
     expect(invalidStatus.statusCode).toBe(200);
     expect(invalidStatus.json().importBatch.validationErrors).toEqual(
       expect.arrayContaining([expect.objectContaining({ sheetName: "例外", rowNumber: 1 })])
@@ -239,13 +239,13 @@ suite("cost card API to worker publication", () => {
         await app.inject({
           method: "POST",
           url: `/v1/source-documents/${invalidBatch.sourceDocumentId}/download-url`,
-          headers: { authorization: `Bearer ${employeeId}` }
+          headers: { authorization: `Bearer ${userAccountId}` }
         })
       ).statusCode
     ).toBe(404);
     await grantEmployee(false);
-    expect((await status(invalidBatch.id, employeeId)).statusCode).toBe(404);
-    expect((await status(firstId, employeeId)).statusCode).toBe(404);
+    expect((await status(invalidBatch.id, userAccountId)).statusCode).toBe(404);
+    expect((await status(firstId, userAccountId)).statusCode).toBe(404);
     expect((await status(firstId, adminId)).json().importBatch).not.toHaveProperty(
       "publicationSummary"
     );
@@ -275,7 +275,7 @@ suite("cost card API to worker publication", () => {
       partitionJobIds: []
     });
     run.orgId = orgId;
-    run.reusedEmployeeId = adminId;
+    run.reusedUserAccountId = adminId;
     vi.stubEnv("STORAGE_DRIVER", "local");
     vi.stubEnv("LOCAL_STORAGE_ROOT", path.join(root, "storage"));
     try {
@@ -318,7 +318,7 @@ suite("cost card API to worker publication", () => {
       errorCode: "COST_CARD_BASELINE_STALE"
     });
     await grantEmployee(true);
-    const failedStatus = await status(batch.id, employeeId);
+    const failedStatus = await status(batch.id, userAccountId);
     expect(failedStatus.statusCode).toBe(200);
     expect(failedStatus.json().importBatch).toMatchObject({
       status: "failed",
@@ -326,7 +326,7 @@ suite("cost card API to worker publication", () => {
     });
     expect(failedStatus.json().importBatch).not.toHaveProperty("publicationSummary");
     await grantEmployee(false);
-    expect((await status(batch.id, employeeId)).statusCode).toBe(404);
+    expect((await status(batch.id, userAccountId)).statusCode).toBe(404);
     const run = await prisma.processingRun.findFirstOrThrow({
       where: { orgId, documentId: batch.sourceDocumentId }
     });
@@ -439,7 +439,7 @@ suite("cost card API to worker publication", () => {
       : [];
     const result = await app.inject({
       method: "PATCH",
-      url: `/v1/admin/permissions/accounts/${employeeId}`,
+      url: `/v1/admin/permissions/accounts/${userAccountId}`,
       headers: { authorization: `Bearer ${adminId}` },
       payload: { expectedVersion: (await context()).expectedVersion, clearance: 2, grants }
     });

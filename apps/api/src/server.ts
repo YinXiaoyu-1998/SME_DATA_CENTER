@@ -1,3 +1,7 @@
+import {
+  registerEmployeeDirectoryRoutes,
+  registerEmployeeDirectoryWebRoutes
+} from "./employee-directory/routes.js";
 import { registerEnterpriseWorkflowRoutes } from "./enterprise-workflows/routes.js";
 import { registerLedgerWebRoutes } from "./ledger-web/routes.js";
 import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
@@ -115,6 +119,12 @@ export function buildApiServer(options: ApiServerOptions = {}) {
         ledgerPdfDeliveryEnabled: runtimeLimits.ledgerPdfDeliveryEnabled,
         delivery: context.ledgerPdfs
       });
+    if (context.browserSessions)
+      registerEmployeeDirectoryWebRoutes(app, {
+        browserSessions: context.browserSessions,
+        webOrigin,
+        directory: context.directory
+      });
     if (context.browserSessions && context.permissionsUiMetadata)
       registerAdminPermissionsRoutes(app, {
         auth: context.authCore,
@@ -139,6 +149,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
     app.addHook("onClose", async () => clearInterval(pruneTimer));
   }
 
+  registerEmployeeDirectoryRoutes(app, { auth: requestAuth, directory: context.directory });
   registerBusinessAuthorizationRoutes(app, { auth: requestAuth, permissions: context.permissions });
   registerStoreReviewRoutes(app, { auth: requestAuth, storeReviews: context.storeReviews });
   registerCostCardRoutes(app, { auth: requestAuth, costCards: context.costCards });

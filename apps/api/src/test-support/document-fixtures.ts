@@ -48,7 +48,7 @@ export interface RecordedProcessingRun {
 export interface RecordedAuditLog {
   id?: string;
   action: string;
-  actorEmployeeId: string | null;
+  actorUserAccountId: string | null;
   targetType?: string;
   targetId: string | null;
   result?: string;
@@ -106,7 +106,7 @@ export function createDocumentRepository() {
       });
       auditLogs.push({
         action: "document.uploaded",
-        actorEmployeeId: input.uploaderId,
+        actorUserAccountId: input.uploaderId,
         targetId: input.id,
         requestId: input.audit.requestId,
         clientIp: input.audit.sourceIp,
@@ -128,7 +128,7 @@ export function createDocumentRepository() {
       auditLogs.push({
         id: `audit_${auditLogs.length + 1}`,
         action: input.action,
-        actorEmployeeId: input.actorEmployeeId,
+        actorUserAccountId: input.actorUserAccountId,
         targetType: input.targetType,
         targetId: input.targetId,
         result: input.result,
@@ -143,7 +143,7 @@ export function createDocumentRepository() {
     async archiveDocument(input: {
       orgId: string;
       documentId: string;
-      actorEmployeeId: string;
+      actorUserAccountId: string;
       audit: RequestAuditContext;
     }) {
       const document = documents.find((candidate) => candidate.id === input.documentId);
@@ -157,7 +157,7 @@ export function createDocumentRepository() {
       auditLogs.push({
         id: `audit_${auditLogs.length + 1}`,
         action: "document.archived",
-        actorEmployeeId: input.actorEmployeeId,
+        actorUserAccountId: input.actorUserAccountId,
         targetType: "document",
         targetId: input.documentId,
         result: "succeeded",
@@ -229,7 +229,7 @@ export function createInMemoryQuarantineCertificateRepository(
       documents.push({
         id: input.sourceDocumentId,
         orgId: input.orgId,
-        uploaderId: input.actorEmployeeId,
+        uploaderId: input.actorUserAccountId,
         status: "active",
         title: input.title,
         documentType: "raw_material",
@@ -259,7 +259,7 @@ export function createInMemoryQuarantineCertificateRepository(
       certificates.push(certificate);
       auditLogs.push({
         action: "document.uploaded",
-        actorEmployeeId: input.actorEmployeeId,
+        actorUserAccountId: input.actorUserAccountId,
         targetType: "quarantine_certificate",
         targetId: input.sourceDocumentId,
         result: "succeeded",
@@ -312,7 +312,7 @@ export function createInMemoryQuarantineCertificateRepository(
       document.status = "archived";
       auditLogs.push({
         action: "document.archived",
-        actorEmployeeId: input.employee.id,
+        actorUserAccountId: input.employee.id,
         targetType: "quarantine_certificate",
         targetId: input.sourceDocumentId,
         result: "succeeded",
@@ -351,7 +351,7 @@ export function createInMemoryQuarantineCertificateRepository(
       if (archivedCount > 0) {
         auditLogs.push({
           action: "document.archived",
-          actorEmployeeId: input.employee.id,
+          actorUserAccountId: input.employee.id,
           targetType: "quarantine_certificate",
           targetId: input.receiptId,
           result: "succeeded",
@@ -402,7 +402,7 @@ export function createInMemorySourceDocumentRepository(
       for (const sourceDocumentId of new Set(input.sourceDocumentIds)) {
         auditLogs.push({
           action: "document.downloaded",
-          actorEmployeeId: input.employee.id,
+          actorUserAccountId: input.employee.id,
           targetType: "document",
           targetId: sourceDocumentId,
           result: "succeeded",

@@ -163,7 +163,7 @@ model Organization {
   name                   String                  @db.VarChar(255)
   createdAt              DateTime                @default(now()) @map("created_at")
   updatedAt              DateTime                @updatedAt @map("updated_at")
-  employees              Employee[]
+  employees              UserAccount[]
   documents              Document[]
   processingRuns         ProcessingRun[]
   documentIndexes        DocumentIndex[]
@@ -194,7 +194,7 @@ model Organization {
   @@map("organizations")
 }
 
-model Employee {
+model UserAccount {
   businessGrants BusinessGrant[]
   businessAuthorizationAudits BusinessAuthorizationAudit[]
   id                   String                @id @default(cuid()) @db.VarChar(32)
@@ -248,7 +248,7 @@ model Document {
   updatedAt             DateTime               @updatedAt @map("updated_at")
   archivedAt            DateTime?              @map("archived_at")
   organization          Organization           @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  uploader              Employee               @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  uploader              UserAccount               @relation("DocumentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
   processingRuns        ProcessingRun[]
   chunks                DocumentChunk[]
   indexes               DocumentIndex[]
@@ -490,7 +490,7 @@ model PartitionImportJob {
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
   organization         Organization             @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  uploader             Employee                 @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  uploader             UserAccount                 @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
   processingRun        ProcessingRun?
 
   @@unique([orgId, idempotencyKey])
@@ -508,6 +508,7 @@ model StructuredPartition {
   enterpriseKey        String           @map("enterprise_key") @db.VarChar(191)
   enterpriseName       String           @map("enterprise_name") @db.VarChar(255)
   dataset              PartitionDataset
+  directoryStoreId     String?          @map("directory_store_id") @db.VarChar(36)
   storeKey             String           @map("store_key") @db.VarChar(255)
   merchantId           String?          @map("merchant_id") @db.VarChar(255)
   storeName            String           @map("store_name") @db.VarChar(255)
@@ -523,6 +524,7 @@ model StructuredPartition {
   organization         Organization     @relation(fields: [orgId], references: [id], onDelete: Restrict)
 
   @@unique([orgId, enterpriseKey, dataset, storeKey, businessDate], map: "structured_partitions_identity_uq")
+  @@unique([orgId, enterpriseKey, dataset, directoryStoreId, businessDate], map: "structured_partitions_directory_store_day_uq")
   @@index([orgId, dataset, enterpriseKey, businessDate], map: "structured_partitions_manifest_idx")
   @@index([orgId, confidentialityLevel, dataset, businessDate], map: "structured_partitions_auth_idx")
   @@map("structured_partitions")
@@ -639,7 +641,7 @@ model SupplierCatalogRow {
 model AuditLog {
   id              String       @id @default(cuid()) @db.VarChar(32)
   orgId           String       @map("org_id") @db.VarChar(64)
-  actorEmployeeId String?      @map("actor_employee_id") @db.VarChar(32)
+  actorUserAccountId String?      @map("actor_employee_id") @db.VarChar(32)
   action          String       @db.VarChar(128)
   targetType      String       @map("target_type") @db.VarChar(128)
   targetId        String?      @map("target_id") @db.VarChar(128)
@@ -651,10 +653,10 @@ model AuditLog {
   launcherVersion String?      @map("launcher_version") @db.VarChar(64)
   createdAt       DateTime     @default(now()) @map("created_at")
   organization    Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  actor           Employee?    @relation("AuditActor", fields: [actorEmployeeId], references: [id], onDelete: SetNull)
+  actor           UserAccount?    @relation("AuditActor", fields: [actorUserAccountId], references: [id], onDelete: SetNull)
 
   @@index([orgId, createdAt])
-  @@index([actorEmployeeId])
+  @@index([actorUserAccountId])
   @@index([targetType, targetId])
   @@map("audit_logs")
 }
@@ -682,7 +684,7 @@ model SkillEntry {
 model LoginIdentity {
   id                   String                 @id @default(cuid()) @db.VarChar(32)
   orgId                String                 @map("org_id") @db.VarChar(64)
-  employeeId           String                 @map("employee_id") @db.VarChar(32)
+  userAccountId           String                 @map("employee_id") @db.VarChar(32)
   provider             LoginIdentityProvider  @default(local_password)
   /// Login email is application-normalized and stored with the exact utf8mb4_bin migration collation.
   normalizedEmail      String                 @unique @map("normalized_email") @db.VarChar(320)
@@ -694,7 +696,7 @@ model LoginIdentity {
   createdAt            DateTime               @default(now()) @map("created_at")
   updatedAt            DateTime               @updatedAt @map("updated_at")
   organization         Organization           @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  employee             Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employee             UserAccount               @relation(fields: [userAccountId], references: [id], onDelete: Restrict)
   setupGrants          PasswordSetupGrant[]
   setupSessions        PasswordSetupSession[]
   browserSessions      BrowserSession[]
@@ -703,8 +705,8 @@ model LoginIdentity {
   deviceAuthorizations DeviceAuthorization[]
   securityEvents       AuthSecurityEvent[]
 
-  @@index([orgId, employeeId])
-  @@index([employeeId, provider, disabled])
+  @@index([orgId, userAccountId])
+  @@index([userAccountId, provider, disabled])
   @@map("login_identities")
 }
 
@@ -750,7 +752,7 @@ model DeviceAuthorization {
   instanceName     String                    @map("instance_name") @db.VarChar(128)
   instanceHostname String                    @map("instance_hostname") @db.VarChar(255)
   identityId       String?                   @map("identity_id") @db.VarChar(32)
-  employeeId       String?                   @map("employee_id") @db.VarChar(32)
+  userAccountId       String?                   @map("employee_id") @db.VarChar(32)
   orgId            String?                   @map("org_id") @db.VarChar(64)
   expiresAt        DateTime                  @map("expires_at")
   completedAt      DateTime?                 @map("completed_at")
@@ -759,7 +761,7 @@ model DeviceAuthorization {
   createdAt        DateTime                  @default(now()) @map("created_at")
   updatedAt        DateTime                  @updatedAt @map("updated_at")
   identity         LoginIdentity?            @relation(fields: [identityId], references: [id], onDelete: SetNull)
-  employee         Employee?                 @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employee         UserAccount?                 @relation(fields: [userAccountId], references: [id], onDelete: SetNull)
   organization     Organization?             @relation(fields: [orgId], references: [id], onDelete: SetNull)
 
   @@index([clientId, instanceName, instanceHostname, status], map: "device_authorizations_instance_status_idx")
@@ -771,7 +773,7 @@ model DeviceAuthorization {
 model AuthSession {
   id                 String              @id @default(cuid()) @db.VarChar(32)
   identityId         String              @map("identity_id") @db.VarChar(32)
-  employeeId         String              @map("employee_id") @db.VarChar(32)
+  userAccountId         String              @map("employee_id") @db.VarChar(32)
   orgId              String              @map("org_id") @db.VarChar(64)
   status             AuthSessionStatus   @default(active)
   absoluteExpiresAt  DateTime            @map("absolute_expires_at")
@@ -780,14 +782,14 @@ model AuthSession {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
   identity           LoginIdentity       @relation(fields: [identityId], references: [id], onDelete: Restrict)
-  employee           Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employee           UserAccount            @relation(fields: [userAccountId], references: [id], onDelete: Restrict)
   organization       Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
   durableCredentials DurableCredential[]
   accessTokens       OAuthAccessToken[]
   securityEvents     AuthSecurityEvent[]
 
   @@index([identityId, status])
-  @@index([orgId, employeeId, status])
+  @@index([orgId, userAccountId, status])
   @@index([absoluteExpiresAt])
   @@map("auth_sessions")
 }
@@ -812,7 +814,7 @@ model OAuthAccessToken {
   id           String        @id @default(cuid()) @db.VarChar(32)
   sessionId    String        @map("session_id") @db.VarChar(32)
   identityId   String        @map("identity_id") @db.VarChar(32)
-  employeeId   String        @map("employee_id") @db.VarChar(32)
+  userAccountId   String        @map("employee_id") @db.VarChar(32)
   orgId        String        @map("org_id") @db.VarChar(64)
   tokenHash    String        @unique @map("token_hash") @db.Char(64)
   expiresAt    DateTime      @map("expires_at")
@@ -821,12 +823,12 @@ model OAuthAccessToken {
   createdAt    DateTime      @default(now()) @map("created_at")
   session      AuthSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   identity     LoginIdentity @relation(fields: [identityId], references: [id], onDelete: Restrict)
-  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employee     UserAccount      @relation(fields: [userAccountId], references: [id], onDelete: Restrict)
   organization Organization  @relation(fields: [orgId], references: [id], onDelete: Restrict)
 
   @@index([sessionId, expiresAt])
   @@index([identityId, expiresAt])
-  @@index([orgId, employeeId])
+  @@index([orgId, userAccountId])
   @@map("oauth_access_tokens")
 }
 
@@ -840,12 +842,12 @@ model AuthSecurityEvent {
   launcherVersion String?             @map("launcher_version") @db.VarChar(64)
   orgId           String?             @map("org_id") @db.VarChar(64)
   identityId      String?             @map("identity_id") @db.VarChar(32)
-  employeeId      String?             @map("employee_id") @db.VarChar(32)
+  userAccountId      String?             @map("employee_id") @db.VarChar(32)
   sessionId       String?             @map("session_id") @db.VarChar(32)
   createdAt       DateTime            @default(now()) @map("created_at")
   organization    Organization?       @relation(fields: [orgId], references: [id], onDelete: SetNull)
   identity        LoginIdentity?      @relation(fields: [identityId], references: [id], onDelete: SetNull)
-  employee        Employee?           @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employee        UserAccount?           @relation(fields: [userAccountId], references: [id], onDelete: SetNull)
   session         AuthSession?        @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
@@ -926,7 +928,7 @@ model LedgerArtifactRequest {
   orgId               String                      @map("org_id") @db.VarChar(64)
   kind                LedgerArtifactRequestKind
   actorKind           LedgerActorKind             @map("actor_kind")
-  actorEmployeeId     String?                     @map("actor_employee_id") @db.VarChar(32)
+  actorUserAccountId     String?                     @map("actor_employee_id") @db.VarChar(32)
   actorLabel          String?                     @map("actor_label") @db.VarChar(255)
   reconciliationRunId String?                     @map("reconciliation_run_id") @db.VarChar(32)
   /// Opaque case-sensitive key; binary collation is applied by the archive migration.
@@ -941,7 +943,7 @@ model LedgerArtifactRequest {
   createdAt           DateTime                    @default(now()) @map("created_at")
   updatedAt           DateTime                    @updatedAt @map("updated_at")
   organization        Organization                @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  actor               Employee?                   @relation(fields: [orgId, actorEmployeeId], references: [orgId, id], onDelete: Restrict)
+  actor               UserAccount?                   @relation(fields: [orgId, actorUserAccountId], references: [orgId, id], onDelete: Restrict)
   reconciliationRun   LedgerPdfReconciliationRun? @relation(fields: [orgId, reconciliationRunId], references: [orgId, id], onDelete: Restrict)
   retryOfRequest      LedgerArtifactRequest?      @relation("LedgerRequestRetry", fields: [orgId, retryOfRequestId], references: [orgId, id], onDelete: Restrict)
   retries             LedgerArtifactRequest[]     @relation("LedgerRequestRetry")
@@ -1069,7 +1071,7 @@ model PartitionDownloadRequest {
   createdAt               DateTime                @default(now()) @map("created_at")
   updatedAt               DateTime                @updatedAt @map("updated_at")
   organization            Organization            @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  requester               Employee                @relation(fields: [orgId, requesterId], references: [orgId, id], onDelete: Restrict)
+  requester               UserAccount                @relation(fields: [orgId, requesterId], references: [orgId, id], onDelete: Restrict)
   processingRun           ProcessingRun?
   @@unique([orgId, id])
   @@unique([orgId, requesterId, idempotencyKey], map: "partition_download_idempotency_uq")
@@ -1170,6 +1172,10 @@ model BusinessStore {
   orgId String @map("org_id") @db.VarChar(64)
   enterpriseKey String @map("enterprise_key") @db.VarChar(128)
   name String @db.VarChar(255)
+  storeId String @unique @default(uuid()) @map("store_id") @db.VarChar(36)
+  officialName String @map("official_name") @db.VarChar(255)
+  confirmation StoreConfirmation @default(pending)
+  version BigInt @default(0) @db.UnsignedBigInt
   retired Boolean @default(false)
   state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
   grants BusinessGrantStore[]
@@ -1177,21 +1183,56 @@ model BusinessStore {
   @@id([orgId, enterpriseKey, name])
   @@map("business_stores")
 }
+enum StoreConfirmation {
+  pending
+  confirmed
+  historical
+}
+enum DirectoryEmployeeStatus {
+  active
+  departed
+}
+model BusinessDepartment {
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  departmentId String @id @map("department_id") @db.VarChar(36)
+  name String @db.VarChar(255)
+  retired Boolean @default(false)
+  version BigInt @default(0) @db.UnsignedBigInt
+  @@unique([orgId, enterpriseKey, departmentId], map: "business_departments_org_enterprise_id_uq")
+  @@map("business_departments")
+}
+model Employee {
+  employeeUid String @id @map("employee_uid") @db.VarChar(36)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  name String @db.VarChar(255)
+  departmentId String @map("department_id") @db.VarChar(36)
+  storeId String? @map("store_id") @db.VarChar(36)
+  status DirectoryEmployeeStatus @default(active)
+  version BigInt @default(0) @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  @@index([orgId, enterpriseKey, status, employeeUid], map: "employee_directory_enterprise_status_idx")
+  @@index([orgId, enterpriseKey, departmentId, status], map: "employee_directory_department_idx")
+  @@index([orgId, enterpriseKey, storeId, status], map: "employee_directory_store_idx")
+  @@map("employee_directory_profiles")
+}
 model BusinessGrant {
   orgId String @map("org_id") @db.VarChar(64)
   id String @db.VarChar(64)
-  employeeId String @map("employee_id") @db.VarChar(32)
+  userAccountId String @map("employee_id") @db.VarChar(32)
   enterpriseKey String @map("enterprise_key") @db.VarChar(128)
   ownership BusinessOwnership
   allStores Boolean @default(false) @map("all_stores")
   state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
-  employee Employee @relation(fields: [orgId, employeeId], references: [orgId, id], onDelete: Restrict)
+  employee UserAccount @relation(fields: [orgId, userAccountId], references: [orgId, id], onDelete: Restrict)
   categories BusinessGrantCategory[]
   stores BusinessGrantStore[]
   dimensions BusinessGrantDimension[]
   @@id([orgId, id])
   @@unique([orgId, id, enterpriseKey], map: "business_grant_enterprise_uq")
-  @@index([orgId, employeeId])
+  @@index([orgId, userAccountId])
   @@map("business_grants")
 }
 model BusinessGrantCategory {
@@ -1292,7 +1333,7 @@ model BusinessAuthorizationAudit {
   version BigInt @db.UnsignedBigInt
   createdAt DateTime @default(now()) @map("created_at")
   state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
-  actor Employee @relation(fields: [orgId, actorId], references: [orgId, id], onDelete: Restrict)
+  actor UserAccount @relation(fields: [orgId, actorId], references: [orgId, id], onDelete: Restrict)
   @@index([orgId, version])
   @@map("business_authorization_audits")
 }
@@ -1301,7 +1342,7 @@ model BusinessAuthorizationAudit {
 model BrowserSession {
   id String @id @default(cuid()) @db.VarChar(32)
   identityId String @map("identity_id") @db.VarChar(32)
-  employeeId String @map("employee_id") @db.VarChar(32)
+  userAccountId String @map("employee_id") @db.VarChar(32)
   orgId String @map("org_id") @db.VarChar(64)
   secretHash String @unique @map("secret_hash") @db.Char(64)
   credentialFingerprint String @map("credential_fingerprint") @db.Char(64)
@@ -1539,7 +1580,7 @@ model WorkflowInstallation {
   orgId String @map("org_id") @db.VarChar(64)
   workflowId String @map("workflow_id") @db.VarChar(64)
   installationId String @map("installation_id") @db.VarChar(64)
-  employeeId String @map("employee_id") @db.VarChar(32)
+  userAccountId String @map("employee_id") @db.VarChar(32)
   version Int @default(1) @db.UnsignedInt
   deviceAlias String @map("device_alias") @db.VarChar(255)
   host String @db.VarChar(32)
@@ -1563,7 +1604,7 @@ model WorkflowRun {
   orgId String @map("org_id") @db.VarChar(64)
   workflowId String @map("workflow_id") @db.VarChar(64)
   installationId String @map("installation_id") @db.VarChar(64)
-  employeeId String @map("employee_id") @db.VarChar(32)
+  userAccountId String @map("employee_id") @db.VarChar(32)
   configurationVersion Int @map("configuration_version") @db.UnsignedInt
   integrationVersion Int @map("integration_version") @db.UnsignedInt
   controlVersion Int @map("control_version") @db.UnsignedInt

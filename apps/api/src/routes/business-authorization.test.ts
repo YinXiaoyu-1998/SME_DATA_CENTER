@@ -11,7 +11,7 @@ import {
 function fixture(role: "admin" | "employee" = "admin") {
   const snapshot: AuthorizationSnapshot = {
     orgId: "org",
-    employeeId: "actor",
+    userAccountId: "actor",
     role,
     disabled: false,
     clearance: 0,
@@ -31,9 +31,9 @@ function fixture(role: "admin" | "employee" = "admin") {
     })),
     loadAuthorizationSnapshot: vi.fn(async (id: string, orgId: string) => {
       if (id === "foreign") throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
-      return { ...snapshot, employeeId: id, orgId };
+      return { ...snapshot, userAccountId: id, orgId };
     }),
-    listAccounts: vi.fn(async () => [{ employeeId: "other", clearance: 3, grants: [] }]),
+    listAccounts: vi.fn(async () => [{ userAccountId: "other", clearance: 3, grants: [] }]),
     configureAccount: vi.fn(async (input: unknown) => ({
       authorizationVersion: "8",
       value: input
@@ -265,7 +265,7 @@ describe("business permission administration", () => {
       for (const id of ["actor", "other"]) {
         const read = await app.inject({ url: `/v1/admin/permissions/accounts/${id}` });
         expect(read.statusCode).toBe(200);
-        expect(read.json().employeeId).toBe(id);
+        expect(read.json().userAccountId).toBe(id);
         const update = await app.inject({
           method: "PATCH",
           url: `/v1/admin/permissions/accounts/${id}`,
@@ -277,7 +277,7 @@ describe("business permission administration", () => {
       expect(repository.configureAccount).toHaveBeenLastCalledWith({
         orgId: "org",
         actorId: "actor",
-        employeeId: "other",
+        userAccountId: "other",
         expectedVersion: "7",
         clearance: 2,
         grants: []

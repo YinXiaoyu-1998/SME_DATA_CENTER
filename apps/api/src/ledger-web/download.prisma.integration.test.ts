@@ -90,7 +90,7 @@ it.skipIf(!enabled)(
       await prisma.organization.create({
         data: { id: orgId, name: "Synthetic browser enterprise" }
       });
-      const owner = await prisma.employee.create({
+      const owner = await prisma.userAccount.create({
         data: {
           orgId,
           email: `${orgId}@example.invalid`,
@@ -99,7 +99,7 @@ it.skipIf(!enabled)(
           clearance: 0
         }
       });
-      const admin = await prisma.employee.create({
+      const admin = await prisma.userAccount.create({
         data: {
           orgId,
           email: `${orgId}-admin@example.invalid`,
@@ -112,7 +112,7 @@ it.skipIf(!enabled)(
       const passwordHash = await hashPassword(password);
       for (const employee of [owner, admin])
         await prisma.loginIdentity.create({
-          data: { orgId, employeeId: employee.id, normalizedEmail: employee.email, passwordHash }
+          data: { orgId, userAccountId: employee.id, normalizedEmail: employee.email, passwordHash }
         });
       await prisma.businessAuthorizationState.create({ data: { orgId, mode: "enabled" } });
       await prisma.businessCategory.createMany({
@@ -130,13 +130,19 @@ it.skipIf(!enabled)(
       const stores = ["合成甲店", "合成乙店"];
       const dates = ["2026-10-01", "2026-10-02"];
       await prisma.businessStore.createMany({
-        data: stores.map((name) => ({ orgId, enterpriseKey: "synthetic", name }))
+        data: stores.map((name) => ({
+          orgId,
+          enterpriseKey: "synthetic",
+          name,
+          officialName: name,
+          confirmation: "confirmed"
+        }))
       });
       const grant = await prisma.businessGrant.create({
         data: {
           id: "browser-pdf-grant",
           orgId,
-          employeeId: owner.id,
+          userAccountId: owner.id,
           enterpriseKey: "synthetic",
           ownership: "store",
           allStores: false
@@ -221,7 +227,7 @@ it.skipIf(!enabled)(
       for (const key of keys) {
         const result = await archive.reserveRefresh({
           orgId,
-          actor: { kind: "employee", employeeId: owner.id },
+          actor: { kind: "employee", userAccountId: owner.id },
           idempotencyKey: randomUUID(),
           requestFingerprint: "c".repeat(64),
           scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
@@ -295,11 +301,14 @@ it.skipIf(!enabled)(
         expect(context.status).toBe(200);
         return {
           cookie,
-          context: (await context.json()) as { identity: { employeeId: string }; csrfToken: string }
+          context: (await context.json()) as {
+            identity: { userAccountId: string };
+            csrfToken: string;
+          }
         };
       }
       const browser = await login(owner.email);
-      expect(browser.context.identity.employeeId).toBe(owner.id);
+      expect(browser.context.identity.userAccountId).toBe(owner.id);
       const persisted = await prisma.browserSession.findUniqueOrThrow({
         where: { secretHash: hashOpaqueSecret(browser.cookie.split("=")[1]!) }
       });
@@ -412,12 +421,12 @@ it.skipIf(!enabled)(
       }
       // The existing authenticated HTTP/MCP admin refresh contract remains available.
       const adminIdentity = await prisma.loginIdentity.findFirstOrThrow({
-        where: { orgId, employeeId: admin.id }
+        where: { orgId, userAccountId: admin.id }
       });
       const adminToken = randomUUID();
       await createPrismaAuthCoreRepository(prisma).createSessionBundle({
         identityId: adminIdentity.id,
-        employeeId: admin.id,
+        userAccountId: admin.id,
         orgId,
         credentialHash: hashOpaqueSecret(randomUUID()),
         accessTokenHash: hashOpaqueSecret(adminToken),
@@ -472,6 +481,59 @@ it.skipIf(!enabled)(
         const zipped = await zip.file(expectedNames[index]!)!.async("nodebuffer");
         expect(sha256(zipped)).toBe(sha256(pdfs.get(`${pair.storeName}/${pair.purchaseDate}`)!));
       }
+      await prisma.businessStore.update({
+        where: {
+          orgId_enterpriseKey_name: { orgId, enterpriseKey: "synthetic", name: stores[0]! }
+        },
+        data: { officialName: "合成新店" }
+      });
+      const renamedCoverage = await post("coverage", {
+        scope: { storeNames: ["合成新店"], dates: [dates[0]] }
+      });
+      expect(renamedCoverage.status).toBe(200);
+      expect((await renamedCoverage.json()).partitions).toMatchObject([
+        { storeName: "合成新店", purchaseDate: dates[0], status: "ready" }
+      ]);
+      const renamedSelection = [{ storeName: "合成新店", purchaseDate: dates[0]! }];
+      const renamedDownload = await post("downloads", {
+        selection: renamedSelection,
+        idempotencyKey: "renamed-browser-selection"
+      });
+      expect(renamedDownload.status).toBe(202);
+      const renamedTask = await renamedDownload.json();
+      expect(
+        await runWorkerOnce({
+          repository: worker,
+          storage,
+          ledgerJobs: runtime.jobs,
+          workerId: orgId,
+          leaseSeconds: 120
+        })
+      ).toMatchObject({ processed: true, status: "active" });
+      expect((await post(`requests/${renamedTask.requestId}/download-url`)).status).toBe(200);
+      const renamedStatus = await fetch(
+        `${origin}/api/web/v1/ledger/requests/${renamedTask.requestId}`,
+        { headers }
+      );
+      expect((await renamedStatus.json()).partitions).toMatchObject([
+        { storeName: "合成新店", purchaseDate: dates[0], status: "succeeded" }
+      ]);
+      await prisma.businessStore.create({
+        data: {
+          orgId,
+          enterpriseKey: "other-enterprise",
+          name: "Other stable",
+          officialName: "合成新店",
+          confirmation: "confirmed"
+        }
+      });
+      expect(
+        (await post("coverage", { scope: { storeNames: ["合成新店"], dates: [dates[0]] } })).status
+      ).toBe(404);
+      expect(
+        (await post("downloads", { selection: renamedSelection, idempotencyKey: "ambiguous" }))
+          .status
+      ).toBe(404);
       now = new Date(persisted.expiresAt.getTime() - 1);
       expect((await fetch(`${origin}/api/web/v1/ledger/context`, { headers })).status).toBe(200);
       expect(

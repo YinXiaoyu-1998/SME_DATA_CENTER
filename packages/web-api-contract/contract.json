@@ -3,6 +3,1147 @@
   "prefix": "/api/web/v1",
   "routes": [
     {
+      "id": "directory.createEmployee",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/create_employee",
+      "auth": "session-write",
+      "summary": "创建员工档案",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "departmentId": {
+              "$ref": "#/$defs/b_directory_createEmployee___schema0"
+            },
+            "scope": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownership": {
+                      "type": "string",
+                      "const": "group"
+                    },
+                    "storeId": {
+                      "type": "null"
+                    }
+                  },
+                  "required": [
+                    "ownership",
+                    "storeId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownership": {
+                      "type": "string",
+                      "const": "store"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_createEmployee___schema0"
+                    }
+                  },
+                  "required": [
+                    "ownership",
+                    "storeId"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "enterpriseKey",
+            "name",
+            "departmentId",
+            "scope"
+          ],
+          "additionalProperties": false,
+          "$defs": {
+            "b_directory_createEmployee___schema0": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "employeeUid": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "employeeUid"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "directory.getEmployee",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/get_employee",
+      "auth": "session-write",
+      "summary": "读取授权范围内的单个员工档案",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "employeeUid": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "required": [
+            "enterpriseKey",
+            "employeeUid"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "employee": {
+            "type": "object",
+            "properties": {
+              "employeeUid": {
+                "$ref": "#/$defs/r_directory_getEmployee___schema0"
+              },
+              "name": {
+                "type": "string"
+              },
+              "departmentId": {
+                "$ref": "#/$defs/r_directory_getEmployee___schema0"
+              },
+              "departmentName": {
+                "type": "string"
+              },
+              "scope": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "ownership": {
+                        "type": "string",
+                        "const": "group"
+                      },
+                      "storeId": {
+                        "type": "null"
+                      },
+                      "storeName": {
+                        "type": "null"
+                      }
+                    },
+                    "required": [
+                      "ownership",
+                      "storeId",
+                      "storeName"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "ownership": {
+                        "type": "string",
+                        "const": "store"
+                      },
+                      "storeId": {
+                        "$ref": "#/$defs/r_directory_getEmployee___schema0"
+                      },
+                      "storeName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "ownership",
+                      "storeId",
+                      "storeName"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "departed"
+                ]
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d*)$"
+              }
+            },
+            "required": [
+              "employeeUid",
+              "name",
+              "departmentId",
+              "departmentName",
+              "scope",
+              "status",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "employee"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "r_directory_getEmployee___schema0": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        }
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "directory.listDirectory",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/list_directory",
+      "auth": "session-write",
+      "summary": "读取企业门店和部门目录",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "management": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enterpriseKey"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "enterpriseKey": {
+            "type": "string"
+          },
+          "enterpriseName": {
+            "type": "string"
+          },
+          "stores": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "storeId": {
+                  "$ref": "#/$defs/r_directory_listDirectory___schema0"
+                },
+                "storeKey": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "confirmed",
+                    "pending",
+                    "historical",
+                    "retired"
+                  ]
+                },
+                "version": {
+                  "$ref": "#/$defs/r_directory_listDirectory___schema1"
+                }
+              },
+              "required": [
+                "storeId",
+                "name",
+                "status",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "departments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "departmentId": {
+                  "$ref": "#/$defs/r_directory_listDirectory___schema0"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "retired"
+                  ]
+                },
+                "version": {
+                  "$ref": "#/$defs/r_directory_listDirectory___schema1"
+                }
+              },
+              "required": [
+                "departmentId",
+                "name",
+                "status",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "enterpriseKey",
+          "enterpriseName",
+          "stores",
+          "departments"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "r_directory_listDirectory___schema0": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "r_directory_listDirectory___schema1": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)$"
+          }
+        }
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "directory.listEmployees",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/list_employees",
+      "auth": "session-write",
+      "summary": "读取授权范围内的员工档案",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "departed"
+              ]
+            },
+            "search": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "departmentId": {
+              "$ref": "#/$defs/b_directory_listEmployees___schema0"
+            },
+            "storeId": {
+              "$ref": "#/$defs/b_directory_listEmployees___schema0"
+            },
+            "cursor": {
+              "$ref": "#/$defs/b_directory_listEmployees___schema0"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "enterpriseKey"
+          ],
+          "additionalProperties": false,
+          "$defs": {
+            "b_directory_listEmployees___schema0": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "employees": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "employeeUid": {
+                  "$ref": "#/$defs/r_directory_listEmployees___schema0"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "departmentId": {
+                  "$ref": "#/$defs/r_directory_listEmployees___schema0"
+                },
+                "departmentName": {
+                  "type": "string"
+                },
+                "scope": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ownership": {
+                          "type": "string",
+                          "const": "group"
+                        },
+                        "storeId": {
+                          "type": "null"
+                        },
+                        "storeName": {
+                          "type": "null"
+                        }
+                      },
+                      "required": [
+                        "ownership",
+                        "storeId",
+                        "storeName"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ownership": {
+                          "type": "string",
+                          "const": "store"
+                        },
+                        "storeId": {
+                          "$ref": "#/$defs/r_directory_listEmployees___schema0"
+                        },
+                        "storeName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ownership",
+                        "storeId",
+                        "storeName"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "departed"
+                  ]
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9]\\d*)$"
+                }
+              },
+              "required": [
+                "employeeUid",
+                "name",
+                "departmentId",
+                "departmentName",
+                "scope",
+                "status",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "none",
+              "partial",
+              "all"
+            ]
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/r_directory_listEmployees___schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "employees",
+          "access",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "r_directory_listEmployees___schema0": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        }
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "directory.manageDepartment",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/manage_department",
+      "auth": "session-write",
+      "summary": "维护部门目录",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operation": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "create"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema0"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "rename"
+                    },
+                    "departmentId": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema2"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema0"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "departmentId",
+                    "expectedVersion",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "retire"
+                    },
+                    "departmentId": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema2"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "departmentId",
+                    "expectedVersion"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "restore"
+                    },
+                    "departmentId": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageDepartment___schema2"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "departmentId",
+                    "expectedVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "enterpriseKey",
+            "operation"
+          ],
+          "additionalProperties": false,
+          "$defs": {
+            "b_directory_manageDepartment___schema0": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "b_directory_manageDepartment___schema1": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "b_directory_manageDepartment___schema2": {
+              "type": "string",
+              "pattern": "^(0|[1-9]\\d*)$"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "departmentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)$"
+          }
+        },
+        "required": [
+          "departmentId",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "directory.manageStore",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/manage_store",
+      "auth": "session-write",
+      "summary": "维护正式门店目录",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operation": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "create"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema0"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "rename"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema2"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema0"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storeId",
+                    "expectedVersion",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "confirm"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema2"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storeId",
+                    "expectedVersion"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "historical"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema2"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storeId",
+                    "expectedVersion"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "retire"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema2"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storeId",
+                    "expectedVersion"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "restore"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema1"
+                    },
+                    "expectedVersion": {
+                      "$ref": "#/$defs/b_directory_manageStore___schema2"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storeId",
+                    "expectedVersion"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "enterpriseKey",
+            "operation"
+          ],
+          "additionalProperties": false,
+          "$defs": {
+            "b_directory_manageStore___schema0": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "b_directory_manageStore___schema1": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "b_directory_manageStore___schema2": {
+              "type": "string",
+              "pattern": "^(0|[1-9]\\d*)$"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "storeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)$"
+          }
+        },
+        "required": [
+          "storeId",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
+      "id": "directory.updateEmployee",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/update_employee",
+      "auth": "session-write",
+      "summary": "维护员工档案与归属",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "employeeUid": {
+              "$ref": "#/$defs/b_directory_updateEmployee___schema0"
+            },
+            "expectedVersion": {
+              "type": "string",
+              "pattern": "^(0|[1-9]\\d*)$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "departmentId": {
+              "$ref": "#/$defs/b_directory_updateEmployee___schema0"
+            },
+            "scope": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownership": {
+                      "type": "string",
+                      "const": "group"
+                    },
+                    "storeId": {
+                      "type": "null"
+                    }
+                  },
+                  "required": [
+                    "ownership",
+                    "storeId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownership": {
+                      "type": "string",
+                      "const": "store"
+                    },
+                    "storeId": {
+                      "$ref": "#/$defs/b_directory_updateEmployee___schema0"
+                    }
+                  },
+                  "required": [
+                    "ownership",
+                    "storeId"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "departed"
+              ]
+            }
+          },
+          "required": [
+            "enterpriseKey",
+            "employeeUid",
+            "expectedVersion",
+            "name",
+            "departmentId",
+            "scope",
+            "status"
+          ],
+          "additionalProperties": false,
+          "$defs": {
+            "b_directory_updateEmployee___schema0": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "employeeUid": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)$"
+          }
+        },
+        "required": [
+          "employeeUid",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
       "id": "ledger.context",
       "method": "GET",
       "path": "/api/web/v1/ledger/context",
@@ -15,7 +1156,7 @@
           "identity": {
             "type": "object",
             "properties": {
-              "employeeId": {
+              "userAccountId": {
                 "type": "string",
                 "minLength": 1
               },
@@ -33,7 +1174,7 @@
               }
             },
             "required": [
-              "employeeId",
+              "userAccountId",
               "orgId",
               "displayName",
               "organizationName"
@@ -580,7 +1721,7 @@
                 "orgId": {
                   "type": "string"
                 },
-                "employeeId": {
+                "userAccountId": {
                   "type": "string"
                 },
                 "role": {
@@ -722,7 +1863,7 @@
               },
               "required": [
                 "orgId",
-                "employeeId",
+                "userAccountId",
                 "role",
                 "disabled",
                 "clearance",
@@ -805,7 +1946,7 @@
     {
       "id": "permissions.accounts.read",
       "method": "GET",
-      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:employeeId",
+      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:userAccountId",
       "auth": "session",
       "summary": "读取单个账号的授权快照",
       "request": {
@@ -816,14 +1957,14 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
-            "employeeId": {
+            "userAccountId": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             }
           },
           "required": [
             "orgId",
-            "employeeId"
+            "userAccountId"
           ],
           "additionalProperties": false
         }
@@ -834,7 +1975,7 @@
           "orgId": {
             "type": "string"
           },
-          "employeeId": {
+          "userAccountId": {
             "type": "string"
           },
           "role": {
@@ -967,7 +2108,7 @@
         },
         "required": [
           "orgId",
-          "employeeId",
+          "userAccountId",
           "role",
           "disabled",
           "clearance",
@@ -1041,7 +2182,7 @@
     {
       "id": "permissions.accounts.update",
       "method": "PATCH",
-      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:employeeId",
+      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:userAccountId",
       "auth": "session-write",
       "summary": "按期望版本保存账号密级与业务授权",
       "request": {
@@ -1052,14 +2193,14 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
-            "employeeId": {
+            "userAccountId": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             }
           },
           "required": [
             "orgId",
-            "employeeId"
+            "userAccountId"
           ],
           "additionalProperties": false
         },
@@ -3499,7 +4640,7 @@
           "orgId": {
             "type": "string"
           },
-          "employeeId": {
+          "userAccountId": {
             "type": "string"
           },
           "role": {
@@ -3659,7 +4800,7 @@
         },
         "required": [
           "orgId",
-          "employeeId",
+          "userAccountId",
           "role",
           "disabled",
           "clearance",
@@ -3789,6 +4930,25 @@
                 },
                 "retired": {
                   "type": "boolean"
+                },
+                "storeId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "officialName": {
+                  "type": "string"
+                },
+                "confirmation": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "confirmed",
+                    "historical"
+                  ]
+                },
+                "version": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -3893,6 +5053,25 @@
               "retired": {
                 "type": "boolean"
               },
+              "storeId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "officialName": {
+                "type": "string"
+              },
+              "confirmation": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "confirmed",
+                  "historical"
+                ]
+              },
+              "version": {
+                "type": "string"
+              },
               "enterpriseName": {
                 "type": "string"
               }
@@ -3959,7 +5138,7 @@
           "identity": {
             "type": "object",
             "properties": {
-              "employeeId": {
+              "userAccountId": {
                 "type": "string",
                 "minLength": 1
               },
@@ -3993,7 +5172,7 @@
               }
             },
             "required": [
-              "employeeId",
+              "userAccountId",
               "displayName",
               "email",
               "orgId",
@@ -4064,7 +5243,7 @@
           "identity": {
             "type": "object",
             "properties": {
-              "employeeId": {
+              "userAccountId": {
                 "type": "string",
                 "minLength": 1
               },
@@ -4098,7 +5277,7 @@
               }
             },
             "required": [
-              "employeeId",
+              "userAccountId",
               "displayName",
               "email",
               "orgId",
@@ -5620,7 +6799,7 @@
                 "installationId": {
                   "type": "string"
                 },
-                "employeeId": {
+                "userAccountId": {
                   "type": "string"
                 },
                 "version": {
@@ -5821,7 +7000,7 @@
                 "orgId",
                 "workflowId",
                 "installationId",
-                "employeeId",
+                "userAccountId",
                 "version",
                 "deviceAlias",
                 "host",
@@ -5856,7 +7035,7 @@
                 "installationId": {
                   "type": "string"
                 },
-                "employeeId": {
+                "userAccountId": {
                   "type": "string"
                 },
                 "configurationVersion": {
@@ -6004,7 +7183,7 @@
                 "orgId",
                 "workflowId",
                 "installationId",
-                "employeeId",
+                "userAccountId",
                 "configurationVersion",
                 "integrationVersion",
                 "controlVersion",
@@ -10371,7 +11550,7 @@
               "installationId": {
                 "type": "string"
               },
-              "employeeId": {
+              "userAccountId": {
                 "type": "string"
               },
               "version": {
@@ -10507,7 +11686,7 @@
               "orgId",
               "workflowId",
               "installationId",
-              "employeeId",
+              "userAccountId",
               "version",
               "deviceAlias",
               "host",
@@ -13196,7 +14375,7 @@
               "installationId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema8"
               },
-              "employeeId": {
+              "userAccountId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema9"
               },
               "configurationVersion": {
@@ -13264,7 +14443,7 @@
               "orgId",
               "workflowId",
               "installationId",
-              "employeeId",
+              "userAccountId",
               "configurationVersion",
               "integrationVersion",
               "controlVersion",
@@ -13337,7 +14516,7 @@
               "installationId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema8"
               },
-              "employeeId": {
+              "userAccountId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema9"
               },
               "configurationVersion": {
@@ -13397,7 +14576,7 @@
               "orgId",
               "workflowId",
               "installationId",
-              "employeeId",
+              "userAccountId",
               "configurationVersion",
               "integrationVersion",
               "controlVersion",

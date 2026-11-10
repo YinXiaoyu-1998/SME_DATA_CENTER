@@ -41,7 +41,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     orgId = `review_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
     id = `${orgId}_admin`;
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic reviews" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         orgId,
         id,
@@ -75,7 +75,13 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     });
     await prisma.businessStore.createMany({
       data: ["企业a", "企业b"].flatMap((enterpriseKey) =>
-        ["A店😀", "A店😀 ", "a店😀", "B店"].map((name) => ({ orgId, enterpriseKey, name }))
+        ["A店😀", "A店😀 ", "a店😀", "B店"].map((name) => ({
+          orgId,
+          enterpriseKey,
+          name,
+          officialName: name,
+          confirmation: "confirmed"
+        }))
       )
     });
   });
@@ -86,7 +92,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await permissions.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: state.version.toString(),
       clearance: 3,
       grants: [
@@ -138,7 +144,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     expect(
       (await repo.query(actor(), { enterpriseName: "企业A", storeNames: ["B店"] })).rows
     ).toEqual([]);
-    await prisma.employee.update({ where: { id }, data: { clearance: 1 } });
+    await prisma.userAccount.update({ where: { id }, data: { clearance: 1 } });
     await expect(repo.query(actor(), { enterpriseName: "企业A" })).rejects.toThrow(
       "STORE_REVIEW_ACCESS_DENIED"
     );
@@ -162,7 +168,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await permissions.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: state.version.toString(),
       clearance: 3,
       grants: [
@@ -243,7 +249,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
       offset: 1,
       shapeHash: hashStoreReviewQueryScope({
         orgId,
-        employeeId: id,
+        userAccountId: id,
         enterpriseKey: "企业a",
         authorizationVersion: state.version.toString(),
         query: parseStoreReviewQuery(input)
@@ -314,7 +320,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     const otherOrg = orgId + "_other",
       otherId = id + "_2";
     await prisma.organization.create({ data: { id: otherOrg, name: "Synthetic isolated tenant" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         orgId: otherOrg,
         id: otherId,
@@ -343,7 +349,13 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
       data: { orgId: otherOrg, enterpriseName: "企业A", enterpriseKey: "企业a" }
     });
     await prisma.businessStore.create({
-      data: { orgId: otherOrg, enterpriseKey: "企业a", name: "A店😀" }
+      data: {
+        orgId: otherOrg,
+        enterpriseKey: "企业a",
+        name: "A店😀",
+        officialName: "A店😀",
+        confirmation: "confirmed"
+      }
     });
     expect(
       await repo.upsert(
@@ -381,31 +393,55 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     expect(await prisma.businessResource.count({ where: { orgId } })).toBe(1);
   });
   it("rejects current demoted or disabled admin and unconfigured/retired identities atomically", async () => {
-    await prisma.employee.update({ where: { id }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "employee" } });
     await expect(repo.upsert(actor(), { reviews: [row()] })).rejects.toThrow(
       "UPLOAD_ADMIN_REQUIRED"
     );
-    await prisma.employee.update({ where: { id }, data: { role: "admin", disabled: true } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "admin", disabled: true } });
     await expect(repo.upsert(actor(), { reviews: [row()] })).rejects.toThrow(
       "UPLOAD_ADMIN_REQUIRED"
     );
-    await prisma.employee.update({ where: { id }, data: { disabled: false } });
+    await prisma.userAccount.update({ where: { id }, data: { disabled: false } });
     await expect(
       repo.upsert(actor(), { reviews: [row(), { ...row("other"), enterpriseName: "不存在" }] })
     ).rejects.toThrow("STORE_REVIEW_IDENTITY_NOT_AVAILABLE");
     await prisma.businessStore.updateMany({ where: { orgId }, data: { retired: true } });
-    await expect(repo.upsert(actor(), { reviews: [row()] })).rejects.toThrow(
-      "STORE_REVIEW_IDENTITY_NOT_AVAILABLE"
-    );
+    await expect(repo.upsert(actor(), { reviews: [row()] })).rejects.toMatchObject({
+      code: "RESOURCE_DIRECTORY_RETIRED"
+    });
     expect(await prisma.storeReview.count({ where: { orgId } })).toBe(0);
     expect(
       (await prisma.businessAuthorizationState.findUniqueOrThrow({ where: { orgId } })).version
     ).toBe(1n);
   });
+  it("validates the submitted formal name and reuses existing review identity after rename", async () => {
+    const review = row();
+    await repo.upsert(actor(), { reviews: [review] });
+    const original = await prisma.storeReview.findFirstOrThrow({ where: { orgId } });
+    const newName = "正式门店名称";
+    await prisma.businessStore.update({
+      where: {
+        orgId_enterpriseKey_name: { orgId, enterpriseKey: "企业a", name: review.storeName }
+      },
+      data: { officialName: newName }
+    });
+    await expect(repo.upsert(actor(), { reviews: [review] })).rejects.toMatchObject({
+      code: "FORMAL_STORE_NAME_INVALID",
+      details: { storeName: review.storeName, index: 0 }
+    });
+    await expect(
+      repo.upsert(actor(), { reviews: [{ ...review, storeName: newName }] })
+    ).resolves.toMatchObject({ unchanged: 1, inserted: 0 });
+    await grants();
+    await expect(
+      repo.query(actor(), { enterpriseName: review.enterpriseName, storeNames: [newName] })
+    ).resolves.toMatchObject({ rows: [{ id: original.id, storeName: newName }] });
+  });
   it("defaults unverified historical text and round-trips all four platform states", async () => {
     // Omitting the new column exercises the same database default applied to historical rows.
-    await prisma.$executeRaw`INSERT INTO store_reviews (id, org_id, enterprise_key, source, store_name, reviewed_at, reviewer_name, merchant_reply, updated_at) VALUES ('historical', ${orgId}, '企业a', '美团评价', 'A店😀', '2026-10-17 05:00:00', 'historical', 'Recorded published reply', NOW(3))`;
-    expect(await prisma.storeReview.findUnique({ where: { id: "historical" } })).toMatchObject({
+    const historicalId = `${orgId}_historical`;
+    await prisma.$executeRaw`INSERT INTO store_reviews (id, org_id, enterprise_key, source, store_name, reviewed_at, reviewer_name, merchant_reply, updated_at) VALUES (${historicalId}, ${orgId}, '企业a', '美团评价', 'A店😀', '2026-10-17 05:00:00', 'historical', 'Recorded published reply', NOW(3))`;
+    expect(await prisma.storeReview.findUnique({ where: { id: historicalId } })).toMatchObject({
       replyStatus: "needs_verification"
     });
     await repo.upsert(actor(), {

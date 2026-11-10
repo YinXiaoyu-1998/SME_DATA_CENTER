@@ -25,7 +25,7 @@ export async function openPermissionsOperatorRuntime(
     }
   };
   try {
-    const requestedBy = await prisma.employee.findUnique({
+    const requestedBy = await prisma.userAccount.findUnique({
       where: { orgId_id: { orgId: command.orgId, id: command.requestedByAdminId } },
       select: {
         id: true,
@@ -64,8 +64,8 @@ export async function openPermissionsOperatorRuntime(
       adminBase: "/internal/permissions",
       selfPath: "/internal/permissions/me"
     });
-    app.patch<{ Params: { employeeId: string }; Body: Record<string, unknown> }>(
-      "/internal/permissions/accounts/:employeeId/role",
+    app.patch<{ Params: { userAccountId: string }; Body: Record<string, unknown> }>(
+      "/internal/permissions/accounts/:userAccountId/role",
       async (request, reply) => {
         try {
           const actor = await service.current(employee, true);
@@ -81,8 +81,8 @@ export async function openPermissionsOperatorRuntime(
             throw new Error("INVALID_ACCOUNT_ROLE");
           return await repository.configureAccountRole({
             orgId: actor.orgId,
-            actorId: actor.employeeId,
-            employeeId: request.params.employeeId,
+            actorId: actor.userAccountId,
+            userAccountId: request.params.userAccountId,
             role: body["role"],
             expectedVersion: body["expectedVersion"]
           });
@@ -107,7 +107,7 @@ export async function openPermissionsOperatorRuntime(
           const actor = await service.current(employee, true);
           return await repository.declareEnterpriseIdentity({
             orgId: actor.orgId,
-            actorId: actor.employeeId,
+            actorId: actor.userAccountId,
             name: request.body.name,
             expectedVersion: request.body.expectedVersion
           });
@@ -121,9 +121,13 @@ export async function openPermissionsOperatorRuntime(
       async inspect(section: PermissionSection, query = {}) {
         const actor = await service.current(employee, true);
         const readers = {
-          accounts: () => repository.listAccounts(actor.orgId, actor.employeeId),
+          accounts: () => repository.listAccounts(actor.orgId, actor.userAccountId),
           categories: () => repository.listCategories(actor.orgId),
-          stores: () => repository.listStores(actor.orgId),
+          stores: async () =>
+            (await repository.listStores(actor.orgId)).map((store) => ({
+              ...store,
+              version: store.version.toString()
+            })),
           dimensions: () => repository.listDimensions(actor.orgId),
           enterprises: () => metadata.listEnterprises(actor.orgId),
           documents: () => metadata.listDocuments(actor.orgId, query),
@@ -145,7 +149,7 @@ export async function openPermissionsOperatorRuntime(
         );
         return {
           orgId: actor.orgId,
-          requestedByAdminId: actor.employeeId,
+          requestedByAdminId: actor.userAccountId,
           authorizationVersion: actor.authorizationVersion,
           mode: actor.mode,
           ...Object.fromEntries(values)

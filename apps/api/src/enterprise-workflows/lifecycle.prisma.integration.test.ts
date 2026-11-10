@@ -88,7 +88,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       );
       prisma = new PrismaClient({ adapter: createDatabaseAdapter(database.databaseUrl) });
       await prisma.organization.create({ data: { id: actor.orgId, name: "Synthetic" } });
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: {
           id: actor.id,
           orgId: actor.orgId,
@@ -105,7 +105,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: { orgId: actor.orgId, enterpriseKey: "enterprise", enterpriseName: "enterprise" }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey: "enterprise", name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey: "enterprise",
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       storageRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-recovery-"));
       storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
@@ -684,13 +690,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           where: { orgId: actor.orgId, workflowId: state.workflowId, actionId: { in: recoveryIds } }
         });
       }
-      await prisma.employee.update({ where: { id: actor.id }, data: { role: "employee" } });
+      await prisma.userAccount.update({ where: { id: actor.id }, data: { role: "employee" } });
       expect((await action({ kind: "get", actionIds: ["upload-action"] })).statusCode).toBe(403);
       expect(
         (await call("get_workflow_status", { workflowId: state.workflowId, runId: run.runId }))
           .statusCode
       ).toBe(403);
-      await prisma.employee.update({ where: { id: actor.id }, data: { role: "admin" } });
+      await prisma.userAccount.update({ where: { id: actor.id }, data: { role: "admin" } });
     });
 
     it("confirms an actual uploaded delivery receipt using persisted receipt dates and scope", async () => {
@@ -699,7 +705,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: { orgId: actor.orgId, enterpriseKey, enterpriseName: enterpriseKey }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey, name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey,
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       await prisma.businessCategory.create({
         data: {
@@ -1064,7 +1076,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey: "migration", name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey: "migration",
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       const migrationSelector = { ...selector, enterpriseKey: "migration" };
       const expected = {
@@ -1608,15 +1626,15 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           error: { code: "WORKFLOW_ADMIN_REQUIRED" }
         });
       };
-      await prisma.employee.update({ where: { id: actor.id }, data: { role: "employee" } });
+      await prisma.userAccount.update({ where: { id: actor.id }, data: { role: "employee" } });
       await expectAdminDenied();
-      await prisma.employee.update({
+      await prisma.userAccount.update({
         where: { id: actor.id },
         data: { role: "admin", disabled: true }
       });
       await expectAdminDenied();
       expect((await call("get_enterprise_workflow", selector)).statusCode).toBe(403);
-      await prisma.employee.update({ where: { id: actor.id }, data: { disabled: false } });
+      await prisma.userAccount.update({ where: { id: actor.id }, data: { disabled: false } });
       const originalOrg = actor.orgId;
       actor.orgId = "foreign-org";
       await expectAdminDenied();
@@ -2057,7 +2075,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         businessPermissions.configureAccount({
           orgId: actor.orgId,
           actorId: actor.id,
-          employeeId: actor.id,
+          userAccountId: actor.id,
           expectedVersion: String(
             (
               await prisma.businessAuthorizationState.findUniqueOrThrow({
@@ -2599,7 +2617,9 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: reportStores.map((name) => ({
           orgId: actor.orgId,
           enterpriseKey: "enterprise",
-          name
+          name,
+          officialName: name,
+          confirmation: "confirmed"
         }))
       });
       const weekly = { enterpriseKey: "enterprise", workflowType: "weekly-business-report" };
@@ -2736,7 +2756,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       await createBusinessAuthorizationRepository({ prisma }).configureAccount({
         orgId: actor.orgId,
         actorId: actor.id,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         expectedVersion: String(
           (
             await prisma.businessAuthorizationState.findUniqueOrThrow({
@@ -2897,7 +2917,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       await createBusinessAuthorizationRepository({ prisma }).configureAccount({
         orgId: actor.orgId,
         actorId: actor.id,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         expectedVersion: String(
           (
             await prisma.businessAuthorizationState.findUniqueOrThrow({

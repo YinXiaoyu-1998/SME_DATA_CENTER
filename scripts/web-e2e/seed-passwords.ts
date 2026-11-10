@@ -16,9 +16,9 @@ export const E2E_PASSWORD = "smedc-e2e-password-2026";
 
 /** 三个账号覆盖：同组织管理员、同组织普通员工、另一组织员工。 */
 export const E2E_ACCOUNTS = [
-  { employeeId: "emp_admin", email: "admin@example.com" },
-  { employeeId: "emp_baoli_employee", email: "baoli.employee@example.com" },
-  { employeeId: "emp_suzhou_employee", email: "suzhou.employee@example.com" }
+  { userAccountId: "emp_admin", email: "admin@example.com" },
+  { userAccountId: "emp_baoli_employee", email: "baoli.employee@example.com" },
+  { userAccountId: "emp_suzhou_employee", email: "suzhou.employee@example.com" }
 ] as const;
 
 const audit: AuthRequestAudit = {
@@ -37,17 +37,17 @@ export async function seedPasswords(databaseUrl: string): Promise<void> {
     for (const account of E2E_ACCOUNTS) {
       const secret = `eh_ps_${randomBytes(24).toString("base64url")}`;
       const reset = await operator.resetPassword({
-        employeeId: account.employeeId,
+        userAccountId: account.userAccountId,
         grantTokenHash: hashOpaqueSecret(secret),
         grantExpiresAt: new Date(now.getTime() + 15 * 60 * 1000),
         now
       });
       if (!reset) {
-        throw new Error(`employee ${account.employeeId} has no active local-password identity`);
+        throw new Error(`employee ${account.userAccountId} has no active local-password identity`);
       }
       const session = await core.exchangePasswordSetupGrant(secret, audit);
       if (!session) {
-        throw new Error(`could not exchange the setup grant for ${account.employeeId}`);
+        throw new Error(`could not exchange the setup grant for ${account.userAccountId}`);
       }
       const saved = await core.consumePasswordSetupSession(
         session.sessionSecret,
@@ -55,7 +55,7 @@ export async function seedPasswords(databaseUrl: string): Promise<void> {
         audit
       );
       if (!saved) {
-        throw new Error(`could not set the password for ${account.employeeId}`);
+        throw new Error(`could not set the password for ${account.userAccountId}`);
       }
       process.stdout.write(`password set: ${account.email}\n`);
     }

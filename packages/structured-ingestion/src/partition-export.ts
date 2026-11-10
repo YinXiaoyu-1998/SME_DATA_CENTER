@@ -35,6 +35,7 @@ export interface StructuredPartitionExportEntry {
   storeKey: string;
   merchantId: string | null;
   storeName: string;
+  sourceRowNumber: number;
   businessDate: string;
   rowCount: bigint;
   filePath: string;
@@ -71,6 +72,7 @@ interface PartitionState {
   storeKey: string;
   merchantId: string | null;
   storeName: string;
+  sourceRowNumber: number;
   businessDate: string;
   rowCount: bigint;
   filePath: string;
@@ -167,23 +169,32 @@ export async function exportStructuredPartitions(input: {
         paymentJson(canonical.get("payment_method") ?? "", row.rowNumber)
       );
     }
-    if (orderSource && canonical.get("store_name") === "--")
-      throw invalidSource(`Row ${row.rowNumber} store_name is required.`);
+    const storeName = canonical.get("store_name") ?? "";
+    if (!storeName.trim() || (orderSource && storeName.trim() === "--"))
+      throw invalidSource(
+        `Row ${row.rowNumber} store_name ${quotedStoreName(storeName)} is missing. Enter the formal store name.`
+      );
     canonicalizeMs += performance.now() - canonicalStarted;
 
     const identity = partitionStoreIdentity({
       merchantId: canonical.get("merchant_id"),
-      storeName: canonical.get("store_name")
+      storeName
     });
     const businessDate = canonical.get("business_date");
     if (!businessDate) throw invalidSource(`Row ${row.rowNumber} business date is required.`);
-    const identityKey = `${identity.storeKey}\u0000${businessDate}`;
+    const identityKey = JSON.stringify([
+      identity.storeKey,
+      identity.merchantId === null ? storeName : null,
+      businessDate
+    ]);
     let partition = partitions.get(identityKey);
 
     if (!partition) {
       if (partitions.size >= input.limits.maxPartitions) throw limitExceeded("partition count");
       partition = {
         ...identity,
+        storeName,
+        sourceRowNumber: row.rowNumber,
         businessDate,
         rowCount: 0n,
         filePath: path.join(
@@ -195,17 +206,11 @@ export async function exportStructuredPartitions(input: {
         initialized: false
       };
       partitions.set(identityKey, partition);
-    } else if (
-      partition.storeName &&
-      identity.storeName &&
-      partition.storeName !== identity.storeName
-    ) {
+    } else if (partition.storeName !== storeName) {
       throw new StructuredPartitionExportError(
         PARTITION_ERROR_CODES.storeIdentityConflict,
-        `Rows for merchant ${identity.merchantId ?? "fallback"} disagree on store name.`
+        `Rows ${partition.sourceRowNumber} and ${row.rowNumber} disagree on store_name (${quotedStoreName(partition.storeName)} and ${quotedStoreName(storeName)}). Enter the formal store name.`
       );
-    } else if (!partition.storeName && identity.storeName) {
-      partition.storeName = identity.storeName;
     }
 
     totalRowCount += 1n;
@@ -306,7 +311,7 @@ export async function exportStructuredPartitions(input: {
     if (extension === ".csv") {
       const rowScanStarted = performance.now();
       rowConsumerMs = await processSheet(
-        csvRows(input.sourcePath, input.limits.maxStructuredCellChars, orderSource),
+        csvRows(input.sourcePath, input.limits.maxStructuredCellChars),
         "Sheet1",
         false
       );
@@ -320,7 +325,7 @@ export async function exportStructuredPartitions(input: {
           limits: input.limits,
           signal: input.signal,
           command: input.xlsxReaderCommand,
-          preserveCellWhitespace: input.dataset === "in_store_orders",
+          preserveCellWhitespace: true,
           consumer: {
             startSheet(sheet) {
               processor = createSheetProcessor(sheet.name, sheet.hidden);
@@ -362,6 +367,7 @@ export async function exportStructuredPartitions(input: {
         storeKey: partition.storeKey,
         merchantId: partition.merchantId,
         storeName: partition.storeName,
+        sourceRowNumber: partition.sourceRowNumber,
         businessDate: partition.businessDate,
         rowCount: partition.rowCount,
         filePath: partition.filePath,
@@ -395,11 +401,7 @@ export async function exportStructuredPartitions(input: {
   }
 }
 
-async function* csvRows(
-  filePath: string,
-  maxCellChars: number,
-  preserveWhitespace = false
-): AsyncGenerator<SourceRow> {
+async function* csvRows(filePath: string, maxCellChars: number): AsyncGenerator<SourceRow> {
   const parser = createReadStream(filePath).pipe(
     createCsvParser({ bom: true, relax_column_count: true, skip_empty_lines: false })
   );
@@ -408,7 +410,7 @@ async function* csvRows(
     rowNumber += 1;
     yield {
       rowNumber,
-      cells: record.map((value) => checkedText(String(value), maxCellChars, preserveWhitespace))
+      cells: record.map((value) => checkedText(String(value), maxCellChars))
     };
   }
 }
@@ -419,7 +421,11 @@ function canonicalCell(
   rowNumber: number,
   orderPlaceholders = false
 ): string {
-  if (orderPlaceholders && field.canonicalName === "payment_method") return value;
+  if (
+    field.canonicalName === "store_name" ||
+    (orderPlaceholders && field.canonicalName === "payment_method")
+  )
+    return value;
   const typed = ["date", "date_time", "integer", "decimal", "percent"].includes(field.type);
   const text =
     orderPlaceholders && field.nullable && typed && value.trim() === "--" ? "" : value.trim();
@@ -511,9 +517,13 @@ export function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
-function checkedText(value: string, maximum: number, preserveWhitespace: boolean): string {
+function checkedText(value: string, maximum: number): string {
   if (value.length > maximum) throw invalidSource("Structured cell length limit exceeded.");
-  return preserveWhitespace ? value : value.trim();
+  return value;
+}
+
+function quotedStoreName(value: string): string {
+  return JSON.stringify(value.length <= 255 ? value : `${value.slice(0, 255)}…`);
 }
 
 function trimTail(row: string[]): string[] {

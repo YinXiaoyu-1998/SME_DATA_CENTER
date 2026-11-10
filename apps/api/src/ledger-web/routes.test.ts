@@ -84,7 +84,7 @@ async function fixture(overrides: { ledgerPdfDeliveryEnabled?: boolean } = {}) {
         ? {
             ok: true,
             identityId: principal.identityId,
-            employeeId: principal.id,
+            userAccountId: principal.id,
             orgId: principal.orgId,
             credentialFingerprint: fingerprint
           }
@@ -139,7 +139,7 @@ async function fixture(overrides: { ledgerPdfDeliveryEnabled?: boolean } = {}) {
       const bundle = existing?.bundle ?? {
         requestId: "bundle-" + bundles.size,
         orgId: input.employee.orgId,
-        employeeId: input.employee.id,
+        userAccountId: input.employee.id,
         status: "queued",
         manifest: input.manifest,
         zipObjectKey: null,
@@ -151,7 +151,7 @@ async function fixture(overrides: { ledgerPdfDeliveryEnabled?: boolean } = {}) {
     },
     async request(e, id) {
       const bundle = [...bundles.values()].find((item) => item.bundle.requestId === id)?.bundle;
-      return bundle && bundle.orgId === e.orgId && bundle.employeeId === e.id
+      return bundle && bundle.orgId === e.orgId && bundle.userAccountId === e.id
         ? {
             kind: "download",
             status: bundle.status,
@@ -287,7 +287,7 @@ describe("ledger download center browser boundary", () => {
     const body = context.json();
     expect(body).toEqual({
       identity: {
-        employeeId: "employee",
+        userAccountId: "employee",
         orgId: "org",
         displayName: "员工 <测试>",
         organizationName: "企业"

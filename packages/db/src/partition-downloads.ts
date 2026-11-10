@@ -13,7 +13,11 @@ import {
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import { createDatabaseAdapter } from "./adapter.js";
 import { retryIdempotentDatabaseOperation } from "./retry.js";
-import { literalStoreNameScope, readablePartitionScope } from "./structured-partitions.js";
+import {
+  literalStoreNameScope,
+  partitionDisplayStoreName,
+  readablePartitionScope
+} from "./structured-partitions.js";
 import { enqueueStorageGarbage, storageGarbageKeyHash } from "./storage-garbage.js";
 
 export interface PartitionDownloadScope {
@@ -271,7 +275,9 @@ export function createPrismaPartitionDownloadRepository(
     await tx.$queryRaw(
       Prisma.sql`SELECT id FROM employees WHERE id=${actor.id} AND org_id=${actor.orgId} FOR SHARE`
     );
-    const employee = await tx.employee.findFirst({ where: { id: actor.id, orgId: actor.orgId } });
+    const employee = await tx.userAccount.findFirst({
+      where: { id: actor.id, orgId: actor.orgId }
+    });
     if (!employee || employee.disabled) throw error("PARTITION_DOWNLOAD_FORBIDDEN");
     return {
       id: employee.id,
@@ -293,13 +299,14 @@ export function createPrismaPartitionDownloadRepository(
     const rows = await tx.$queryRaw<
       Array<
         Omit<PartitionDownloadEntry, "businessDate" | "rowCount" | "byteSize"> & {
+          directoryStoreId: string | null;
           businessDate: Date;
           rowCount: bigint;
           byteSize: bigint;
         }
       >
     >(Prisma.sql`
-      SELECT CASE WHEN dataset = 'in_store_orders' THEN COALESCE(order_scope, 'legacy_unknown') ELSE NULL END AS orderScope, id, store_key AS storeKey, store_name AS storeName, merchant_id AS merchantId,
+      SELECT CASE WHEN dataset = 'in_store_orders' THEN COALESCE(order_scope, 'legacy_unknown') ELSE NULL END AS orderScope, id, store_key AS storeKey, store_name AS storeName, directory_store_id AS directoryStoreId, merchant_id AS merchantId,
       enterprise_name AS enterpriseName, business_date AS businessDate, object_key AS objectKey,
       checksum_sha256 AS checksumSha256, byte_size AS byteSize, row_count AS rowCount,
       confidentiality_level AS confidentialityLevel FROM structured_partitions
@@ -310,8 +317,18 @@ export function createPrismaPartitionDownloadRepository(
       ${scope.storeNameContains ? Prisma.sql`AND ${literalStoreNameScope(scope.storeNameContains)}` : Prisma.empty}
       ORDER BY business_date, store_key, id LIMIT ${maximum + 1} FOR SHARE
     `);
-    return rows.map((row) => ({
+    // Resolve display names in a separate non-locking read. A scalar lookup inside the
+    // FOR SHARE query would also lock directory rows and block unrelated publications.
+    const directory = await tx.businessStore.findMany({
+      where: { orgId: actor.orgId, enterpriseKey: scope.enterpriseKey },
+      select: { storeId: true, name: true, officialName: true }
+    });
+    return rows.map(({ directoryStoreId, ...row }) => ({
       ...row,
+      storeName:
+        directory.find((store) =>
+          directoryStoreId ? store.storeId === directoryStoreId : store.name === row.storeName
+        )?.officialName ?? row.storeName,
       businessDate: row.businessDate.toISOString().slice(0, 10),
       rowCount: String(row.rowCount),
       byteSize: String(row.byteSize)
@@ -337,6 +354,11 @@ export function createPrismaPartitionDownloadRepository(
       where: { orgId: row.orgId, id: { in: entries.map((e) => e.id) } }
     });
     const byId = new Map(current.map((p) => [p.id, p]));
+    const names = await tx.$queryRaw<{ id: string; storeName: string }[]>(Prisma.sql`
+      SELECT id, ${partitionDisplayStoreName} AS storeName FROM structured_partitions
+      WHERE org_id = ${row.orgId} AND id IN (${Prisma.join(entries.map((entry) => entry.id))})
+    `);
+    const displayNames = new Map(names.map((item) => [item.id, item.storeName]));
     return entries.every((e) => {
       const p = byId.get(e.id);
       return (
@@ -346,7 +368,7 @@ export function createPrismaPartitionDownloadRepository(
           effectiveOrderScope(scope.dataset, e.orderScope) &&
         p.enterpriseKey === scope.enterpriseKey &&
         p.storeKey === e.storeKey &&
-        p.storeName === e.storeName &&
+        displayNames.get(e.id) === e.storeName &&
         p.merchantId === e.merchantId &&
         p.enterpriseName === e.enterpriseName &&
         p.businessDate.toISOString().slice(0, 10) === e.businessDate &&

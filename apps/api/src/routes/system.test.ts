@@ -18,6 +18,9 @@ const employee: AuthenticatedEmployee = {
 
 function context(): ApiServerContext {
   return {
+    directory: () => {
+      throw new Error("not used");
+    },
     workflows: () => {
       throw new Error("unused");
     },
@@ -154,7 +157,7 @@ describe("system routes", () => {
     expect(missing.statusCode).toBe(401);
     expect(present.statusCode).toBe(200);
     expect(present.json()).toEqual({
-      employee: {
+      userAccount: {
         id: employee.id,
         orgId: employee.orgId,
         organizationName: "示例餐饮管理有限公司",

@@ -16,13 +16,13 @@ import type { LedgerPartitionKey, LedgerSourceRef } from "./types.js";
 type Reader = Prisma.TransactionClient | PrismaClient;
 export async function currentLedgerAuthorization(
   reader: Reader,
-  employeeId: string,
+  userAccountId: string,
   orgId: string
 ) {
   const repository = createBusinessAuthorizationRepository({ prisma: reader as PrismaClient });
   return "$transaction" in reader
-    ? repository.loadAuthorizationSnapshot(employeeId, orgId)
-    : repository.loadAuthorizationSnapshot(employeeId, orgId, reader);
+    ? repository.loadAuthorizationSnapshot(userAccountId, orgId)
+    : repository.loadAuthorizationSnapshot(userAccountId, orgId, reader);
 }
 /** Only the registered category/store conversion exists; required dimensions need a new rule. */
 export async function assertRegisteredLedgerConversion(

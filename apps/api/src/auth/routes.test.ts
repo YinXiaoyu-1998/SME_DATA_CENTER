@@ -22,7 +22,7 @@ function authFake() {
     verifyLogin: vi.fn(async () => ({
       ok: true as const,
       identityId: "identity_1",
-      employeeId: "employee_1",
+      userAccountId: "employee_1",
       orgId: "org_1",
       credentialFingerprint: "a".repeat(64)
     })),
@@ -41,7 +41,7 @@ function authFake() {
     redeemDeviceAuthorization: vi.fn(async () => ({
       status: "redeemed" as const,
       identityId: "identity_1",
-      employeeId: "employee_1",
+      userAccountId: "employee_1",
       orgId: "org_1"
     })),
     createSession: vi.fn(async () => ({
@@ -511,7 +511,7 @@ describe("device authorization endpoints", () => {
     );
     expect(auth.completeDeviceAuthorization).toHaveBeenCalledWith(
       "ABCDEFGH",
-      { identityId: "identity_1", employeeId: "employee_1", orgId: "org_1" },
+      { identityId: "identity_1", userAccountId: "employee_1", orgId: "org_1" },
       browserAudit
     );
   });

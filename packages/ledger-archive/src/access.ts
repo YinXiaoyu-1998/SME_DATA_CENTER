@@ -22,7 +22,7 @@ export type LedgerSourcesCurrentInput = {
 export function createPrismaLedgerArtifactAccess({
   prisma
 }: {
-  prisma: Pick<Prisma.TransactionClient, "employee" | "document"> | PrismaClient;
+  prisma: Pick<Prisma.TransactionClient, "userAccount" | "document"> | PrismaClient;
 }) {
   async function currentSources(input: LedgerSourcesCurrentInput): Promise<boolean> {
     const documents = await (input.tx ?? prisma).document.findMany({
@@ -75,7 +75,7 @@ export function createPrismaLedgerArtifactAccess({
     async canReadLedgerArtifact(input: LedgerArtifactAccessInput): Promise<boolean> {
       if (input.employee.disabled || input.employee.orgId !== input.orgId || !input.sources.length)
         return false;
-      const employee = await prisma.employee.findFirst({
+      const employee = await prisma.userAccount.findFirst({
         where: { id: input.employee.id, orgId: input.orgId }
       });
       if (!employee || employee.disabled) return false;

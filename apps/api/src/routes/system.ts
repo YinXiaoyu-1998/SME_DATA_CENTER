@@ -57,7 +57,7 @@ export function registerSystemRoutes(
     }
 
     return {
-      employee: employeeResponse(dependencies.auth.employee(request))
+      userAccount: employeeResponse(dependencies.auth.employee(request))
     };
   });
 }

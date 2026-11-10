@@ -281,7 +281,7 @@ Operator password reset:
 ```sh
 docker compose --profile release --env-file /opt/smedc/runtime.env \
   -f /opt/smedc/docker-compose.yml run -T --rm release-ops \
-  node dist/release/auth-operator.js reset-password --employee-id <employee-id>
+  node dist/release/auth-operator.js reset-password --user-account-id <user-account-id>
 ```
 
 Rules:

@@ -475,18 +475,19 @@ export async function profileStructuredFile(
 }
 
 async function readStructuredSheets(
-  input: Pick<ParseStructuredFileInput, "fileType" | "content" | "limits">
+  input: Pick<ParseStructuredFileInput, "dataset" | "fileType" | "content" | "limits">
 ): Promise<StructuredSheetRows[]> {
+  const preserveCellWhitespace = input.dataset === "delivery_ledger";
   const parsedSheets =
     input.fileType === "csv"
       ? [
           {
             name: STRUCTURED_IMPORT_DEFAULT_SHEET_NAME,
             hidden: false,
-            rows: parseCsvRows(input.content, input.limits)
+            rows: parseCsvRows(input.content, input.limits, preserveCellWhitespace)
           }
         ]
-      : await readXlsxRows(input.content, input.limits);
+      : await readXlsxRows(input.content, input.limits, { preserveCellWhitespace });
   return parsedSheets.map((sheet, sheetIndex) => ({ ...sheet, sheetIndex }));
 }
 
@@ -641,7 +642,7 @@ function addIssue(
 
 function findDeliveryDetailHeader(rows: string[][]) {
   for (let index = 0; index < Math.min(MAX_SPECIAL_HEADER_SCAN_ROWS, rows.length); index++) {
-    const headers = trimTail(rows[index] ?? []);
+    const headers = trimTail(rows[index] ?? []).map((header) => header.trim());
     for (const column of DELIVERY_ITEM_COLUMNS) {
       if (headers.filter((header) => header === column).length > 1)
         throw validation(`Delivery receipt item header contains duplicate ${column} columns.`);
@@ -689,12 +690,14 @@ function deliveryDerivedMetadataOrThrow(
         if (seenLabels.has(label))
           throw validation(`Delivery receipt metadata ${label} must appear exactly once.`);
         seenLabels.add(label);
-        metadata.set(label, row[column + 1]?.trim() ?? "");
+        const value = row[column + 1] ?? "";
+        metadata.set(label, label === "订货机构" ? value : value.trim());
       }
     }
   }
   for (const label of DELIVERY_METADATA_COLUMNS) {
-    if (!metadata.get(label)) throw validation(`Delivery receipt metadata ${label} is required.`);
+    if (!metadata.get(label)?.trim())
+      throw validation(`Delivery receipt metadata ${label} is required.`);
   }
   const receiptDate = parseDate(metadata.get("收货日期")!, false);
   if (!receiptDate) throw validation("收货日期 must be a date.");
@@ -719,7 +722,7 @@ function deliveryItemRows(
   const sourceRows = boundaryIndex === -1 ? afterHeader : afterHeader.slice(0, boundaryIndex);
   return sourceRows
     .map((row, index) => ({ row, sourceRowNumber: header.index + index + 2 }))
-    .filter(({ row }) => /^[+-]?\d+$/.test(row[header.columns.get("序号")!] ?? ""));
+    .filter(({ row }) => /^[+-]?\d+$/.test((row[header.columns.get("序号")!] ?? "").trim()));
 }
 
 function isDeliveryBoundary(row: string[]) {
@@ -794,10 +797,15 @@ function assertFileType(input: { fileName: string; fileType: "csv" | "xlsx"; con
   )
     throw validation("XLSX file does not have a ZIP signature.");
 }
-function parseCsvRows(content: Buffer, limits: StructuredIngestionLimits): string[][] {
+function parseCsvRows(
+  content: Buffer,
+  limits: StructuredIngestionLimits,
+  preserveCellWhitespace: boolean
+): string[][] {
   const decoded = assertCsvUtf8Text(content);
   return parseCsv(decoded, { bom: true, relax_column_count: true, skip_empty_lines: false }).map(
-    (row: unknown[]) => row.map((value) => checkedCellText(String(value), limits))
+    (row: unknown[]) =>
+      row.map((value) => checkedCellText(String(value), limits, preserveCellWhitespace))
   );
 }
 function assertCsvUtf8Text(content: Buffer): string {
@@ -808,10 +816,14 @@ function assertCsvUtf8Text(content: Buffer): string {
     throw validation("CSV content must be UTF-8 text.");
   }
 }
-function checkedCellText(text: string, limits: StructuredIngestionLimits): string {
+function checkedCellText(
+  text: string,
+  limits: StructuredIngestionLimits,
+  preserveCellWhitespace: boolean
+): string {
   if (text.length > limits.maxStructuredCellChars)
     throw validation("Structured cell length limit exceeded.");
-  return text.trim();
+  return preserveCellWhitespace ? text : text.trim();
 }
 function findHeader(dataset: StructuredDatasetName, rows: string[][]) {
   let fallback:

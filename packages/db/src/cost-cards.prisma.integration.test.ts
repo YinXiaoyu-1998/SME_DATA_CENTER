@@ -48,7 +48,7 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     root = await mkdtemp(path.join(os.tmpdir(), "smedc-cost-cards-"));
     storage = new LocalFileSystemStorageAdapter({ root: path.join(root, "storage") });
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic cost cards" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: actorId,
         orgId,
@@ -94,7 +94,7 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     });
     expect(first).toMatchObject({
       authorizationVersion: "2",
-      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length - 1 }
+      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length }
     });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }

@@ -204,7 +204,7 @@ function compileNormalizedQuery(
 
   const shapeHash = hashQueryShape({
     orgId: input.orgId,
-    employeeId: input.employee.id ?? null,
+    userAccountId: input.employee.id ?? null,
     clearance: input.employee.clearance,
     ...(input.businessAuthorization
       ? { authorizationVersion: input.businessAuthorization.version }

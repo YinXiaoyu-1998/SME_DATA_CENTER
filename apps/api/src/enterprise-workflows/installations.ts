@@ -52,7 +52,7 @@ export async function getInstallation(
   if (
     !row ||
     row.installationId !== installationId ||
-    row.employeeId !== actor.id ||
+    row.userAccountId !== actor.id ||
     (row.state === "revoked" && !allowRevoked)
   )
     fail("WORKFLOW_INSTALLATION_MISMATCH");
@@ -128,7 +128,7 @@ export async function installOperation(
         }
       }
     });
-    if (old && old.employeeId !== actor.id) fail("WORKFLOW_INSTALLATION_MISMATCH");
+    if (old && old.userAccountId !== actor.id) fail("WORKFLOW_INSTALLATION_MISMATCH");
     const { hostSnapshot, ...data } = op.installation;
     const same =
       old &&
@@ -147,7 +147,7 @@ export async function installOperation(
         ...data,
         orgId: actor.orgId,
         workflowId: workflow.id,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         ...(hostSnapshot ? { hostSnapshot: json(hostSnapshot) } : {})
       },
       update: {
@@ -361,7 +361,7 @@ export async function installOperation(
       where: { orgId: actor.orgId, workflowId: workflow.id, finishedAt: null },
       data: {
         installationId: op.installationId,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         assignmentEpoch: result.assignmentEpoch,
         controlVersion: workflow.controlVersion
       }

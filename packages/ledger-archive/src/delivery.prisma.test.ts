@@ -52,7 +52,7 @@ function fixture() {
     businessAuthorizationState: { findUnique: vi.fn(async () => null) },
     businessCategory: { findMany: vi.fn(async () => []) },
     businessGrant: { findMany: vi.fn(async () => []) },
-    employee: { findFirst: vi.fn(async () => employee) },
+    userAccount: { findFirst: vi.fn(async () => employee) },
     $queryRawUnsafe: vi.fn(async () => []),
     document: {
       findMany: vi.fn(async () => [document("ledger")]),
@@ -75,9 +75,10 @@ function fixture() {
     }
   };
   const prisma = {
+    businessStore: { findMany: vi.fn(async () => []) },
     $queryRaw: query,
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)),
-    employee: { findFirst: vi.fn(async () => employee) },
+    userAccount: { findFirst: vi.fn(async () => employee) },
     document: { findMany: vi.fn(async () => [document("ledger")]) },
     ledgerArtifactRequestItem: {
       findFirst: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => null)
@@ -87,10 +88,10 @@ function fixture() {
     }
   };
   tx.document.findMany = prisma.document.findMany;
-  tx.employee.findFirst = prisma.employee.findFirst;
-  Object.assign(tx.employee, {
+  tx.userAccount.findFirst = prisma.userAccount.findFirst;
+  Object.assign(tx.userAccount, {
     findUnique: (...args: unknown[]) =>
-      (tx.employee.findFirst as (...args: unknown[]) => unknown)(...args)
+      (tx.userAccount.findFirst as (...args: unknown[]) => unknown)(...args)
   });
   const storage = {
     headObject: vi.fn(async () => ({ state: "found", size: 10, hash }))
@@ -188,7 +189,7 @@ describe("Prisma delivery current data boundaries", () => {
       status: "succeeded",
       scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
       actorKind: "employee",
-      actorEmployeeId: employee.id,
+      actorUserAccountId: employee.id,
       items: []
     };
     f.prisma.ledgerArtifactRequest.findFirst.mockResolvedValue(request);
@@ -252,7 +253,7 @@ describe("Prisma delivery current data boundaries", () => {
       kind: "refresh",
       status: "succeeded",
       actorKind: "employee",
-      actorEmployeeId: employee.id,
+      actorUserAccountId: employee.id,
       scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
       items: [item]
     });
@@ -269,7 +270,7 @@ describe("Prisma delivery current data boundaries", () => {
           orgId: "org",
           partitionId: "p",
           generation: { gt: 1 },
-          request: { actorKind: "employee", actorEmployeeId: "e", kind: "refresh" }
+          request: { actorKind: "employee", actorUserAccountId: "e", kind: "refresh" }
         }
       })
     );
@@ -366,7 +367,7 @@ describe("Prisma delivery current data boundaries", () => {
       id: "r",
       kind: "download",
       actorKind: "employee",
-      actorEmployeeId: "another",
+      actorUserAccountId: "another",
       items: []
     };
     f.prisma.ledgerArtifactRequest.findFirst.mockImplementation(async (input: unknown) =>
@@ -384,12 +385,12 @@ describe("Prisma delivery current data boundaries", () => {
   });
   it("disabled accounts cannot pass current checks and object state stays authoritative", async () => {
     const f = fixture();
-    f.prisma.employee.findFirst.mockResolvedValue(null as never);
+    f.prisma.userAccount.findFirst.mockResolvedValue(null as never);
     expect(await f.repository.currentEmployee(employee)).toBeNull();
     expect(
       await f.repository.facts(employee, { storeNames: [key.storeName], dates: [key.purchaseDate] })
     ).toEqual([]);
-    f.prisma.employee.findFirst.mockResolvedValue(employee);
+    f.prisma.userAccount.findFirst.mockResolvedValue(employee);
     vi.mocked(f.storage.headObject).mockResolvedValue({ state: "not_found" });
     expect(
       (
@@ -431,7 +432,7 @@ describe("Prisma delivery current data boundaries", () => {
   });
   it("uses the account state in the current authorization snapshot for task management", async () => {
     const f = fixture();
-    f.prisma.employee.findFirst
+    f.prisma.userAccount.findFirst
       .mockResolvedValueOnce(employee)
       .mockResolvedValueOnce({ ...employee, disabled: true });
     expect(await f.repository.currentEmployee(employee)).toBeNull();

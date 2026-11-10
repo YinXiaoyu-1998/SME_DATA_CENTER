@@ -20,7 +20,7 @@ export type OperatorCommand =
       clearance: number;
       initialGrants?: BusinessGrant[];
     }
-  | { kind: "reset-password"; employeeId: string }
+  | { kind: "reset-password"; userAccountId: string }
   | { kind: "delete-test-account"; email: string; confirmEmail: string };
 
 export interface AuthOperatorRepository {
@@ -34,15 +34,15 @@ export interface AuthOperatorRepository {
     grantTokenHash: string;
     grantExpiresAt: Date;
     now: Date;
-  }): Promise<{ employeeId: string; identityId: string }>;
+  }): Promise<{ userAccountId: string; identityId: string }>;
   resetPassword(input: {
-    employeeId: string;
+    userAccountId: string;
     grantTokenHash: string;
     grantExpiresAt: Date;
     now: Date;
-  }): Promise<{ employeeId: string; identityId: string } | null>;
+  }): Promise<{ userAccountId: string; identityId: string } | null>;
   deleteTestAccount(input: { normalizedEmail: string; now: Date }): Promise<{
-    employeeId: string;
+    userAccountId: string;
     identityIds: string[];
   } | null>;
   disconnect?(): Promise<void>;
@@ -133,10 +133,10 @@ export function parseOperatorCommand(args: string[]): OperatorCommand {
     };
   }
   if (subcommand === "reset-password") {
-    const options = parseOptions(rest, new Set(["--employee-id"]));
+    const options = parseOptions(rest, new Set(["--user-account-id"]));
     return {
       kind: "reset-password",
-      employeeId: required(options, "--employee-id")
+      userAccountId: required(options, "--user-account-id")
     };
   }
   if (subcommand === "delete-test-account") {
@@ -179,7 +179,7 @@ export async function runOperatorCommand(
       JSON.stringify({
         ok: true,
         deleted: result !== null,
-        employeeId: result?.employeeId ?? null,
+        userAccountId: result?.userAccountId ?? null,
         identityCount: result?.identityIds.length ?? 0
       })
     );
@@ -209,7 +209,7 @@ export async function runOperatorCommand(
           ...grantInput
         })
       : await dependencies.repository.resetPassword({
-          employeeId: command.employeeId,
+          userAccountId: command.userAccountId,
           ...grantInput
         });
   if (!result) {

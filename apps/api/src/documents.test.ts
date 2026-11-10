@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
-  employee: { findFirst: vi.fn() },
+  userAccount: { findFirst: vi.fn() },
   businessAuthorizationState: { upsert: vi.fn() },
   auditLog: {
     create: vi.fn(),
@@ -73,7 +73,7 @@ describe("Prisma document catalog audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prisma.businessAuthorizationState.upsert.mockResolvedValue({ mode: "legacy", version: 1n });
-    prisma.employee.findFirst.mockResolvedValue({ id: "emp_1" });
+    prisma.userAccount.findFirst.mockResolvedValue({ id: "emp_1" });
     prisma.$queryRaw.mockResolvedValue([{ id: "org_1" }]);
     prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) =>
       callback(prisma)
@@ -112,12 +112,12 @@ describe("Prisma document catalog audit provenance", () => {
     await repository.archiveDocument({
       orgId: "org_1",
       documentId: "doc_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       audit
     });
     await repository.appendAuditLog({
       orgId: "org_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       action: "document.metadata_recorded",
       targetType: "document",
       targetId: "doc_1",
@@ -138,13 +138,13 @@ describe("Prisma document catalog audit provenance", () => {
     }
   });
   it("rejects a former uploader whose current role is employee before archival", async () => {
-    prisma.employee.findFirst.mockResolvedValue(null);
+    prisma.userAccount.findFirst.mockResolvedValue(null);
     const repository = createPrismaDocumentCatalogRepository("mysql://test");
     expect(
       await repository.archiveDocument({
         orgId: "org_1",
         documentId: "doc_1",
-        actorEmployeeId: "emp_1",
+        actorUserAccountId: "emp_1",
         audit
       })
     ).toBeNull();

@@ -36,7 +36,7 @@ function validateSubmission(orgId: string, actor: LedgerActor, idempotencyKey: s
   if (!orgId || orgId.length > 64 || !idempotencyKey || idempotencyKey.length > 255)
     throw new Error("LEDGER_REQUEST_INVALID");
   if (
-    (actor.kind === "employee" && (!actor.employeeId || actor.employeeId.length > 32)) ||
+    (actor.kind === "employee" && (!actor.userAccountId || actor.userAccountId.length > 32)) ||
     (actor.kind === "operator" && (!actor.label || actor.label.length > 255)) ||
     (actor.kind === "system_reconciler" &&
       (!actor.reconciliationRunId || actor.reconciliationRunId.length > 32)) ||
@@ -46,7 +46,7 @@ function validateSubmission(orgId: string, actor: LedgerActor, idempotencyKey: s
 }
 
 function canonicalActor(actor: LedgerActor): LedgerActor {
-  if (actor.kind === "employee") return { kind: actor.kind, employeeId: actor.employeeId };
+  if (actor.kind === "employee") return { kind: actor.kind, userAccountId: actor.userAccountId };
   if (actor.kind === "operator") return { kind: actor.kind, label: actor.label };
   return { kind: actor.kind, reconciliationRunId: actor.reconciliationRunId };
 }

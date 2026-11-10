@@ -108,16 +108,31 @@ export async function view(tx: Tx, workflow: Workflow) {
     }))
   };
 }
-export async function validateStores(tx: Tx, workflow: Workflow, stores: string[]) {
+/** Resolve configured workflow store labels without changing their provider bindings. */
+export async function workflowStoreKeys(tx: Tx, workflow: Workflow, stores: string[]) {
   const rows = await tx.businessStore.findMany({
     where: {
       orgId: workflow.orgId,
       enterpriseKey: workflow.enterpriseKey,
-      name: { in: stores },
+      OR: [{ name: { in: stores } }, { officialName: { in: stores } }],
       retired: false
-    }
+    },
+    select: { name: true, officialName: true, confirmation: true }
   });
-  if (stores.some((s) => !rows.some((r) => r.name === s))) fail("WORKFLOW_SOURCE_MAPPING_CONFLICT");
+  const identities = new Map<string, string>();
+  for (const row of rows) {
+    if (stores.includes(row.name)) identities.set(row.name, row.name);
+  }
+  for (const row of rows) {
+    if (row.confirmation === "confirmed" && stores.includes(row.officialName))
+      identities.set(row.officialName, row.name);
+  }
+  return identities;
+}
+
+export async function validateStores(tx: Tx, workflow: Workflow, stores: string[]) {
+  const identities = await workflowStoreKeys(tx, workflow, stores);
+  if (stores.some((name) => !identities.has(name))) fail("WORKFLOW_SOURCE_MAPPING_CONFLICT");
 }
 export async function validateConfiguration(
   tx: Tx,

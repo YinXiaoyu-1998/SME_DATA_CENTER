@@ -4,7 +4,7 @@
 
 [空白内部模板](../assets/tenant-onboarding.template.json)只存未决定项。真实填写结果、目录快照与回填清单保存在 Git 之外的私有目录，不能写回 Skill、仓库或 PR。密码、token、一次性设置链接与连接串不进入此记录。
 
-已有企业新增账号复用当前企业规则；内部 `organizationId` 与 `enterpriseKey` 只能绑定已确认身份，`employeeId` 创建后再绑定，未确认时保留 null。角色字段用于运维开户请求或记录已有角色，不是管理员 UI 的角色变更功能。
+已有企业新增账号复用当前企业规则；内部 `organizationId` 与 `enterpriseKey` 只能绑定已确认身份，`userAccountId` 创建后再绑定，未确认时保留 null。角色字段用于运维开户请求或记录已有角色，不是管理员 UI 的角色变更功能。
 
 ## 字段与转换约定
 

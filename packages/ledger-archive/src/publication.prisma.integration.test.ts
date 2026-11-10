@@ -49,7 +49,7 @@ if (enabled) {
   const date = "2026-10-01";
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic publication" } });
-    const employee = await prisma.employee.create({
+    const employee = await prisma.userAccount.create({
       data: {
         orgId,
         email: `${orgId}@example.invalid`,
@@ -104,7 +104,7 @@ if (enabled) {
     await prisma.quarantineCertificate.deleteMany({ where: { orgId } });
     await prisma.importBatch.deleteMany({ where: { orgId } });
     await prisma.document.deleteMany({ where: { orgId } });
-    await prisma.employee.deleteMany({ where: { orgId } });
+    await prisma.userAccount.deleteMany({ where: { orgId } });
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
     await Promise.all([
@@ -431,7 +431,13 @@ if (enabled) {
       )
     });
     await prisma.businessStore.createMany({
-      data: ["Product", "Other"].map((name) => ({ orgId, enterpriseKey: "enterprise", name }))
+      data: ["Product", "Other"].map((name) => ({
+        orgId,
+        enterpriseKey: "enterprise",
+        name,
+        officialName: name,
+        confirmation: "confirmed"
+      }))
     });
     const scope = {
       enterpriseKey: "enterprise",
@@ -467,7 +473,7 @@ if (enabled) {
         }
       }
     });
-    const owner = await prisma.employee.create({
+    const owner = await prisma.userAccount.create({
       data: {
         orgId,
         email: `${orgId}-pdf@example.invalid`,
@@ -480,7 +486,7 @@ if (enabled) {
       data: {
         orgId,
         id: "pdf-grant",
-        employeeId: owner.id,
+        userAccountId: owner.id,
         enterpriseKey: "enterprise",
         ownership: "store",
         allStores: false

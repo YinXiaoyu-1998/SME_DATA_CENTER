@@ -34,6 +34,9 @@ function context(
   }
 ): ApiServerContext {
   return {
+    directory: () => {
+      throw new Error("not used");
+    },
     workflows: () => {
       throw new Error("unused");
     },
@@ -386,7 +389,7 @@ it("uses current granted category rules and rejects cursors after authorization 
   const service = legacyPermissionService(employee);
   service.current = async () => ({
     orgId: employee.orgId,
-    employeeId: employee.id,
+    userAccountId: employee.id,
     role: "employee",
     disabled: false,
     clearance: 0,

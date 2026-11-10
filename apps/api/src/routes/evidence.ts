@@ -1,4 +1,4 @@
-import { ResourceAttributesError } from "@smedc/db";
+import { FormalStoreIntakeError, ResourceAttributesError } from "@smedc/db";
 import type { BusinessScopeItem } from "@smedc/domain";
 import { randomBytes } from "node:crypto";
 import {
@@ -304,7 +304,8 @@ function evidenceUploadResponse(document: DocumentStatusRecord, retrievalConfigV
     },
     processing: {
       processingRunId: null,
-      status: document.processingRunStatus
+      status: document.processingRunStatus,
+      ...(document.processingFormalStoreError ? { error: document.processingFormalStoreError } : {})
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
@@ -327,7 +328,8 @@ function evidenceStatusResponse(document: DocumentStatusRecord, retrievalConfigV
     },
     processing: {
       processingRunId: null,
-      status: document.processingRunStatus
+      status: document.processingRunStatus,
+      ...(document.processingFormalStoreError ? { error: document.processingFormalStoreError } : {})
     },
     documentIndex: {
       status: document.documentIndexStatus ?? "pending",
@@ -490,6 +492,8 @@ export function registerEvidenceRoutes(
         );
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof FormalStoreIntakeError)
+        return validationError(reply, error.code, error.message);
       if (error instanceof ResourceAttributesError)
         return validationError(reply, error.code, "Evidence business attributes are not ready.");
       request.log.error({ err: error, documentId }, "evidence document catalog write failed");
@@ -539,7 +543,7 @@ export function registerEvidenceRoutes(
             document,
             dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
           );
-        if (document.uploaderId !== snapshot.employeeId)
+        if (document.uploaderId !== snapshot.userAccountId)
           return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
         return evidenceUploadResponse(
           document,

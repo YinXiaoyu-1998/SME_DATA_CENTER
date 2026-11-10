@@ -32,7 +32,7 @@ function createCapturingDelegate(
         payload: JSON.stringify(
           request.url === "/me"
             ? {
-                employee: {
+                userAccount: {
                   id: "employee-1",
                   orgId: "default-org",
                   organizationName: "示例餐饮管理有限公司",
@@ -669,7 +669,7 @@ it.each([
   [
     "query_account_permissions",
     "/v1/admin/permissions/accounts/employee%2F1",
-    { query: { mode: "detail", employeeId: "employee/1" } }
+    { query: { mode: "detail", userAccountId: "employee/1" } }
   ],
   ["get_permission_directory", "/v1/admin/permissions/categories", { section: "categories" }],
   ["get_permission_directory", "/v1/admin/permissions/dimensions", { section: "dimensions" }],

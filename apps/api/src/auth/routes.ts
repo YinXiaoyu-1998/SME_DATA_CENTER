@@ -232,7 +232,7 @@ export function registerOfficialAuthRoutes(
       body.userCode,
       {
         identityId: result.identityId,
-        employeeId: result.employeeId,
+        userAccountId: result.userAccountId,
         orgId: result.orgId
       },
       audit

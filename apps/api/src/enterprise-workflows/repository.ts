@@ -30,7 +30,7 @@ export async function transaction<T>(
     async (tx) => {
       await tx.$queryRaw`SELECT org_id FROM business_authorization_states WHERE org_id = ${actor.orgId} FOR SHARE`;
       await tx.$queryRaw`SELECT id FROM employees WHERE org_id = ${actor.orgId} AND id = ${actor.id} FOR SHARE`;
-      const employee = await tx.employee.findFirst({
+      const employee = await tx.userAccount.findFirst({
         where: { id: actor.id, orgId: actor.orgId, role: "admin", disabled: false }
       });
       if (!employee) fail("WORKFLOW_ADMIN_REQUIRED");
@@ -43,7 +43,7 @@ export async function transaction<T>(
       });
       const snapshot: AuthorizationSnapshot = {
         orgId: actor.orgId,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         role: employee.role,
         disabled: employee.disabled,
         clearance: employee.clearance,
@@ -108,7 +108,7 @@ export async function audit(
   await tx.auditLog.create({
     data: {
       orgId: actor.orgId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       action: `workflow.${action}`,
       targetType: "enterprise_workflow",
       targetId,

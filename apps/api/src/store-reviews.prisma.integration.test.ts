@@ -105,7 +105,7 @@ if (run) {
   const body = (result: Awaited<ReturnType<typeof write>>) => JSON.parse(result.content[0]!.text);
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id,
         orgId,
@@ -134,12 +134,18 @@ if (run) {
       data: { orgId, enterpriseKey: "合成企业", enterpriseName: "合成企业" }
     });
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: "合成企业", name: row.storeName }
+      data: {
+        orgId,
+        enterpriseKey: "合成企业",
+        name: row.storeName,
+        officialName: row.storeName,
+        confirmation: "confirmed"
+      }
     });
     await permissions.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: "1",
       clearance: 3,
       grants: [
@@ -385,25 +391,34 @@ if (run) {
     ).toBe(0);
   });
   it("rolls back a valid earlier row when a later identity fails and uses current admin state", async () => {
-    const result = await write({
+    const payload = {
       reviews: [
         { ...row, reviewerName: "rollback" },
         { ...row, storeName: "不存在门店", reviewerName: "bad" }
       ]
-    });
+    };
+    const result = await write(payload);
     expect(result.isError).toBe(true);
     expect(body(result).error).toMatchObject({
-      code: "STORE_REVIEW_IDENTITY_NOT_AVAILABLE",
+      code: "FORMAL_STORE_NAME_INVALID",
+      message: expect.stringContaining('reviews[1].storeName "不存在门店"'),
       requestId: expect.any(String)
     });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/store-reviews/upsert",
+      headers: { authorization: "Bearer synthetic" },
+      payload
+    });
+    expect(response.json().error.details).toMatchObject({ storeName: "不存在门店", index: 1 });
     expect(await prisma.storeReview.count({ where: { orgId, reviewerName: "rollback" } })).toBe(0);
-    await prisma.employee.update({ where: { id }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "employee" } });
     const denied = await write({ reviews: [{ ...row, reviewerName: "demoted" }] });
     expect(body(denied).error.code).toBe("UPLOAD_ADMIN_REQUIRED");
     expect(await prisma.storeReview.count({ where: { orgId, reviewerName: "demoted" } })).toBe(0);
   });
   it("pages large full rows within the default SDK stdio output buffer without skipping rows", async () => {
-    await prisma.employee.update({ where: { id }, data: { role: "admin" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "admin" } });
     const content = '中\n"'.repeat(5_461);
     const scores = { ["维".repeat(16_000)]: 9 };
     const reviews = Array.from({ length: 100 }, (_, index) => ({

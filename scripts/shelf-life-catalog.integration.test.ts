@@ -16,7 +16,7 @@ describe.skipIf(process.env["RUN_SHELF_LIFE_CATALOG_INTEGRATION"] !== "1")(
     let database: Awaited<ReturnType<typeof createOwnedIntegrationDatabase>>;
     let prisma: PrismaClient;
     let directory: string;
-    let employeeId: string;
+    let userAccountId: string;
     const orgId = "catalog-target";
     const otherId = "catalog-other";
     const entries = [
@@ -47,8 +47,8 @@ describe.skipIf(process.env["RUN_SHELF_LIFE_CATALOG_INTEGRATION"] !== "1")(
       );
       for (const id of [orgId, otherId])
         await prisma.organization.create({ data: { id, name: "Synthetic" } });
-      employeeId = (
-        await prisma.employee.create({
+      userAccountId = (
+        await prisma.userAccount.create({
           data: {
             orgId,
             email: "catalog@example.invalid",
@@ -139,7 +139,7 @@ describe.skipIf(process.env["RUN_SHELF_LIFE_CATALOG_INTEGRATION"] !== "1")(
           fileType: "csv",
           status: "processing",
           storageObjectKey: "synthetic",
-          uploaderId: employeeId
+          uploaderId: userAccountId
         }
       });
       const batch = await prisma.importBatch.create({

@@ -276,7 +276,7 @@ export class EvidenceSearchCursorError extends Error {
 
 interface EvidenceCursorScopePayload {
   orgId: string;
-  employeeId: string;
+  userAccountId: string;
   clearance: number;
   authorizationVersion: string | null;
   authorizationMode: AuthorizationSnapshot["mode"] | null;
@@ -289,7 +289,7 @@ interface EvidenceCursorScopePayload {
 function evidenceCursorScope(input: EvidenceSearchInput, retrievalConfigVersion: string) {
   const payload: EvidenceCursorScopePayload = {
     orgId: input.orgId,
-    employeeId: input.employee.id,
+    userAccountId: input.employee.id,
     clearance: input.authorization?.clearance ?? input.employee.clearance,
     authorizationVersion: input.authorization?.authorizationVersion ?? null,
     authorizationMode: input.authorization?.mode ?? null,
@@ -319,7 +319,7 @@ function createEvidenceCursor(input: {
     version: EVIDENCE_CURSOR_VERSION,
     domain: EVIDENCE_CURSOR_DOMAIN,
     orgId: input.scope.orgId,
-    employeeId: input.scope.employeeId,
+    userAccountId: input.scope.userAccountId,
     clearance: input.scope.clearance,
     authorizationVersion: input.scope.authorizationVersion,
     authorizationMode: input.scope.authorizationMode,
@@ -590,7 +590,7 @@ export class PrismaEvidenceRevalidator implements EvidenceRevalidator {
     if (
       authorization.disabled ||
       authorization.orgId !== input.orgId ||
-      authorization.employeeId !== input.employee.id ||
+      authorization.userAccountId !== input.employee.id ||
       authorization.mode === "suspended"
     )
       return [];

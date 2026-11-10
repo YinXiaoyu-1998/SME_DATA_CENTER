@@ -3,7 +3,7 @@ import { hashOpaqueSecret } from "./primitives.js";
 
 const identity = {
   identityId: "identity_a",
-  employeeId: "admin_a",
+  userAccountId: "admin_a",
   orgId: "org_a",
   credentialFingerprint: "a".repeat(64)
 };

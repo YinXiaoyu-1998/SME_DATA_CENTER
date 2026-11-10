@@ -231,7 +231,7 @@ export function createInMemoryStructuredImportRepository(
     },
     async reserveStructuredImport(input: {
       orgId: string;
-      actorEmployeeId: string;
+      actorUserAccountId: string;
       documentId: string;
       dataset: StructuredDatasetName;
       fileType: "xlsx" | "csv";
@@ -354,7 +354,7 @@ export function createInMemoryStructuredImportRepository(
       documents.push({
         id: input.documentId,
         orgId: input.orgId,
-        uploaderId: input.actorEmployeeId,
+        uploaderId: input.actorUserAccountId,
         status: "uploading",
         title: input.document.title,
         documentType: "structured_dataset",
@@ -385,7 +385,7 @@ export function createInMemoryStructuredImportRepository(
       });
       auditLogs.push({
         action: AUDIT_ACTIONS.structuredImportStarted,
-        actorEmployeeId: input.actorEmployeeId,
+        actorUserAccountId: input.actorUserAccountId,
         targetType: "import_batch",
         targetId: batch.id,
         result: "succeeded",
@@ -431,7 +431,7 @@ export function createInMemoryStructuredImportRepository(
     },
     async applyReservedStructuredImport(input: {
       orgId: string;
-      actorEmployeeId: string;
+      actorUserAccountId: string;
       importBatchId: string;
       rows: Array<{
         payload: Record<string, unknown>;
@@ -470,7 +470,7 @@ export function createInMemoryStructuredImportRepository(
       document.processingRunStatus = "succeeded";
       auditLogs.push({
         action: AUDIT_ACTIONS.structuredImportApplied,
-        actorEmployeeId: input.actorEmployeeId,
+        actorUserAccountId: input.actorUserAccountId,
         targetType: "import_batch",
         targetId: batch.id,
         result: "succeeded",

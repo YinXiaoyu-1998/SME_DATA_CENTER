@@ -24,7 +24,7 @@ const legacyInput = {
   key: { orgId: "org", storeName: "A", purchaseDate: "2026-10-01" },
   authorization: {
     orgId: "org",
-    employeeId: employee.id,
+    userAccountId: employee.id,
     role: "employee",
     disabled: false,
     clearance: 0,
@@ -36,7 +36,7 @@ const legacyInput = {
 };
 function fixture(changes = {}) {
   const prisma = {
-    employee: { findFirst: vi.fn().mockResolvedValue(employee) },
+    userAccount: { findFirst: vi.fn().mockResolvedValue(employee) },
     document: { findMany: vi.fn().mockResolvedValue([{ ...document, ...changes }]) }
   };
   return {
@@ -102,7 +102,7 @@ describe("current ledger source authorization", () => {
   });
   it("rechecks account disabling and decreased clearance", async () => {
     const { access, prisma } = fixture();
-    prisma.employee.findFirst.mockResolvedValueOnce({ ...employee, disabled: true });
+    prisma.userAccount.findFirst.mockResolvedValueOnce({ ...employee, disabled: true });
     expect(
       await access.canReadLedgerArtifact({
         ...legacyInput,
@@ -111,7 +111,7 @@ describe("current ledger source authorization", () => {
         sources: [source]
       })
     ).toBe(false);
-    prisma.employee.findFirst.mockResolvedValueOnce({ ...employee, clearance: 0 });
+    prisma.userAccount.findFirst.mockResolvedValueOnce({ ...employee, clearance: 0 });
     expect(
       await access.canReadLedgerArtifact({
         ...legacyInput,
@@ -125,7 +125,7 @@ describe("current ledger source authorization", () => {
     const f = fixture({ confidentialityLevel: 3 });
     const authorization: AuthorizationSnapshot = {
       orgId: "org",
-      employeeId: employee.id,
+      userAccountId: employee.id,
       role: "employee",
       disabled: false,
       clearance: 0,
@@ -222,7 +222,7 @@ describe("current ledger source authorization", () => {
         tx: tx as unknown as import("@prisma/client").Prisma.TransactionClient
       })
     ).toBe(true);
-    expect(prisma.employee.findFirst).not.toHaveBeenCalled();
+    expect(prisma.userAccount.findFirst).not.toHaveBeenCalled();
     expect(prisma.document.findMany).not.toHaveBeenCalled();
     tx.document.findMany.mockResolvedValueOnce([{ ...document, confidentialityLevel: 1 }]);
     expect(

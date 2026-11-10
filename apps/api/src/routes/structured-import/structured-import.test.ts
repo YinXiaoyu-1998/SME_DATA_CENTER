@@ -103,7 +103,7 @@ describe("structured imports", () => {
       });
       expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
         orgId: baoliEmployee.orgId,
-        actorEmployeeId: baoliEmployee.id,
+        actorUserAccountId: baoliEmployee.id,
         uploadSurface: "structured_dataset",
         audit: {
           requestId: "req_upload_denied",
@@ -273,7 +273,7 @@ describe("structured imports", () => {
     expect(response.json()).toMatchObject({ error: { code: "RESOURCE_HISTORICAL_DATE_INVALID" } });
     expect(reserve).toHaveBeenCalledWith(
       expect.objectContaining({
-        actorEmployeeId: adminEmployee.id,
+        actorUserAccountId: adminEmployee.id,
         historicalSupplementReason: "Historical member correction",
         startDate: "20260819"
       })
@@ -388,7 +388,7 @@ describe("structured imports", () => {
     expect(documentRepository.auditLogs).toEqual([
       expect.objectContaining({
         action: "structured_import.started",
-        actorEmployeeId: adminEmployee.id,
+        actorUserAccountId: adminEmployee.id,
         targetType: "import_batch",
         result: "succeeded",
         requestId: "req_http_1",
@@ -1016,7 +1016,7 @@ describe("structured imports", () => {
     const archivedDocument = await documentRepository.archiveDocument({
       orgId: "default-org",
       documentId,
-      actorEmployeeId: baoliEmployee.id,
+      actorUserAccountId: baoliEmployee.id,
       audit: {
         requestId: "test-request",
         sourceIp: "127.0.0.1",
@@ -1071,7 +1071,7 @@ describe("structured imports", () => {
 
     await structuredImportRepository.applyReservedStructuredImport({
       orgId: "default-org",
-      actorEmployeeId: baoliEmployee.id,
+      actorUserAccountId: baoliEmployee.id,
       importBatchId: originalBatchId,
       rows: [],
       audit: {
@@ -1084,7 +1084,7 @@ describe("structured imports", () => {
     await documentRepository.archiveDocument({
       orgId: "default-org",
       documentId: originalDocumentId,
-      actorEmployeeId: baoliEmployee.id,
+      actorUserAccountId: baoliEmployee.id,
       audit: {
         requestId: "test-archive",
         sourceIp: "127.0.0.1",

@@ -286,7 +286,7 @@ describe("launcher live profile resolution", () => {
   it("resolves a missing cached profile once and reuses its exact value", async () => {
     const fixture = profileResolutionFixture(() =>
       Response.json({
-        employee: {
+        userAccount: {
           ...employeeProfile,
           id: "private-id",
           disabled: false,
@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.17.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.18.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -345,7 +345,7 @@ describe("launcher live profile resolution", () => {
     },
     {
       label: "invalid profile",
-      response: () => Response.json({ employee: { ...adminProfile, role: "owner" } }),
+      response: () => Response.json({ userAccount: { ...adminProfile, role: "owner" } }),
       code: "SERVICE_UNAVAILABLE"
     },
     {
@@ -412,10 +412,10 @@ describe("launcher live profile resolution", () => {
     const dependencies = createLauncherToolDependencies({
       config,
       auth,
-      fetchImplementation: fakeMcpFetch(calls, { employee: employeeProfile })
+      fetchImplementation: fakeMcpFetch(calls, { userAccount: employeeProfile })
     });
     const result = await createLauncherToolHandler("smedc_get_current_user", dependencies)({});
-    expect(body(result)).toEqual({ employee: employeeProfile });
+    expect(body(result)).toEqual({ userAccount: employeeProfile });
     expect(calls.filter((call) => call.method === "tools/call")).toEqual([
       { method: "tools/call", params: { name: "smedc_get_current_user", arguments: {} } }
     ]);

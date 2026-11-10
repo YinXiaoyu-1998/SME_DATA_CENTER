@@ -37,7 +37,7 @@ function secretOf(request: FastifyRequest): string | null {
 function sessionPayload(principal: BrowserPrincipal, secret: string) {
   return {
     identity: {
-      employeeId: principal.id,
+      userAccountId: principal.id,
       displayName: principal.displayName,
       email: principal.email,
       orgId: principal.orgId,

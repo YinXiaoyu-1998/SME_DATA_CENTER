@@ -14,7 +14,7 @@ const API_ORIGIN = "https://api.smedatacenter.example";
 
 const identity: BrowserLoginIdentity = {
   identityId: "idn_1",
-  employeeId: "emp_1",
+  userAccountId: "emp_1",
   orgId: "org_1",
   credentialFingerprint: "a".repeat(64)
 };
@@ -44,7 +44,7 @@ function createSessions() {
     async create(input) {
       records.set(input.secretHash, {
         principal: {
-          id: input.employeeId,
+          id: input.userAccountId,
           identityId: input.identityId,
           orgId: input.orgId,
           organizationName: "示例企业",
@@ -162,7 +162,7 @@ describe("web session routes", () => {
     expect(login.headers["cache-control"]).toBe("no-store");
     const body = login.json();
     expect(body.identity).toEqual({
-      employeeId: "emp_1",
+      userAccountId: "emp_1",
       displayName: "张三",
       email: "admin@example.com",
       orgId: "org_1",

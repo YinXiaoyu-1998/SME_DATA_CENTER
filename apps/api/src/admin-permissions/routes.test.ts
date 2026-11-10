@@ -98,10 +98,10 @@ const resourceRow = {
   ]
 };
 
-function snapshotFor(employeeId: string) {
+function snapshotFor(userAccountId: string) {
   return {
     orgId: "org_a",
-    employeeId,
+    userAccountId,
     role: "admin" as const,
     disabled: false,
     clearance: 3,
@@ -193,7 +193,7 @@ async function fixture(overrides: { workflows?: boolean } = {}) {
     (await sessions.issue(
       {
         identityId,
-        employeeId: principals.get(identityId)!.id,
+        userAccountId: principals.get(identityId)!.id,
         orgId: principals.get(identityId)!.orgId,
         credentialFingerprint: fingerprint
       },
@@ -205,15 +205,15 @@ async function fixture(overrides: { workflows?: boolean } = {}) {
   const secretEmployee = await issue("identity_employee");
 
   const permissionsRepository = {
-    loadPermissionCard: vi.fn(async (employeeId: string) => ({
-      ...snapshotFor(employeeId),
+    loadPermissionCard: vi.fn(async (userAccountId: string) => ({
+      ...snapshotFor(userAccountId),
       storeReviewEnterprises: {
         complete: true as const,
         write: [{ enterpriseKey: "business-a", enterpriseName: "业务企业甲" }],
         read: []
       }
     })),
-    loadAuthorizationSnapshot: vi.fn(async (employeeId: string) => snapshotFor(employeeId)),
+    loadAuthorizationSnapshot: vi.fn(async (userAccountId: string) => snapshotFor(userAccountId)),
     listAccounts: vi.fn(async () => [
       {
         orgId: "org_a",
@@ -226,7 +226,7 @@ async function fixture(overrides: { workflows?: boolean } = {}) {
         disabled: false,
         clearance: 0,
         id: "employee_a",
-        employeeId: "employee_a",
+        userAccountId: "employee_a",
         grants: []
       }
     ]),
@@ -408,7 +408,7 @@ const installationRow = {
   orgId: "org_a",
   workflowId: "wf_1",
   installationId: "install_1",
-  employeeId: "admin_a",
+  userAccountId: "admin_a",
   version: 2,
   deviceAlias: "开发机",
   host: "codex",
@@ -429,7 +429,7 @@ const runRow = {
   orgId: "org_a",
   workflowId: "wf_1",
   installationId: "install_1",
-  employeeId: "admin_a",
+  userAccountId: "admin_a",
   configurationVersion: 3,
   integrationVersion: 2,
   controlVersion: 2,

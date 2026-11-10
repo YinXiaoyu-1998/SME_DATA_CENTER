@@ -26,6 +26,9 @@ import {
   categoriesInclude
 } from "./business-authorization-records.js";
 import { initializeFixedBusinessCategories } from "./fixed-business-categories.js";
+import { FormalStoreIntakeError, requireFormalStoreForIntake } from "./formal-store-intake.js";
+
+export { FormalStoreIntakeError } from "./formal-store-intake.js";
 
 type Tx = Prisma.TransactionClient;
 type Reader = Tx | PrismaClient;
@@ -94,10 +97,10 @@ export async function lockAuthorizationPublication(tx: Tx, orgId: string) {
     update: { version: { increment: 1 } }
   });
 }
-export async function requireCurrentUploadAdmin(tx: Tx, orgId: string, employeeId: string) {
+export async function requireCurrentUploadAdmin(tx: Tx, orgId: string, userAccountId: string) {
   if (
-    !(await tx.employee.findFirst({
-      where: { orgId, id: employeeId, disabled: false, role: "admin" },
+    !(await tx.userAccount.findFirst({
+      where: { orgId, id: userAccountId, disabled: false, role: "admin" },
       select: { id: true }
     }))
   )
@@ -162,7 +165,6 @@ async function persistPublishedResource(
     workerId?: string;
   } = {}
 ) {
-  await registerStores(tx, input.orgId, input.scopes);
   const existing = input.id
     ? null
     : await tx.businessResource.findUnique({
@@ -186,21 +188,6 @@ async function persistPublishedResource(
     await auditPublication(tx, input.orgId, result.after.id, options.workerId, input);
   return result;
 }
-async function registerStores(tx: Tx, orgId: string, scopes: BusinessScopeItem[]) {
-  for (const scope of scopes)
-    if (scope.ownership === "store")
-      await tx.businessStore.upsert({
-        where: {
-          orgId_enterpriseKey_name: {
-            orgId,
-            enterpriseKey: scope.enterpriseKey,
-            name: scope.storeName!
-          }
-        },
-        create: { orgId, enterpriseKey: scope.enterpriseKey, name: scope.storeName! },
-        update: {}
-      });
-}
 async function auditPublication(
   tx: Tx,
   orgId: string,
@@ -211,7 +198,7 @@ async function auditPublication(
   await tx.auditLog.create({
     data: {
       orgId,
-      actorEmployeeId: null,
+      actorUserAccountId: null,
       action: "resource.authorization.published",
       targetType: "business_resource",
       targetId,
@@ -249,7 +236,7 @@ export async function persistStructuredSourceReadRequirements(
     orgId: string;
     sourceDocumentId: string;
     dataset: StructuredDatasetName | "cost_cards";
-    rows: readonly { payload: Record<string, unknown> }[];
+    rows: readonly { payload: Record<string, unknown>; sourceRowNumber?: number }[];
     enterpriseKey?: string;
     workerId: string;
     authorizationState?: Awaited<ReturnType<typeof lockAuthorizationPublication>>;
@@ -273,21 +260,53 @@ export async function persistStructuredSourceReadRequirements(
   const businessDates = publicationBusinessDates(input.rows, record(document.sourceMetadata));
   let category = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
   if (!input.rows.length) fail("SOURCE_HAS_NO_PARSED_ROWS");
+  let ledgerStoreKey: string | undefined;
+  if (input.dataset === "delivery_ledger") {
+    const submittedStores = new Set<unknown>();
+    for (const row of input.rows) {
+      const name = row.payload["store_name"];
+      if (submittedStores.has(name)) continue;
+      const receiptId = row.payload["receipt_id"];
+      const store = await requireFormalStoreForIntake(tx, {
+        orgId: input.orgId,
+        enterpriseKey: typeof enterpriseKey === "string" ? enterpriseKey : "",
+        name,
+        historicalSupplement: !!historicalSupplement,
+        location: {
+          field: "订货机构",
+          rowNumber: row.sourceRowNumber,
+          receiptId: typeof receiptId === "string" ? receiptId : undefined
+        }
+      });
+      submittedStores.add(name);
+      if (ledgerStoreKey !== undefined && ledgerStoreKey !== store.storeKey)
+        fail("RESOURCE_SINGLE_STORE_REQUIRED");
+      ledgerStoreKey = store.storeKey;
+    }
+  }
   let scopes: BusinessScopeItem[] = [];
   try {
     scopes = deriveStructuredSourceScopes({
       dataset: input.dataset,
       enterpriseKey: typeof enterpriseKey === "string" ? enterpriseKey : "",
       rows: input.rows
-    });
+    }).map((scope) =>
+      ledgerStoreKey === undefined ? scope : { ...scope, storeName: ledgerStoreKey }
+    );
   } catch (error) {
-    if (state.mode === "enabled" || !(error instanceof ResourceAttributesError)) throw error;
+    if (
+      input.dataset === "delivery_ledger" ||
+      state.mode === "enabled" ||
+      !(error instanceof ResourceAttributesError)
+    )
+      throw error;
   }
   await tx.document.update({
     where: { id: input.sourceDocumentId },
     data: {
       sourceMetadata: {
         ...record(document.sourceMetadata),
+        ...(ledgerStoreKey === undefined ? {} : { ledgerStoreKey }),
         parsedBusinessScopes: {
           dataset: input.dataset,
           enterpriseKey: typeof enterpriseKey === "string" ? enterpriseKey : null,
@@ -305,7 +324,7 @@ export async function persistStructuredSourceReadRequirements(
     historicalSupplement,
     businessDates
   });
-  if (!category) return;
+  if (!category) return ledgerStoreKey;
   if (input.dataset === "delivery_ledger")
     await validateReceiptPhotoStore(
       tx,
@@ -327,6 +346,7 @@ export async function persistStructuredSourceReadRequirements(
     },
     { historicalSupplement, businessDates, workerId: input.workerId }
   );
+  return ledgerStoreKey;
 }
 
 export async function persistPartitionReadRequirement(
@@ -439,6 +459,43 @@ export async function persistEvidenceReadRequirement(
     input.scopes.some((scope) => !validateBusinessScope(scope, rule))
   )
     fail("RESOURCE_ATTRIBUTES_NOT_READY");
+  const scopes = [];
+  const submittedStores = [];
+  for (const [index, scope] of input.scopes.entries()) {
+    if (scope.ownership !== "store") {
+      scopes.push(scope);
+      continue;
+    }
+    const store = await requireFormalStoreForIntake(tx, {
+      orgId: input.orgId,
+      enterpriseKey: scope.enterpriseKey,
+      name: scope.storeName,
+      historicalSupplement: !!input.historicalSupplement,
+      location: { field: `businessScopes[${index}].storeName` }
+    });
+    scopes.push({ ...scope, storeName: store.storeKey });
+    submittedStores.push({
+      enterpriseKey: scope.enterpriseKey,
+      name: scope.storeName!,
+      storeKey: store.storeKey,
+      index
+    });
+  }
+  if (submittedStores.length) {
+    const document = await tx.document.findUniqueOrThrow({
+      where: { id: input.documentId },
+      select: { sourceMetadata: true }
+    });
+    await tx.document.update({
+      where: { id: input.documentId },
+      data: {
+        sourceMetadata: {
+          ...record(document.sourceMetadata),
+          submittedStores
+        } as Prisma.InputJsonValue
+      }
+    });
+  }
   return persistPublishedResource(
     tx,
     {
@@ -446,7 +503,7 @@ export async function persistEvidenceReadRequirement(
       kind: "evidence",
       resourceKey: input.documentId,
       categoryId: input.categoryId,
-      scopes: input.scopes
+      scopes
     },
     { historicalSupplement: input.historicalSupplement }
   );
@@ -475,12 +532,43 @@ export async function activateEvidenceReadRequirement(tx: Tx, orgId: string, doc
       archivedAt: null,
       status: { not: "archived" }
     },
-    select: { sourceMetadata: true }
+    select: { sourceMetadata: true, status: true }
   });
   if (!document) fail("RESOURCE_INVALID");
   const historicalSupplement = readHistoricalSupplementIntent(
     record(document.sourceMetadata)["historicalSupplement"]
   );
+  if (document.status !== "active") {
+    const saved = record(document.sourceMetadata)["submittedStores"];
+    const submittedStores = Array.isArray(saved)
+      ? saved.map(record)
+      : scopes.flatMap((scope, index) =>
+          scope.ownership === "store"
+            ? [
+                {
+                  enterpriseKey: scope.enterpriseKey,
+                  name: scope.storeName,
+                  storeKey: scope.storeName,
+                  index
+                }
+              ]
+            : []
+        );
+    for (const { enterpriseKey, name, storeKey, index } of submittedStores) {
+      const location = {
+        field: `businessScopes[${typeof index === "number" ? index : 0}].storeName`
+      };
+      const store = await requireFormalStoreForIntake(tx, {
+        orgId,
+        enterpriseKey: typeof enterpriseKey === "string" ? enterpriseKey : "",
+        name,
+        historicalSupplement: !!historicalSupplement,
+        location
+      });
+      if (store.storeKey !== storeKey)
+        throw new FormalStoreIntakeError("FORMAL_STORE_NAME_INVALID", name, location);
+    }
+  }
   requirePublicationAttributes(
     state.mode,
     rule,
@@ -560,17 +648,21 @@ export async function persistPhotoReadRequirement(
 ) {
   const state = await lockAuthorizationPublication(tx, input.orgId);
   let category = await fixedCategory(tx, input.orgId, "quarantine_certificate", state.mode);
-  const scopes: BusinessScopeItem[] =
-    input.enterpriseKey && input.storeName?.trim()
-      ? [
-          {
-            enterpriseKey: input.enterpriseKey,
-            ownership: "store",
-            storeName: input.storeName,
-            dimensions: {}
-          }
-        ]
-      : [];
+  const store = await requireFormalStoreForIntake(tx, {
+    orgId: input.orgId,
+    enterpriseKey: input.enterpriseKey ?? "",
+    name: input.storeName,
+    historicalSupplement: !!input.historicalSupplement,
+    location: { field: "storeName" }
+  });
+  const scopes: BusinessScopeItem[] = [
+    {
+      enterpriseKey: input.enterpriseKey!,
+      ownership: "store",
+      storeName: store.storeKey,
+      dimensions: {}
+    }
+  ];
   category = await prepareFixedPublication(tx, {
     orgId: input.orgId,
     category,
@@ -590,11 +682,13 @@ export async function persistPhotoReadRequirement(
   });
   for (const row of ledgerRows) {
     const payload = record(row.payload);
-    const enterpriseKey = record(row.sourceDocument.sourceMetadata)["enterpriseKey"];
+    const metadata = record(row.sourceDocument.sourceMetadata);
+    const enterpriseKey = metadata["enterpriseKey"];
+    const ledgerStoreKey = metadata["ledgerStoreKey"] ?? payload["store_name"];
     if (state.mode === "enabled" && typeof enterpriseKey !== "string")
       fail("RESOURCE_ATTRIBUTES_NOT_READY");
     if (
-      payload["store_name"] !== input.storeName ||
+      ledgerStoreKey !== store.storeKey ||
       (typeof enterpriseKey === "string" && enterpriseKey !== input.enterpriseKey)
     )
       fail("CERTIFICATE_STORE_MISMATCH");
@@ -680,17 +774,6 @@ export async function persistStoreReviewResource(
   requirePublicationAttributes(state.mode, rule, scopes);
   if (!selected || selected.key !== "store_reviews" || selected.retired)
     fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
-  const store = await tx.businessStore.findUnique({
-    where: {
-      orgId_enterpriseKey_name: {
-        orgId: input.orgId,
-        enterpriseKey: input.enterpriseKey,
-        name: input.storeName
-      }
-    }
-  });
-  if (!store) fail("RESOURCE_ATTRIBUTES_NOT_READY");
-  if (store.retired) fail("RESOURCE_DIRECTORY_RETIRED");
   const resourceKey = `store-review:${input.reviewId}`;
   const where = {
     orgId_kind_resourceKey: { orgId: input.orgId, kind: "store_review" as const, resourceKey }

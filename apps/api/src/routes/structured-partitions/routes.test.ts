@@ -89,7 +89,7 @@ describe("structured partition routes", () => {
         });
         expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
           orgId: employee.orgId,
-          actorEmployeeId: employee.id,
+          actorUserAccountId: employee.id,
           uploadSurface: "structured_dataset",
           audit: auditContext
         });

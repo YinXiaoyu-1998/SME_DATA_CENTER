@@ -18,7 +18,7 @@ it("validates strict bounded filters and ordered inclusive time ranges", () => {
 it("hash binds all identity, version and normalized filters while excluding cursor", () => {
   const input = {
     orgId: "org",
-    employeeId: "employee",
+    userAccountId: "employee",
     enterpriseKey: "enterprise",
     authorizationVersion: "1",
     query: parseStoreReviewQuery({
@@ -36,7 +36,7 @@ it("hash binds all identity, version and normalized filters while excluding curs
   ).toBe(hash);
   for (const patch of [
     { orgId: "other" },
-    { employeeId: "other" },
+    { userAccountId: "other" },
     { enterpriseKey: "other" },
     { authorizationVersion: "2" },
     { query: { ...input.query, hasReply: false } }
@@ -65,7 +65,7 @@ it("normalizes bounded platform status lists and binds them into cursor scope", 
     expect(() => parseStoreReviewQuery({ enterpriseName: "企业", replyStatuses })).toThrow();
   const scope = {
     orgId: "org",
-    employeeId: "employee",
+    userAccountId: "employee",
     enterpriseKey: "enterprise",
     authorizationVersion: "1",
     query
@@ -88,7 +88,7 @@ it("validates exact feedback filters and binds them to cursor scope", () => {
     expect(() => parseStoreReviewQuery({ enterpriseName: "企业", feedbackId })).toThrow();
   const scope = {
     orgId: "org",
-    employeeId: "employee",
+    userAccountId: "employee",
     enterpriseKey: "enterprise",
     authorizationVersion: "1",
     query

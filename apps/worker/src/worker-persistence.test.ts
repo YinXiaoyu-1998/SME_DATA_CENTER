@@ -258,6 +258,19 @@ describe("Prisma structured worker persistence", () => {
   });
 
   it("publishes delivery ledger rows with lineage and the completion timestamp", async () => {
+    prisma.document.findFirstOrThrow.mockResolvedValue({
+      sourceMetadata: { enterpriseKey: "synthetic" }
+    });
+    prisma.$queryRaw.mockImplementation(async (query: { sql: string; values: unknown[] }) => {
+      if (query.sql.includes("FROM business_category_dimensions")) return [];
+      if (query.sql.includes("FROM business_stores")) {
+        expect(query.values).toEqual(["org_1", "synthetic", "Synthetic"]);
+        return [
+          { storeId: "store-1", storeKey: "Synthetic", retired: false, confirmation: "confirmed" }
+        ];
+      }
+      return [{ id: "org_1" }];
+    });
     prisma.importBatch.findFirst.mockResolvedValueOnce({
       id: "imp_delivery",
       orgId: "org_1",

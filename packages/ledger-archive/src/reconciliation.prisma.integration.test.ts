@@ -58,7 +58,7 @@ if (enabled) {
     await first.organization.create({
       data: { id: orgId, name: "Synthetic reconciliation fixture" }
     });
-    const uploader = await first.employee.create({
+    const uploader = await first.userAccount.create({
       data: {
         orgId,
         email: `${orgId}@example.invalid`,
@@ -140,7 +140,7 @@ if (enabled) {
     await first.deliveryLedgerRow.deleteMany({ where });
     await first.importBatch.deleteMany({ where });
     await first.document.deleteMany({ where });
-    await first.employee.deleteMany({ where });
+    await first.userAccount.deleteMany({ where });
     await first.organization.delete({ where: { id: orgId } });
     await Promise.all([first.$disconnect(), second.$disconnect()]);
   });

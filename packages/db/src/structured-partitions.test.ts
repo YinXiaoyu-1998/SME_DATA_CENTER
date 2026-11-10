@@ -54,7 +54,7 @@ describe("structured partition repository boundaries", () => {
       };
       const tx = {
         partitionImportJob,
-        employee: { findFirst: vi.fn(async () => ({ id: "emp_2" })) }
+        userAccount: { findFirst: vi.fn(async () => ({ id: "emp_2" })) }
       };
       const prisma = {
         ...tx,
@@ -87,12 +87,10 @@ describe("structured partition repository boundaries", () => {
   });
 
   it("limits manifest rows in the database and selects only response fields", async () => {
-    const findMany = vi.fn(async () => []);
-    const prisma = {
-      structuredPartition: { findMany }
-    } as unknown as PrismaClient;
-    const repository = createPrismaStructuredPartitionRepository({ prisma });
-
+    const queryRaw = vi.fn<(query: Prisma.Sql) => Promise<unknown[]>>(async () => []);
+    const repository = createPrismaStructuredPartitionRepository({
+      prisma: { $queryRaw: queryRaw } as unknown as PrismaClient
+    });
     await repository.listReadableManifestRows({
       orgId: "org_1",
       clearance: 1,
@@ -102,26 +100,10 @@ describe("structured partition repository boundaries", () => {
       endDate: "2026-09-13",
       maxPartitions: 2
     });
-
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        take: 3,
-        where: expect.objectContaining({
-          orgId: "org_1",
-          confidentialityLevel: { lte: 1 }
-        }),
-        select: {
-          orderScope: true,
-          businessDate: true,
-          merchantId: true,
-          storeName: true,
-          rowCount: true,
-          byteSize: true,
-          checksumSha256: true,
-          objectKey: true
-        }
-      })
-    );
+    const sql = queryRaw.mock.calls[0]![0];
+    expect(sql.sql).toContain("LIMIT ?");
+    expect(sql.values).toContain(3);
+    expect(sql.sql).not.toContain("SELECT *");
   });
 });
 
@@ -148,7 +130,7 @@ it("binds literal store-name scope together with authorization and manifest cons
   expect(sql.sql).toContain("org_id = ?");
   expect(sql.sql).toContain("confidentiality_level <= ?");
   expect(sql.sql).toContain("merchant_id IN (?)");
-  expect(sql.sql).toContain("LOCATE(CAST(? AS BINARY), CAST(store_name AS BINARY)) > 0");
+  expect(sql.sql).toContain("LOCATE(CAST(? AS BINARY), CAST(COALESCE(");
   expect(sql.sql).toContain(" OR ");
   expect(sql.sql).not.toContain("麦家小馆");
   expect(sql.values).toEqual([

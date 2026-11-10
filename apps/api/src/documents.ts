@@ -77,6 +77,7 @@ export interface DocumentStatusRecord {
   sourceTime: Date | null;
   confidentialityLevel: number;
   processingRunStatus: string | null;
+  processingFormalStoreError?: { code: string; message: string };
   documentIndexStatus: string | null;
   documentIndexRetrievalConfigVersion: string | null;
 }
@@ -84,13 +85,13 @@ export interface DocumentStatusRecord {
 export interface ArchiveDocumentInput {
   orgId: string;
   documentId: string;
-  actorEmployeeId: string;
+  actorUserAccountId: string;
   audit: RequestAuditContext;
 }
 
 export interface AppendAuditLogInput {
   orgId: string;
-  actorEmployeeId: string | null;
+  actorUserAccountId: string | null;
   action: string;
   targetType: string;
   targetId: string | null;
@@ -121,7 +122,9 @@ const documentStatusInclude = {
     },
     take: 1,
     select: {
-      status: true
+      status: true,
+      errorCode: true,
+      errorSummary: true
     }
   },
   indexes: {
@@ -218,7 +221,7 @@ export function createPrismaDocumentCatalogRepository(
         await tx.auditLog.create({
           data: {
             orgId: input.orgId,
-            actorEmployeeId: input.uploaderId,
+            actorUserAccountId: input.uploaderId,
             action: AUDIT_ACTIONS.documentUploaded,
             targetType: "document",
             targetId: input.id,
@@ -255,7 +258,7 @@ export function createPrismaDocumentCatalogRepository(
       await prisma.auditLog.create({
         data: {
           orgId: input.orgId,
-          actorEmployeeId: input.actorEmployeeId,
+          actorUserAccountId: input.actorUserAccountId,
           action: input.action,
           targetType: input.targetType,
           targetId: input.targetId,
@@ -272,9 +275,9 @@ export function createPrismaDocumentCatalogRepository(
       const document = await retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
-          const actor = await tx.employee.findFirst({
+          const actor = await tx.userAccount.findFirst({
             where: {
-              id: input.actorEmployeeId,
+              id: input.actorUserAccountId,
               orgId: input.orgId,
               role: "admin",
               disabled: false
@@ -301,7 +304,7 @@ export function createPrismaDocumentCatalogRepository(
               : [];
           const visibleHints = await readableLedgerPartitionHints(
             tx,
-            input.actorEmployeeId,
+            input.actorUserAccountId,
             affectedLedgerPartitions
           );
           const changed = await tx.document.updateMany({
@@ -325,7 +328,7 @@ export function createPrismaDocumentCatalogRepository(
           await tx.auditLog.create({
             data: {
               orgId: input.orgId,
-              actorEmployeeId: input.actorEmployeeId,
+              actorUserAccountId: input.actorUserAccountId,
               action: AUDIT_ACTIONS.documentArchived,
               targetType: "document",
               targetId: input.documentId,
@@ -364,7 +367,14 @@ export function createPrismaDocumentCatalogRepository(
 function toDocumentStatusRecord(
   document: Prisma.DocumentGetPayload<{ include: typeof documentStatusInclude }>
 ): DocumentStatusRecord {
+  const run = document.processingRuns[0];
+  const formalStoreError =
+    run?.errorCode === "FORMAL_STORE_NAME_INVALID" ||
+    run?.errorCode === "RESOURCE_DIRECTORY_RETIRED";
   return {
+    ...(formalStoreError && run.errorSummary
+      ? { processingFormalStoreError: { code: run.errorCode!, message: run.errorSummary } }
+      : {}),
     readRequirements: document.businessResources.map((resource) => ({
       ...toResourceReadRequirement(resource),
       valid: resource.valid && document.status === DocumentStatus.active && !document.archivedAt

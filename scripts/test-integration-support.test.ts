@@ -80,7 +80,7 @@ integration("small authenticated partition comparison", () => {
     const prisma = new PrismaClient({ adapter: createDatabaseAdapter(plan.baseUrl) });
     const scratch = await mkdtemp(path.join(os.tmpdir(), "smedc-comparison-"));
     const orgId = `comparison_${randomUUID().replaceAll("-", "")}`;
-    const employeeId = randomUUID().replaceAll("-", "");
+    const userAccountId = randomUUID().replaceAll("-", "");
     const sourceId = randomUUID().replaceAll("-", "");
     const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
     const repository = createPrismaPartitionDownloadRepository({ databaseUrl });
@@ -127,26 +127,26 @@ integration("small authenticated partition comparison", () => {
     try {
       await prisma.organization.create({ data: { id: orgId, name: "Synthetic" } });
       ownsOrganization = true;
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: {
-          id: employeeId,
+          id: userAccountId,
           orgId,
-          email: `${employeeId}@example.invalid`,
+          email: `${userAccountId}@example.invalid`,
           displayName: "Synthetic",
           role: "employee",
           clearance: 0
         }
       });
       const identity = await prisma.loginIdentity.create({
-        data: { orgId, employeeId, normalizedEmail: `${employeeId}@example.invalid` }
+        data: { orgId, userAccountId, normalizedEmail: `${userAccountId}@example.invalid` }
       });
-      const session = await auth.createSession({ identityId: identity.id, orgId, employeeId });
+      const session = await auth.createSession({ identityId: identity.id, orgId, userAccountId });
       credential = session.durableCredential;
       await prisma.partitionImportJob.create({
         data: {
           id: sourceId,
           orgId,
-          uploaderId: employeeId,
+          uploaderId: userAccountId,
           dataset: "dishes",
           enterpriseKey: "synthetic",
           enterpriseName: "Synthetic",
@@ -263,7 +263,7 @@ integration("small authenticated partition comparison", () => {
         await prisma.partitionDownloadRequest.deleteMany({ where: { orgId } });
         await prisma.structuredPartition.deleteMany({ where: { orgId } });
         await prisma.partitionImportJob.deleteMany({ where: { orgId } });
-        await prisma.employee.deleteMany({ where: { orgId } });
+        await prisma.userAccount.deleteMany({ where: { orgId } });
         await prisma.organization.deleteMany({ where: { id: orgId } });
       }
       await prisma.$disconnect();
