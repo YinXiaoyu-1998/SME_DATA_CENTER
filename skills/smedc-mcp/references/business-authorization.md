@@ -99,7 +99,10 @@ Only a current active same-organization admin can call these controlled operatio
 
 ### Consolidated tools
 
-These signatures require the approved launcher `0.17.0` and matching service. Follow the
+These tools require the approved launcher and matching service. The published 0.17.0
+contract uses `employeeId` in the two account operations below. The 0.18.0 candidate
+uses `userAccountId` in those operations and requires its matching service rollout.
+Follow the connected tool schema and send only its declared account field. Follow the
 [core release boundary](../SKILL.md#business-permission-tools-and-release-boundary) before using them.
 Use `get_my_permissions {}` for the current employee's own live permission card.
 

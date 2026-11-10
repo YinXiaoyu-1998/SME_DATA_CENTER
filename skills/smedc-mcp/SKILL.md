@@ -42,6 +42,14 @@ Launcher `0.17.0` exposes 50 tools, including six consolidated permission and wo
 After upgrading, reload the MCP host and verify the new tools through its native connection.
 If the launcher and service contracts disagree, report the version mismatch to the operator.
 
+## Employee And Business Directories (Source Candidate)
+
+The employee and business directory tools require the coordinated launcher 0.18.0 release
+and matching service rollout. The approved installation pin above remains the release authority.
+Use [employee and business directories](references/employee-directory.md) only after the connected
+launcher discovers the tools and the operator has confirmed the matching service is available.
+Account permission calls also use the account field declared by the connected release.
+
 ## Cost Cards (Published Launcher, Service Gated)
 
 For cost-card original uploads, directory lookup, same-name disambiguation, local CSV

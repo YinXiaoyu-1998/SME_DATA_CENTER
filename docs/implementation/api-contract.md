@@ -203,8 +203,9 @@ no arbitrary HTTP/SQL proxy. `get_my_permissions` reads live state on every call
 inspect complete configuration for themselves and any same-organization account even without
 content grants. Management/status outputs have no signed content links.
 
-The consolidated permission MCP entries below apply to published launcher `0.17.0` and its
-matching service. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
+The consolidated permission operations are available in published launcher `0.17.0` and its
+matching service. The account path and field names below describe the `0.18.0` source candidate
+and require coordinated rollout. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
 for the inputs and release gate.
 
 | MCP tool                                                         | HTTP operation                                                                                   |
@@ -238,6 +239,21 @@ unchanged and refer to an already saved enterprise key. The operator `store.set`
 optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return HTTP 400 without
 partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
 and store configuration never grant content access or set a category level or tenant mode.
+
+### Employee and business directories (0.18.0 source candidate)
+
+All operations take the registered `enterpriseKey`. HTTP uses `POST /v1/directory/{action}`;
+browser routes under `/api/web/v1/orgs/:orgId/directory` use the signed-in session and CSRF
+checks. The service derives tenant identity from the authenticated account. MCP groups the same
+operations in `query_employee_directory` and `manage_employee_directory` with `request.action`.
+
+An enabled account can list active departments and confirmed active stores. Employee records
+require the configured `employee_profiles` level and the complete current business scope.
+Administrators can add records without read authority, and receive the employee UID. Editing,
+departing or restoring existing records requires the applicable read authority; a transfer
+also checks the destination. Existing items are versioned. Active employee assignments prevent
+retiring a store or department. See the [directory reference](../../skills/smedc-mcp/references/employee-directory.md)
+for operation shapes and the rollout gate.
 
 ### In-store orders (published 0.15.0, service migration gated)
 

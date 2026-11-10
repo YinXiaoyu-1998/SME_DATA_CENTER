@@ -23,8 +23,13 @@ import {
   parseCurrentUserProfileResponse,
   type LauncherToolDependencies
 } from "../apps/mcp-launcher/src/index.js";
-import { COST_CARD_UPLOAD_SCHEMA, hashCostCard, normalizeEnterpriseIdentity } from "@smedc/domain";
-import { readCostCardCsv } from "@smedc/structured-ingestion";
+import {
+  COST_CARD_UPLOAD_SCHEMA,
+  PHASE3_RUNTIME_LIMIT_DEFAULTS,
+  hashCostCard,
+  normalizeEnterpriseIdentity
+} from "@smedc/domain";
+import { parseStructuredFile, readCostCardCsv } from "@smedc/structured-ingestion";
 import { parse as parseCsv } from "csv-parse/sync";
 import {
   DEVICE_VERIFY_COOKIE,
@@ -313,12 +318,42 @@ integrationRun: try {
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
   });
   try {
+    const permissions = createBusinessAuthorizationRepository({ prisma: identitySetup });
+    const ledgerFixture = "fixtures/structured/delivery_sheet_SH2608250117.xlsx";
+    const ledger = await parseStructuredFile({
+      dataset: "delivery_ledger",
+      fileName: path.basename(ledgerFixture),
+      fileType: "xlsx",
+      content: await readFile(path.join(rootDir, ledgerFixture)),
+      limits: PHASE3_RUNTIME_LIMIT_DEFAULTS
+    });
+    const ledgerStore = ledger.rows[0]?.payload["store_name"];
+    assert(
+      typeof ledgerStore === "string" && ledgerStore.length > 0,
+      "Ledger fixture must identify its store."
+    );
+    for (const { enterpriseName, name } of [
+      { enterpriseName: "Integration Row Imports", name: ledgerStore },
+      { enterpriseName: "Integration Partitions", name: "保利测试店" }
+    ]) {
+      const { authorizationVersion } = await permissions.loadAuthorizationSnapshot(
+        "emp_admin",
+        "default-org"
+      );
+      await permissions.putStore({
+        orgId: "default-org",
+        actorId: "emp_admin",
+        expectedVersion: authorizationVersion,
+        enterpriseName,
+        name
+      });
+    }
     const state = await identitySetup.businessAuthorizationState.upsert({
       where: { orgId: "default-org" },
       create: { orgId: "default-org" },
       update: {}
     });
-    await createBusinessAuthorizationRepository({ prisma: identitySetup }).configureCategory({
+    await permissions.configureCategory({
       orgId: "default-org",
       actorId: "emp_admin",
       expectedVersion: state.version.toString(),
