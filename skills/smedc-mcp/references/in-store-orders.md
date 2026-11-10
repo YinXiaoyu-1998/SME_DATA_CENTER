@@ -2,8 +2,8 @@
 
 ## Release and tenant readiness
 
-`in_store_orders` (店内订单明细) is supported by published, independently verified launcher `0.17.0`.
-The approved installation pin is `0.17.0`. Historical launcher `0.14.0` used the legacy
+`in_store_orders` (店内订单明细) is supported by published, independently verified launcher `0.18.0`.
+The approved installation pin is `0.18.0`. Historical launcher `0.14.0` used the legacy
 `settled_orders` name. Confirm matching service migration and current tenant authorization;
 static tools/list or successful login alone does not establish service or tenant readiness.
 
@@ -220,7 +220,7 @@ idempotency key; an old key conflict is not permission to alter the stored origi
 
 The optional enterprise-workflow contract requires explicit `orderScope: settled_only`
 for complete settled business-day originals, with compatible launcher/service minimum `0.17.0`.
-Launcher `0.17.0` is published, independently verified and is the approved installation pin.
+Launcher `0.18.0` is published, independently verified and is the approved installation pin.
 Verify live workflow capability and current authorization before use; report an unavailable service
 capability rather than omitting scope to bypass the feature gate. Original bytes and
 required columns remain unchanged; a missing checkout-time column is still an error.
