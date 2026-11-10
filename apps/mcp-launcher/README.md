@@ -1,6 +1,6 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher for authenticated uploads, authorized queries and verified local downloads. The source candidate `0.16.0` adds portable enterprise workflow contracts and declared in-store order source scopes. A source version does not establish package publication, matching service rollout or tenant activation. The approved exact installation pin is maintained by the official `smedc-mcp` Skill; use that authority rather than the source candidate. Target release and deployment evidence is maintained in `docs/implementation/staging-readiness.md`.
+Official stdio MCP launcher for authenticated uploads, authorized queries and verified local downloads. Source candidate `0.17.0` replaces 13 permission and enterprise workflow tools with six and advertises 50 tools in total. Use the official `smedc-mcp` Skill for the approved installation pin and consult `docs/implementation/staging-readiness.md` for verified package and service rollout status.
 
 ## Installation and identity
 

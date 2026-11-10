@@ -125,7 +125,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.16.0");
+    expect(manifest.version).toBe("0.17.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -151,8 +151,66 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.16.0");
+      expect(client.getServerVersion()?.version).toBe("0.17.0");
       const tools = await client.listTools();
+      const names = tools.tools.map((tool) => tool.name);
+      expect(names).toHaveLength(50);
+      expect(new Set(names).size).toBe(50);
+      const retiredNames = [
+        "list_account_permissions",
+        "get_account_permissions",
+        "list_business_categories",
+        "list_business_dimensions",
+        "list_business_stores",
+        "create_evidence_category",
+        "update_business_category",
+        "create_business_dimension",
+        "update_business_dimension",
+        "create_business_dimension_value",
+        "update_business_dimension_value",
+        "list_enterprise_workflows",
+        "get_enterprise_workflow"
+      ];
+      for (const name of retiredNames) {
+        expect(names).not.toContain(name);
+        const result = await client.callTool({ name, arguments: {} });
+        expect(result).toMatchObject({
+          isError: true,
+          content: [{ type: "text", text: expect.stringMatching(/not found|unknown/i) }]
+        });
+      }
+      for (const name of [
+        "query_account_permissions",
+        "get_permission_directory",
+        "query_enterprise_workflows"
+      ]) {
+        expect(tools.tools.find((tool) => tool.name === name)).toMatchObject({
+          annotations: { readOnlyHint: true }
+        });
+      }
+      for (const name of [
+        "configure_business_category",
+        "configure_business_dimension",
+        "configure_business_dimension_value"
+      ]) {
+        expect(tools.tools.find((tool) => tool.name === name)).toMatchObject({
+          annotations: { readOnlyHint: false, destructiveHint: true },
+          inputSchema: {
+            additionalProperties: false,
+            required: expect.arrayContaining(["expectedVersion", "operation"])
+          }
+        });
+      }
+      const querySchema = tools.tools.find((tool) => tool.name === "query_account_permissions")
+        ?.inputSchema.properties?.["query"] as { oneOf?: unknown[]; anyOf?: unknown[] } | undefined;
+      expect(querySchema?.oneOf ?? querySchema?.anyOf).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            additionalProperties: false,
+            required: expect.arrayContaining(["mode", "employeeId"])
+          })
+        ])
+      );
       expect(
         tools.tools.find((tool) => tool.name === "upsert_store_reviews")?.inputSchema
       ).toMatchObject({
@@ -180,10 +238,10 @@ describe("published launcher artifact", () => {
           "prepare_ledger_pdf_download",
           "get_ledger_pdf_download_url",
           "get_my_permissions",
-          "get_account_permissions",
+          "query_account_permissions",
           "update_account_permissions",
-          "list_business_categories",
-          "update_business_category",
+          "get_permission_directory",
+          "configure_business_category",
           "update_evidence_document_attributes",
           "prepare_authorization_cutover",
           "activate_authorization_cutover",

@@ -171,21 +171,27 @@ MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
 authorization mode/version, query shape, filters, limit, and retrieval configuration.
 
-### Versioned enterprise workflows (published 0.16.0, live capability gated)
+### Versioned enterprise workflows
 
-Published, independently verified launcher `0.16.0` includes the eight enterprise-workflow tools
-and `prepare_order_scope_transition`. The core Skill pins `0.16.0`; OAuth compatibility stays
-at `0.12.0`, and the existing in-store/takeaway feature floors stay at `0.15.0`.
-Use `list_enterprise_workflows` to establish current service capability/version and the authenticated
-enterprise settings entry. Tool discovery and installation do not activate a configuration,
-change tenant authorization, migrate host tasks or confirm order-source scope. Follow the
+Source candidate `0.17.0` publishes seven enterprise workflow tools through MCP. On a matching
+service, call `query_enterprise_workflows` with `query.mode` set to `list` to discover the current
+capability version and authenticated settings entry. List mode accepts the existing optional
+`enterpriseKey`, `cursor` and `limit`. Detail mode requires `enterpriseKey` and
+`workflowType` and returns one workflow's configuration. Use `get_workflow_status` for
+installation, run, action and migration status. The list and detail HTTP operations retain their
+original routes and payloads. The matching `smedc-workflows` companion uses the consolidated MCP query.
+
+The approved installation pin remains the independently verified `0.16.0` until the candidate
+is published and verified. The 50-tool cutover requires the matching service and companion versions.
+Tool discovery and installation do not activate a configuration, change tenant authorization,
+migrate host tasks or confirm order-source scope. Follow the
 [workflow reference](../../skills/smedc-mcp/references/enterprise-workflows.md) and its companion
 for versioned preview/save, assignment, run/action and migration contracts. Live recommended-version
 metadata remains a separately verified deployment fact in [staging readiness](staging-readiness.md).
 
 <a id="current-permission-and-management-tools-launcher-0110"></a>
 
-### Current permission and management tools (Launcher 0.15.0)
+### Current permission and management tools
 
 All calls use the existing authenticated HTTP delegation. Every write requires the current
 `expectedVersion`; conflicts return `AUTHORIZATION_VERSION_CONFLICT` without partial changes.
@@ -194,21 +200,24 @@ no arbitrary HTTP/SQL proxy. `get_my_permissions` reads live state on every call
 inspect complete configuration for themselves and any same-organization account even without
 content grants. Management/status outputs have no signed content links.
 
-| MCP tool                                                              | HTTP operation                                                                    |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `get_my_permissions`                                                  | `GET /v1/permissions/me`                                                          |
-| `list_account_permissions` / `get_account_permissions`                | `GET /v1/admin/permissions/accounts[/:employeeId]`                                |
-| `update_account_permissions`                                          | `PATCH /v1/admin/permissions/accounts/:employeeId`                                |
-| `list_business_categories` / `create_evidence_category`               | `GET` / `POST /v1/admin/permissions/categories`                                   |
-| `update_business_category`                                            | `PATCH /v1/admin/permissions/categories/:categoryId`                              |
-| `list_business_dimensions` / `create_business_dimension`              | `GET` / `POST /v1/admin/permissions/dimensions`                                   |
-| `update_business_dimension`                                           | `PATCH /v1/admin/permissions/dimensions/:dimensionId`                             |
-| `create_business_dimension_value` / `update_business_dimension_value` | `POST /v1/admin/permissions/dimensions/:dimensionId/values`, `PATCH .../:valueId` |
-| `list_business_stores` / `update_business_store`                      | `GET` / `POST /v1/admin/permissions/stores`                                       |
-| `update_evidence_document_attributes`                                 | `PATCH /v1/admin/permissions/documents/:documentId`                               |
-| `get_evidence_document_management_status`                             | `GET /v1/admin/documents/evidence/:documentId/status`                             |
-| `prepare_authorization_cutover`                                       | `GET /v1/admin/permissions/cutover`                                               |
-| `activate_authorization_cutover` / `suspend_authorization_reads`      | `POST /v1/admin/permissions/cutover/activate` / `suspend`                         |
+The consolidated permission MCP entries below apply to source candidate `0.17.0` and its
+matching service. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
+for the inputs and release gate.
+
+| MCP tool                                                         | HTTP operation                                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `get_my_permissions`                                             | `GET /v1/permissions/me`                                                                         |
+| `query_account_permissions`                                      | `GET /v1/admin/permissions/accounts[/:employeeId]`, selected by `query.mode`                     |
+| `update_account_permissions`                                     | `PATCH /v1/admin/permissions/accounts/:employeeId`                                               |
+| `get_permission_directory`                                       | `GET /v1/admin/permissions/{categories,dimensions,stores}`, selected by `section`                |
+| `configure_business_category`                                    | `POST /v1/admin/permissions/categories` or `PATCH /v1/admin/permissions/categories/:categoryId`  |
+| `configure_business_dimension`                                   | `POST /v1/admin/permissions/dimensions` or `PATCH /v1/admin/permissions/dimensions/:dimensionId` |
+| `configure_business_dimension_value`                             | `POST /v1/admin/permissions/dimensions/:dimensionId/values` or `PATCH .../:valueId`              |
+| `update_business_store`                                          | `POST /v1/admin/permissions/stores`                                                              |
+| `update_evidence_document_attributes`                            | `PATCH /v1/admin/permissions/documents/:documentId`                                              |
+| `get_evidence_document_management_status`                        | `GET /v1/admin/documents/evidence/:documentId/status`                                            |
+| `prepare_authorization_cutover`                                  | `GET /v1/admin/permissions/cutover`                                                              |
+| `activate_authorization_cutover` / `suspend_authorization_reads` | `POST /v1/admin/permissions/cutover/activate` / `suspend`                                        |
 
 Fixed category edits accept `confidentialityLevel`; evidence category edits accept `ownerships`
 and `requiredDimensionIds`, never both models. Grants use explicit `all` or nonempty `fixed`

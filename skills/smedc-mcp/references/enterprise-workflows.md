@@ -28,18 +28,30 @@ supports stable `1.0.x` workflow packages; other minor/major lines and prereleas
 compatibility update. Register the actual package version. Each run remains pinned to its exact
 package revision, including resume; never report `1.0.0` to bypass an incompatibility response.
 
-When compatible official tools exist, call `list_enterprise_workflows` to verify live service
-capability/version and obtain the authenticated enterprise catalog and official settings entry.
-Do not infer readiness from tool discovery, construct organization URLs or demand JSON from the
-administrator. Open the returned “自动任务” entry, reuse existing settings, and let the user inspect
-precise store mappings, recipients, standing authorizations, named groups and changes. Saving a
-paused draft or migration must not activate execution or a new order-scope requirement.
+Choose the configuration query according to the
+[core release boundary](../SKILL.md#business-permission-tools-and-release-boundary).
+With the launcher `0.17.0` candidate contract and its matching service after cutover:
 
-The official tool family is list/get/prepare/save enterprise workflow, manage workflow installation,
-manage workflow run, record workflow action, and get workflow status. Configuration changes use
-server previews plus expected configuration/integration/control versions. Read the actual matching
-schemas; do not invent operations or arbitrary payload fields. The companion owns the bounded
-installation, lease, action, recovery and migration recipes.
+- Call `query_enterprise_workflows { query: { mode: "list" } }` to verify live capability/version and
+  retrieve the authenticated enterprise catalog and official settings entry. The list branch accepts
+  optional `enterpriseKey`, `cursor` and `limit` (1–100). Pass the response's `nextCursor` as
+  `query.cursor` with the same filters to continue.
+- Call `query_enterprise_workflows { query: { mode: "detail", enterpriseKey, workflowType } }`
+  to read configuration for that business enterprise and workflow type. Both selectors are required.
+
+With the approved `0.16.0` launcher and its matching pre-cutover service, use
+`list_enterprise_workflows { enterpriseKey?, cursor?, limit? }` and
+`get_enterprise_workflow { enterpriseKey, workflowType }`. Use `get_workflow_status` to inspect
+installation, run and migration state on either version.
+
+Verify live capability through the list response. Open the returned “自动任务” entry, reuse existing
+settings, and let the user inspect precise store mappings, recipients, standing authorizations, named
+groups and changes. Saving a paused draft or migration must not activate execution or a new order-scope
+requirement.
+
+Configuration changes use `prepare_enterprise_workflow_change` and `save_enterprise_workflow` with
+server previews plus expected configuration/integration/control versions. Read the matching schemas.
+The companion owns the bounded installation, lease, action, recovery and migration recipes.
 
 Cold recovery must discover previous actions before deciding what remains. On a compatible
 service, `get_workflow_status` with the original `workflowId` and `runId` also returns

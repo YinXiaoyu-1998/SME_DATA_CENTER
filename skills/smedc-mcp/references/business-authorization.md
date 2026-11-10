@@ -97,23 +97,55 @@ and request that declaration; this Skill does not repair data or decide permissi
 
 Only a current active same-organization admin can call these controlled operations:
 
-| Purpose                                                           | Tools / required selectors                                                                                                                                                                     |
-| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| View accounts and full configuration, including self/other admins | `list_account_permissions {}`, `get_account_permissions { employeeId }`                                                                                                                        |
-| Replace account configuration                                     | `update_account_permissions { employeeId, expectedVersion, clearance, grants }`                                                                                                                |
-| Categories                                                        | `list_business_categories {}`, `create_evidence_category { id, name, expectedVersion, ownerships, requiredDimensionIds }`, `update_business_category { categoryId, name, expectedVersion, … }` |
-| Dimensions                                                        | `list_business_dimensions {}`, `create_business_dimension { id, name, expectedVersion }`, `update_business_dimension { dimensionId, name, expectedVersion }`                                   |
-| Dimension values                                                  | `create_business_dimension_value { dimensionId, id, name, expectedVersion }`, `update_business_dimension_value { dimensionId, valueId, name, expectedVersion }`                                |
-| Exact store directory                                             | `list_business_stores {}`, `update_business_store { enterpriseKey, name, expectedVersion }`                                                                                                    |
-| Evidence attributes                                               | `update_evidence_document_attributes { documentId, expectedVersion, categoryId, fileConfidentialityLevel, scopes, historicalSupplementReason? }`                                               |
-| Safe evidence management status                                   | `get_evidence_document_management_status { documentId }`                                                                                                                                       |
-| Read-only preparation                                             | `prepare_authorization_cutover {}`                                                                                                                                                             |
-| Explicit activation / read suspension                             | `activate_authorization_cutover` / `suspend_authorization_reads { expectedVersion, confirm: true }`                                                                                            |
+### Consolidated tools after cutover
+
+These signatures require the launcher `0.17.0` candidate contract and matching service. Follow the
+[core release boundary](../SKILL.md#business-permission-tools-and-release-boundary) before using them.
+Use `get_my_permissions {}` for the current employee's own live permission card.
+
+| Purpose                                                   | Tool and parameters                                                                                                                           |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| List accounts or view one account                         | `query_account_permissions { query: { mode: "list" } }` or `{ query: { mode: "detail", employeeId } }`                                        |
+| Read one directory section and its `authorizationVersion` | `get_permission_directory { section }` with `categories`, `dimensions` or `stores`                                                            |
+| Create an evidence category                               | `configure_business_category { expectedVersion, operation: { kind: "create_evidence", id, name, ownerships, requiredDimensionIds } }`         |
+| Update an evidence category                               | `configure_business_category { expectedVersion, operation: { kind: "update_evidence", categoryId, name, ownerships, requiredDimensionIds } }` |
+| Update a fixed category                                   | `configure_business_category { expectedVersion, operation: { kind: "update_fixed", categoryId, name, confidentialityLevel } }`                |
+| Create or update a dimension                              | `configure_business_dimension { expectedVersion, operation: { kind, dimensionId, name } }`                                                    |
+| Create or update a value in a dimension                   | `configure_business_dimension_value { expectedVersion, operation: { kind, dimensionId, valueId, name } }`                                     |
+
+Dimension and value operations use `kind: "create"` or `kind: "update"`. Configuration operations
+accept optional `retired` inside `operation`. Send exactly one branch per call and only its declared
+fields. Use the current `authorizationVersion` as `expectedVersion`. A stale version rejects the
+entire write. Create requires a new ID, update requires an existing target, and category updates
+check the actual category type.
+
+### Legacy tools before cutover
+
+Use these signatures only with the approved `0.16.0` launcher and its matching pre-cutover service.
+
+| Purpose                        | Tool and parameters                                                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accounts                       | `list_account_permissions {}`, `get_account_permissions { employeeId }`                                                                                                                        |
+| Category directory and writes  | `list_business_categories {}`, `create_evidence_category { id, name, expectedVersion, ownerships, requiredDimensionIds }`, `update_business_category { categoryId, name, expectedVersion, … }` |
+| Dimension directory and writes | `list_business_dimensions {}`, `create_business_dimension { id, name, expectedVersion }`, `update_business_dimension { dimensionId, name, expectedVersion }`                                   |
+| Dimension values               | `create_business_dimension_value { dimensionId, id, name, expectedVersion }`, `update_business_dimension_value { dimensionId, valueId, name, expectedVersion }`                                |
+| Store directory                | `list_business_stores {}`                                                                                                                                                                      |
+
+### Separate administration tools
+
+| Purpose                               | Tool and parameters                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Replace account configuration         | `update_account_permissions { employeeId, expectedVersion, clearance, grants }`                                                                  |
+| Update a store                        | `update_business_store { enterpriseKey, name, expectedVersion }`                                                                                 |
+| Evidence attributes                   | `update_evidence_document_attributes { documentId, expectedVersion, categoryId, fileConfidentialityLevel, scopes, historicalSupplementReason? }` |
+| Safe evidence management status       | `get_evidence_document_management_status { documentId }`                                                                                         |
+| Read-only preparation                 | `prepare_authorization_cutover {}`                                                                                                               |
+| Explicit activation / read suspension | `activate_authorization_cutover` / `suspend_authorization_reads { expectedVersion, confirm: true }`                                              |
 
 Read current directories/configuration before writing. The service initializes all eight fixed
 categories through deployment migration for existing tenants and account onboarding for new tenants.
 Initialization preserves existing IDs, levels and retirement choices; new levels remain unset and no
-grants or activation are inferred. Use IDs returned by `list_business_categories`, never invent
+grants or activation are inferred. Use IDs returned by the category directory. Never invent
 `fixed:…` IDs or create an evidence category to replace a missing fixed category. If the service
 still reports a missing fixed category, report incomplete service initialization to its operator.
 Only the seven readable fixed categories need administrator-declared levels. `delivery_ledger`
