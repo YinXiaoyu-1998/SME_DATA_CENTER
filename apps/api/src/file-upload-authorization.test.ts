@@ -23,7 +23,8 @@ vi.mock("@prisma/adapter-mariadb", () => ({
   PrismaMariaDb: class PrismaMariaDb {}
 }));
 
-vi.mock("@prisma/client", () => ({
+vi.mock("@prisma/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@prisma/client")>()),
   PrismaClient: class PrismaClient {
     constructor() {
       return prisma;
