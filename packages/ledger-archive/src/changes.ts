@@ -114,11 +114,11 @@ export async function ledgerPartitionsForDocument(
 /** Mutation hints never reveal a hidden ledger partition through a known receipt/photo. */
 export async function readableLedgerPartitionHints(
   tx: Prisma.TransactionClient,
-  employeeId: string,
+  userAccountId: string,
   keys: LedgerPartitionKey[]
 ): Promise<LedgerPartitionKey[]> {
   if (!keys.length) return [];
-  const snapshot = await currentLedgerAuthorization(tx, employeeId, keys[0]!.orgId);
+  const snapshot = await currentLedgerAuthorization(tx, userAccountId, keys[0]!.orgId);
   if (snapshot.disabled) return [];
   const visible: LedgerPartitionKey[] = [];
   for (const key of keys) {

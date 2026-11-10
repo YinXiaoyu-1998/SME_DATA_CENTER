@@ -15,7 +15,7 @@ import { phase3ErrorResponse } from "./request-errors.js";
 export interface UploadAuthorizationAuditRepository {
   appendDenied(input: {
     orgId: string;
-    actorEmployeeId: string;
+    actorUserAccountId: string;
     uploadSurface: FileUploadSurface;
     audit: RequestAuditContext;
   }): Promise<void>;
@@ -40,7 +40,7 @@ export function createPrismaUploadAuthorizationAuditRepository(
       await prisma.auditLog.create({
         data: {
           orgId: input.orgId,
-          actorEmployeeId: input.actorEmployeeId,
+          actorUserAccountId: input.actorUserAccountId,
           action: AUDIT_ACTIONS.fileUploadDenied,
           targetType: "file_upload",
           targetId: null,
@@ -75,7 +75,7 @@ export async function authorizeFileUpload(input: {
       typeof input.auditRepository === "function" ? input.auditRepository() : input.auditRepository;
     await repository.appendDenied({
       orgId: input.employee.orgId,
-      actorEmployeeId: input.employee.id,
+      actorUserAccountId: input.employee.id,
       uploadSurface: input.uploadSurface,
       audit: input.audit
     });

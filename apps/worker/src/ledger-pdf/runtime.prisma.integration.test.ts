@@ -97,7 +97,7 @@ it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
       await prisma.organization.createMany({
         data: [orgId, otherOrgId].map((id) => ({ id, name: "Synthetic ledger flow" }))
       });
-      const employee = await prisma.employee.create({
+      const employee = await prisma.userAccount.create({
         data: {
           orgId,
           email: `${orgId}@example.invalid`,
@@ -106,7 +106,7 @@ it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
           clearance: 3
         }
       });
-      const other = await prisma.employee.create({
+      const other = await prisma.userAccount.create({
         data: {
           orgId: otherOrgId,
           email: `${otherOrgId}@example.invalid`,
@@ -434,7 +434,7 @@ it.skipIf(process.env["RUN_LEDGER_FLOW_INTEGRATION"] !== "1")(
       await prisma.deliveryLedgerRow.deleteMany({ where });
       await prisma.importBatch.deleteMany({ where });
       await prisma.document.deleteMany({ where });
-      await prisma.employee.deleteMany({ where });
+      await prisma.userAccount.deleteMany({ where });
       await prisma.organization.deleteMany({ where: { id: where.orgId } });
       await prisma.$disconnect();
       process.env["PATH"] = originalPath;

@@ -56,7 +56,7 @@ export interface CreateQuarantineCertificateInput {
   enterpriseKey?: string;
   storeName?: string;
   orgId: string;
-  actorEmployeeId: string;
+  actorUserAccountId: string;
   sourceDocumentId: string;
   title: string;
   receiptId: string;
@@ -102,7 +102,7 @@ export interface QuarantineCertificateRepository {
   findByIdempotencyKey(
     orgId: string,
     idempotencyKey: string,
-    actorEmployeeId?: string
+    actorUserAccountId?: string
   ): Promise<(QuarantineCertificateRecord & { requestFingerprint: string }) | null>;
   createCertificate(input: CreateQuarantineCertificateInput): Promise<QuarantineCertificateRecord>;
   queryVisibleByReceiptIds(
@@ -164,7 +164,7 @@ export function createPrismaQuarantineCertificateRepository(
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
 
   return {
-    async findByIdempotencyKey(orgId, idempotencyKey, actorEmployeeId) {
+    async findByIdempotencyKey(orgId, idempotencyKey, actorUserAccountId) {
       const certificate = await prisma.quarantineCertificate.findUnique({
         where: {
           orgId_idempotencyKey: {
@@ -191,7 +191,7 @@ export function createPrismaQuarantineCertificateRepository(
         ...toCertificateRecord(certificate),
         affectedLedgerPartitions: await readableLedgerPartitionHints(
           prisma,
-          actorEmployeeId ?? certificate.sourceDocument.uploaderId,
+          actorUserAccountId ?? certificate.sourceDocument.uploaderId,
           metadata?.affectedLedgerPartitions ?? []
         )
       };
@@ -201,11 +201,11 @@ export function createPrismaQuarantineCertificateRepository(
         const certificate = await retryIdempotentDatabaseOperation(() =>
           prisma.$transaction(async (tx) => {
             await lockLedgerSourceMutation(tx, input.orgId);
-            await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+            await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
             const historicalSupplement = await bindHistoricalSupplementIntent(
               tx,
               input.orgId,
-              input.actorEmployeeId,
+              input.actorUserAccountId,
               input.historicalSupplementReason
             );
             await tx.document.create({
@@ -223,7 +223,7 @@ export function createPrismaQuarantineCertificateRepository(
                 contentType: input.contentType,
                 byteSize: BigInt(input.byteSize),
                 checksumSha256: input.checksumSha256,
-                uploaderId: input.actorEmployeeId,
+                uploaderId: input.actorUserAccountId,
                 sourceSystem: null,
                 sourceTime: null,
                 sourceMetadata: {
@@ -259,7 +259,7 @@ export function createPrismaQuarantineCertificateRepository(
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.actorEmployeeId,
+                actorUserAccountId: input.actorUserAccountId,
                 action: AUDIT_ACTIONS.documentUploaded,
                 targetType: "quarantine_certificate",
                 targetId: input.sourceDocumentId,
@@ -280,7 +280,7 @@ export function createPrismaQuarantineCertificateRepository(
               ...toCertificateRecord(created),
               affectedLedgerPartitions: await readableLedgerPartitionHints(
                 tx,
-                input.actorEmployeeId,
+                input.actorUserAccountId,
                 affectedLedgerPartitions
               )
             };
@@ -315,7 +315,7 @@ export function createPrismaQuarantineCertificateRepository(
               ...toCertificateRecord(existing),
               affectedLedgerPartitions: await readableLedgerPartitionHints(
                 prisma,
-                input.actorEmployeeId,
+                input.actorUserAccountId,
                 metadata?.affectedLedgerPartitions ?? []
               )
             };
@@ -410,7 +410,7 @@ export function createPrismaQuarantineCertificateRepository(
       return retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
-          const actor = await tx.employee.findFirst({
+          const actor = await tx.userAccount.findFirst({
             where: { id: input.employee.id, orgId: input.orgId, role: "admin", disabled: false },
             select: { id: true }
           });
@@ -462,7 +462,7 @@ export function createPrismaQuarantineCertificateRepository(
       return retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
-          const actor = await tx.employee.findFirst({
+          const actor = await tx.userAccount.findFirst({
             where: { id: input.employee.id, orgId: input.orgId, role: "admin", disabled: false },
             select: { id: true }
           });
@@ -533,7 +533,7 @@ function archiveAuditData(input: {
 }) {
   return {
     orgId: input.input.orgId,
-    actorEmployeeId: input.input.employee.id,
+    actorUserAccountId: input.input.employee.id,
     action: AUDIT_ACTIONS.documentArchived,
     targetType: "quarantine_certificate",
     targetId: input.targetId,

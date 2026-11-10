@@ -12,7 +12,7 @@ const run = process.env["RUN_PARTITION_PRISMA_INTEGRATION"] === "1";
 const suite = run ? describe : describe.skip;
 const databaseUrl = process.env["DATABASE_URL"] ?? "";
 const orgId = "partition_repo_org";
-const employeeId = "partition_repo_employee";
+const userAccountId = "partition_repo_employee";
 
 suite("structured partition repository", () => {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
@@ -21,9 +21,9 @@ suite("structured partition repository", () => {
 
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Partition Repository Test" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
-        id: employeeId,
+        id: userAccountId,
         orgId,
         email: "partition-repo@example.invalid",
         displayName: "Partition Repo",
@@ -44,7 +44,7 @@ suite("structured partition repository", () => {
     await prisma.structuredPartition.deleteMany({ where: { orgId } });
     await prisma.partitionImportJob.deleteMany({ where: { orgId } });
     await prisma.storageGarbage.deleteMany({});
-    await prisma.employee.deleteMany({ where: { id: employeeId } });
+    await prisma.userAccount.deleteMany({ where: { id: userAccountId } });
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });
@@ -294,7 +294,7 @@ suite("structured partition repository", () => {
     const job = await prisma.partitionImportJob.findUniqueOrThrow({
       where: { id: "pjob_cleanup_base" }
     });
-    const employee = await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } });
+    const employee = await prisma.userAccount.findUniqueOrThrow({ where: { id: userAccountId } });
     const result = await cleanup.executeStoreCleanup({
       inventory: refreshed,
       expectedFingerprint: refreshed.fingerprint
@@ -314,7 +314,7 @@ suite("structured partition repository", () => {
       job
     );
     expect(await prisma.processingRun.findUniqueOrThrow({ where: { id: run.id } })).toEqual(run);
-    expect(await prisma.employee.findUniqueOrThrow({ where: { id: employeeId } })).toEqual(
+    expect(await prisma.userAccount.findUniqueOrThrow({ where: { id: userAccountId } })).toEqual(
       employee
     );
     const garbage = await repository.listDueGarbage(new Date(), 100);
@@ -398,7 +398,7 @@ suite("structured partition repository", () => {
     await repository.reserveUpload({
       id: jobId,
       orgId,
-      uploaderId: employeeId,
+      uploaderId: userAccountId,
       dataset: "business",
       enterpriseKey: "synthetic",
       enterpriseName: "Synthetic",

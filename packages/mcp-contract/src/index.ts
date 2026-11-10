@@ -873,13 +873,13 @@ export const PERMISSION_MCP_INPUT_SCHEMAS = {
     .object({
       query: z.discriminatedUnion("mode", [
         z.object({ mode: z.literal("list") }).strict(),
-        z.object({ mode: z.literal("detail"), employeeId: permissionId }).strict()
+        z.object({ mode: z.literal("detail"), userAccountId: permissionId }).strict()
       ])
     })
     .strict(),
   update_account_permissions: z
     .object({
-      employeeId: permissionId,
+      userAccountId: permissionId,
       expectedVersion: permissionVersion,
       clearance: z.number().int().min(0).max(3),
       grants: z.array(permissionGrant).max(1000)
@@ -1086,7 +1086,7 @@ const permissionToolDescriptions: Record<keyof PermissionMcpInputs, string> = {
   get_my_permissions:
     "Read your live permission card, including current grants and registered enterprise names for store review reads and writes. Available to employees and administrators.",
   query_account_permissions:
-    "List employee permission summaries with query.mode=list or retrieve one account's full authorization configuration with query.mode=detail and employeeId. Use update_account_permissions to save a change.",
+    "List employee permission summaries with query.mode=list or retrieve one account's full authorization configuration with query.mode=detail and userAccountId. Use update_account_permissions to save a change.",
   update_account_permissions:
     "Replace an employee's clearance and complete set of business grants. Use the current expectedVersion. Send an empty grants array to revoke all business grants.",
   get_permission_directory:

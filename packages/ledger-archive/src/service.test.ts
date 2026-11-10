@@ -38,7 +38,7 @@ describe("ledger archive service", () => {
     );
     await service.requestRefresh({
       ...common,
-      actor: { kind: "employee", employeeId: "other" },
+      actor: { kind: "employee", userAccountId: "other" },
       scope: { storeNames: ["A", "B"], dates: ["2024-02-29"] }
     });
     expect(reserveRefresh.mock.calls[2]?.[0].requestFingerprint).not.toBe(

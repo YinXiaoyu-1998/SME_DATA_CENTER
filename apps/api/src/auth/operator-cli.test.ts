@@ -13,18 +13,18 @@ class MemoryOperatorRepository implements AuthOperatorRepository {
 
   async onboard(input: Parameters<AuthOperatorRepository["onboard"]>[0]) {
     this.onboardInput = input;
-    return { employeeId: "employee-new", identityId: "identity-new" };
+    return { userAccountId: "employee-new", identityId: "identity-new" };
   }
 
   async resetPassword(input: Parameters<AuthOperatorRepository["resetPassword"]>[0]) {
     this.resetInput = input;
-    return { employeeId: input.employeeId, identityId: "identity-new" };
+    return { userAccountId: input.userAccountId, identityId: "identity-new" };
   }
 
   async deleteTestAccount(input: Parameters<AuthOperatorRepository["deleteTestAccount"]>[0]) {
     this.deleteInput = input;
     return {
-      employeeId: "employee-new",
+      userAccountId: "employee-new",
       identityIds: ["identity-new"]
     };
   }
@@ -56,10 +56,16 @@ describe("auth operator CLI", () => {
     });
 
     expect(() =>
-      parseOperatorCommand(["reset-password", "--employee-id", "employee-new", "--password", "x"])
+      parseOperatorCommand([
+        "reset-password",
+        "--user-account-id",
+        "employee-new",
+        "--password",
+        "x"
+      ])
     ).toThrow("Unknown option");
     expect(() =>
-      parseOperatorCommand(["reset-password", "--employee-id", "employee-new", "--token", "x"])
+      parseOperatorCommand(["reset-password", "--user-account-id", "employee-new", "--token", "x"])
     ).toThrow("Unknown option");
     expect(() =>
       parseOperatorCommand([
@@ -137,7 +143,7 @@ describe("auth operator CLI", () => {
     const stdout: string[] = [];
 
     await runOperatorCommand(
-      { kind: "reset-password", employeeId: "employee-new" },
+      { kind: "reset-password", userAccountId: "employee-new" },
       {
         repository,
         webOrigin: "https://api.example.com",
@@ -182,7 +188,7 @@ describe("auth operator CLI", () => {
     expect(JSON.parse(stdout[0]!)).toMatchObject({
       ok: true,
       deleted: true,
-      employeeId: "employee-new",
+      userAccountId: "employee-new",
       identityCount: 1
     });
 

@@ -106,8 +106,8 @@ it.each([
     "update_account_permissions",
     "PATCH",
     "/v1/admin/permissions/accounts/employee%2F1",
-    { employeeId: "employee/1", expectedVersion: "7", clearance: 2, grants: [] },
-    ["employeeId"]
+    { userAccountId: "employee/1", expectedVersion: "7", clearance: 2, grants: [] },
+    ["userAccountId"]
   ],
   [
     "update_business_store",

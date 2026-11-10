@@ -94,10 +94,10 @@ export async function lockAuthorizationPublication(tx: Tx, orgId: string) {
     update: { version: { increment: 1 } }
   });
 }
-export async function requireCurrentUploadAdmin(tx: Tx, orgId: string, employeeId: string) {
+export async function requireCurrentUploadAdmin(tx: Tx, orgId: string, userAccountId: string) {
   if (
-    !(await tx.employee.findFirst({
-      where: { orgId, id: employeeId, disabled: false, role: "admin" },
+    !(await tx.userAccount.findFirst({
+      where: { orgId, id: userAccountId, disabled: false, role: "admin" },
       select: { id: true }
     }))
   )
@@ -211,7 +211,7 @@ async function auditPublication(
   await tx.auditLog.create({
     data: {
       orgId,
-      actorEmployeeId: null,
+      actorUserAccountId: null,
       action: "resource.authorization.published",
       targetType: "business_resource",
       targetId,

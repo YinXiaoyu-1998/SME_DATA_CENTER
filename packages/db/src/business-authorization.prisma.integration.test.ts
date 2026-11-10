@@ -64,7 +64,7 @@ suite("business authorization Prisma foundation", () => {
     actorId = `${orgId}_actor`;
     version = "0";
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic Authorization" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: actorId,
         orgId,
@@ -155,7 +155,7 @@ suite("business authorization Prisma foundation", () => {
       }
     ];
     await write(
-      repository.configureAccount({ clearance: 2, ...context(), employeeId: actorId, grants })
+      repository.configureAccount({ clearance: 2, ...context(), userAccountId: actorId, grants })
     );
     const scopes = (storeName: string, project: string) => ({
       enterpriseKey: "enterprise",
@@ -311,7 +311,7 @@ suite("business authorization Prisma foundation", () => {
       repository.configureAccount({
         clearance: 2,
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         grants: [
           {
             ...grants[0]!,
@@ -344,7 +344,7 @@ suite("business authorization Prisma foundation", () => {
       repository.configureAccount({
         grants: (await repository.loadAuthorizationSnapshot(actorId, orgId)).grants,
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         clearance: 2
       })
     );
@@ -353,11 +353,13 @@ suite("business authorization Prisma foundation", () => {
         grants: (await repository.loadAuthorizationSnapshot(actorId, orgId)).grants,
         ...context(),
         expectedVersion: oldVersion,
-        employeeId: actorId,
+        userAccountId: actorId,
         clearance: 0
       })
     ).rejects.toThrow("AUTHORIZATION_VERSION_CONFLICT");
-    expect((await prisma.employee.findUniqueOrThrow({ where: { id: actorId } })).clearance).toBe(2);
+    expect((await prisma.userAccount.findUniqueOrThrow({ where: { id: actorId } })).clearance).toBe(
+      2
+    );
     await write(
       historicalResource({
         ...context(),
@@ -390,7 +392,7 @@ suite("business authorization Prisma foundation", () => {
       repository.configureAccount({
         clearance: 2,
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         grants: [
           {
             id: "bad",
@@ -429,7 +431,7 @@ suite("business authorization Prisma foundation", () => {
       repository.configureAccount({
         grants: (await repository.loadAuthorizationSnapshot(actorId, orgId)).grants,
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         clearance: 1
       })
     );
@@ -529,7 +531,7 @@ suite("business authorization Prisma foundation", () => {
         data: {
           orgId: other,
           id: "cross-org",
-          employeeId: actorId,
+          userAccountId: actorId,
           enterpriseKey: "enterprise",
           ownership: "group"
         }
@@ -541,7 +543,7 @@ suite("business authorization Prisma foundation", () => {
     await write(
       repository.configureAccount({
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         clearance: 2,
         grants: [
           {
@@ -591,7 +593,7 @@ suite("business authorization Prisma foundation", () => {
       repository.configureAccount({
         clearance: 2,
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         grants: [
           {
             ...snapshot.grants[0]!,
@@ -683,7 +685,7 @@ suite("business authorization Prisma foundation", () => {
       }
     ];
     await write(
-      repository.configureAccount({ ...context(), employeeId: actorId, clearance: 0, grants })
+      repository.configureAccount({ ...context(), userAccountId: actorId, clearance: 0, grants })
     );
     const changed = await repository.loadAuthorizationSnapshot(actorId, orgId);
     expect(changed.clearance).toBe(0);
@@ -701,21 +703,29 @@ suite("business authorization Prisma foundation", () => {
     await expect(
       repository.configureAccount({
         ...context(),
-        employeeId: actorId,
+        userAccountId: actorId,
         clearance: 3,
         grants: [{ ...grants[0]!, stores: fixed("missing") }]
       })
     ).rejects.toThrow();
     expect(await repository.loadAuthorizationSnapshot(actorId, orgId)).toEqual(changed);
-    await prisma.employee.update({ where: { id: actorId }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id: actorId }, data: { role: "employee" } });
     await expect(
-      repository.configureAccount({ ...context(), employeeId: actorId, clearance: 3, grants: [] })
+      repository.configureAccount({
+        ...context(),
+        userAccountId: actorId,
+        clearance: 3,
+        grants: []
+      })
     ).rejects.toThrow("AUTHORIZATION_ADMIN_REQUIRED");
     const demoted = await repository.loadAuthorizationSnapshot(actorId, orgId);
     expect(demoted.clearance).toBe(0);
     expect(demoted.grants).toEqual(grants);
     expect(demoted.authorizationVersion).toBe(version);
-    await prisma.employee.update({ where: { id: actorId }, data: { role: "admin", clearance: 2 } });
+    await prisma.userAccount.update({
+      where: { id: actorId },
+      data: { role: "admin", clearance: 2 }
+    });
   });
   it("onboards with empty defaults or explicit grants and audits the transaction without credential data", async () => {
     const operator = createPrismaAuthOperatorRepository(prisma);
@@ -730,7 +740,7 @@ suite("business authorization Prisma foundation", () => {
       now: new Date()
     };
     const first = await operator.onboard(input);
-    expect((await repository.loadAuthorizationSnapshot(first.employeeId, orgId)).grants).toEqual(
+    expect((await repository.loadAuthorizationSnapshot(first.userAccountId, orgId)).grants).toEqual(
       []
     );
     const grants: BusinessGrant[] = [
@@ -750,13 +760,13 @@ suite("business authorization Prisma foundation", () => {
       grantTokenHash: `${orgId}-synthetic-hash-explicit`,
       initialGrants: grants
     });
-    expect((await repository.loadAuthorizationSnapshot(second.employeeId, orgId)).grants).toEqual(
-      grants
-    );
+    expect(
+      (await repository.loadAuthorizationSnapshot(second.userAccountId, orgId)).grants
+    ).toEqual(grants);
     const audit = await prisma.auditLog.findFirstOrThrow({
-      where: { targetId: second.employeeId, action: "operator.account.initial_permissions" }
+      where: { targetId: second.userAccountId, action: "operator.account.initial_permissions" }
     });
-    expect(audit.actorEmployeeId).toBeNull();
+    expect(audit.actorUserAccountId).toBeNull();
     expect(audit.clientSource).toBe("operator_cli");
     expect(audit.metadata).toMatchObject({ before: null, after: { clearance: 3, grants } });
     expect(JSON.stringify(audit.metadata)).not.toContain("synthetic-hash");
@@ -770,7 +780,7 @@ suite("business authorization Prisma foundation", () => {
         initialGrants: [{ ...grants[0]!, id: "bad_onboard", stores: fixed("missing") }]
       })
     ).rejects.toThrow();
-    expect(await prisma.employee.findUnique({ where: { email: badEmail } })).toBeNull();
+    expect(await prisma.userAccount.findUnique({ where: { email: badEmail } })).toBeNull();
     expect((await repository.loadAuthorizationSnapshot(actorId, orgId)).authorizationVersion).toBe(
       beforeVersion
     );
@@ -804,7 +814,7 @@ suite("authoritative publication and original lineage", () => {
     await prisma.organization.create({
       data: { id: publicationOrg, name: "Synthetic publication" }
     });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: admin,
         orgId: publicationOrg,
@@ -928,7 +938,7 @@ suite("authoritative publication and original lineage", () => {
     const audit = await prisma.auditLog.findFirstOrThrow({
       where: { orgId: publicationOrg, action: "resource.authorization.published" }
     });
-    expect(audit.actorEmployeeId).toBeNull();
+    expect(audit.actorUserAccountId).toBeNull();
     expect(audit.clientSource).toBe("worker");
     await prisma.document.update({
       where: { id: sourceDocumentId },
@@ -1258,7 +1268,7 @@ suite("authoritative publication and original lineage", () => {
     });
     await permissions.configureAccount({
       ...(await currentContext()),
-      employeeId: admin,
+      userAccountId: admin,
       clearance: 3,
       grants: [
         {
@@ -1384,12 +1394,12 @@ suite("authoritative publication and original lineage", () => {
       }
     });
     expect(audit).toMatchObject({
-      actorEmployeeId: admin,
+      actorUserAccountId: admin,
       clientSource: "admin",
       result: "succeeded"
     });
     expect(audit.metadata).toMatchObject({
-      historicalSupplement: { actorEmployeeId: admin, reason },
+      historicalSupplement: { actorUserAccountId: admin, reason },
       businessDates: [date],
       retired: expect.arrayContaining([
         { kind: "category", identity: ["business"] },
@@ -1413,7 +1423,7 @@ suite("authoritative publication and original lineage", () => {
       })
     ).toMatchObject({ retired: true, name: storeName });
     const revokedJob = await reserve(reason);
-    await prisma.employee.update({ where: { id: admin }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id: admin }, data: { role: "employee" } });
     const beforeRevoked = (await permissions.loadAuthorizationSnapshot(admin, publicationOrg))
       .authorizationVersion;
     await expect(publish(revokedJob, candidate(nextId()))).rejects.toThrow(
@@ -1425,7 +1435,7 @@ suite("authoritative publication and original lineage", () => {
     expect(
       await prisma.structuredPartition.findUniqueOrThrow({ where: { id: original.id } })
     ).toMatchObject({ objectKey: correction.objectKey });
-    await prisma.employee.update({ where: { id: admin }, data: { role: "admin" } });
+    await prisma.userAccount.update({ where: { id: admin }, data: { role: "admin" } });
   }, 15_000);
   async function uploadHistoricalEvidence(reason: string) {
     const id = nextId();
@@ -1473,7 +1483,7 @@ suite("authoritative publication and original lineage", () => {
     const reason = "Approved historical memo correction";
     const documentId = await uploadHistoricalEvidence(reason);
     const editor = nextId();
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: editor,
         orgId: publicationOrg,
@@ -1496,7 +1506,7 @@ suite("authoritative publication and original lineage", () => {
       scopes: [{ enterpriseKey: "enterprise", ownership: "group" as const, dimensions: {} }]
     };
     await permissions.configureEvidenceDocument({ ...(await context()), ...patch });
-    const intent = { actorEmployeeId: admin, reason };
+    const intent = { actorUserAccountId: admin, reason };
     expect(
       (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
     ).toMatchObject({ historicalSupplement: intent });
@@ -1514,7 +1524,7 @@ suite("authoritative publication and original lineage", () => {
     expect(
       (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
     ).toMatchObject({ historicalSupplement: intent });
-    await prisma.employee.update({ where: { id: admin }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id: admin }, data: { role: "employee" } });
     const beforeDenied = await prisma.businessAuthorizationState.findUniqueOrThrow({
       where: { orgId: publicationOrg }
     });
@@ -1533,7 +1543,7 @@ suite("authoritative publication and original lineage", () => {
       ).version
     ).toBe(beforeDenied.version);
     expect(await prisma.auditLog.count({ where: { orgId: publicationOrg } })).toBe(auditCount);
-    await prisma.employee.update({ where: { id: admin }, data: { role: "admin" } });
+    await prisma.userAccount.update({ where: { id: admin }, data: { role: "admin" } });
     await prisma.$transaction(async (tx) => {
       await activateEvidenceReadRequirement(tx, publicationOrg, documentId);
       await tx.document.update({ where: { id: documentId }, data: { status: "active" } });
@@ -1571,7 +1581,7 @@ suite("authoritative publication and original lineage", () => {
       orderBy: { createdAt: "desc" }
     });
     expect(audit).toMatchObject({
-      actorEmployeeId: admin,
+      actorUserAccountId: admin,
       metadata: expect.objectContaining({ historicalSupplement: intent })
     });
     await permissions.configureEvidenceDocument({
@@ -1583,7 +1593,7 @@ suite("authoritative publication and original lineage", () => {
       (await prisma.document.findUniqueOrThrow({ where: { id: documentId } })).sourceMetadata
     ).toMatchObject({
       historicalSupplement: {
-        actorEmployeeId: editor,
+        actorUserAccountId: editor,
         reason: "New explicit approval by the permission editor"
       }
     });
@@ -1620,7 +1630,10 @@ suite("authoritative publication and original lineage", () => {
                 enterpriseKey: "enterprise",
                 startDate: "20260819",
                 endDate: "20260819",
-                historicalSupplement: { actorEmployeeId: admin, reason: "Approved historical data" }
+                historicalSupplement: {
+                  actorUserAccountId: admin,
+                  reason: "Approved historical data"
+                }
               }
             }
           });

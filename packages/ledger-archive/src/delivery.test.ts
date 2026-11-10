@@ -145,7 +145,7 @@ describe("authorized ledger PDF delivery", () => {
       bundle: {
         requestId: "download",
         orgId: "org",
-        employeeId: employee.id,
+        userAccountId: employee.id,
         status: "succeeded",
         manifest: { version: 1, scope, entries },
         zipObjectKey: "bundle.zip",
@@ -287,7 +287,7 @@ describe("authorized ledger PDF delivery", () => {
     const f = fixture();
     const authorization = {
       orgId: "org",
-      employeeId: employee.id,
+      userAccountId: employee.id,
       role: "employee" as const,
       disabled: false,
       clearance: 1,
@@ -310,7 +310,7 @@ describe("authorized ledger PDF delivery", () => {
       bundle: {
         requestId: "download",
         orgId: "org",
-        employeeId: employee.id,
+        userAccountId: employee.id,
         status: "succeeded",
         manifest: { version: 1, scope, entries: [entry()] },
         zipObjectKey: "bundle.zip",
@@ -391,7 +391,7 @@ describe("authorized ledger PDF delivery", () => {
       bundle: {
         requestId: "download",
         orgId: "org",
-        employeeId: employee.id,
+        userAccountId: employee.id,
         status: "succeeded",
         manifest,
         zipObjectKey: "bundle.zip",
@@ -580,7 +580,7 @@ describe("authorized ledger PDF delivery", () => {
       bundle: {
         requestId: "download",
         orgId: "org",
-        employeeId: employee.id,
+        userAccountId: employee.id,
         status: "succeeded",
         manifest: { version: 1, scope, entries },
         zipObjectKey: "bundle.zip",
@@ -610,7 +610,7 @@ describe("authorized ledger PDF delivery", () => {
       bundle: {
         requestId: "download",
         orgId: "org",
-        employeeId: employee.id,
+        userAccountId: employee.id,
         status: "succeeded",
         manifest: { version: 1 as const, scope, entries },
         zipObjectKey: "bundle.zip",
@@ -657,7 +657,7 @@ describe("authorized ledger PDF delivery", () => {
       bundle: {
         requestId: "download",
         orgId: "org",
-        employeeId: employee.id,
+        userAccountId: employee.id,
         status: "succeeded",
         manifest: { version: 1, scope, entries },
         zipObjectKey: "bundle.zip",

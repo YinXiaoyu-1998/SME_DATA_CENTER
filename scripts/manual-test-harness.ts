@@ -411,7 +411,7 @@ async function captureManualTestSnapshot(
       qdrantPoints,
       storageFiles
     ] = await Promise.all([
-      prisma.employee.count(),
+      prisma.userAccount.count(),
       prisma.skillEntry.count(),
       prisma.document.count(),
       prisma.processingRun.count(),

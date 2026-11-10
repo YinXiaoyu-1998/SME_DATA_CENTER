@@ -102,7 +102,7 @@ export type LedgerBundleLease = { runId: string; lockedBy: string; attemptNumber
 export type LedgerBundleRecord = {
   requestId: string;
   orgId: string;
-  employeeId: string;
+  userAccountId: string;
   status: string;
   manifest: LedgerBundleManifest;
   zipObjectKey: string | null;
@@ -378,7 +378,7 @@ export function createLedgerPdfDelivery({
           facts.map(publicFact),
           {
             orgId: current.orgId,
-            employeeId: current.id,
+            userAccountId: current.id,
             clearance: current.clearance,
             authorizationVersion: current.authorization?.authorizationVersion,
             scope: input.scope
@@ -410,7 +410,7 @@ export function createLedgerPdfDelivery({
         {
           browser: true,
           orgId: current.orgId,
-          employeeId: current.id,
+          userAccountId: current.id,
           clearance: current.clearance,
           authorizationVersion: current.authorization?.authorizationVersion,
           scope: input.scope,
@@ -551,7 +551,7 @@ export function createLedgerPdfDelivery({
           partitions,
           {
             orgId: current.orgId,
-            employeeId: current.id,
+            userAccountId: current.id,
             clearance: current.clearance,
             requestId: input.requestId
           },
@@ -755,7 +755,7 @@ export function createPrismaLedgerDeliveryRepository({
   const access = createPrismaLedgerArtifactAccess({ prisma });
   async function currentEmployee(employee: LedgerDeliveryEmployee) {
     if (employee.disabled) return null;
-    const current = await prisma.employee.findFirst({
+    const current = await prisma.userAccount.findFirst({
       where: { id: employee.id, orgId: employee.orgId, disabled: false }
     });
     if (!current) return null;
@@ -942,7 +942,7 @@ export function createPrismaLedgerDeliveryRepository({
       await prisma.auditLog.create({
         data: {
           orgId: employee.orgId,
-          actorEmployeeId: employee.id,
+          actorUserAccountId: employee.id,
           action: "ledger_pdf_download.url_denied",
           targetType: "ledger_artifact_request",
           targetId: requestId,
@@ -1053,7 +1053,7 @@ export function createPrismaLedgerDeliveryRepository({
             orgId: employee.orgId,
             kind: "download",
             actorKind: "employee",
-            actorEmployeeId: employee.id,
+            actorUserAccountId: employee.id,
             idempotencyKey,
             requestFingerprint: fingerprint,
             scope: manifest as unknown as Prisma.InputJsonValue
@@ -1078,7 +1078,7 @@ export function createPrismaLedgerDeliveryRepository({
       if (
         !request ||
         request.actorKind !== "employee" ||
-        (request.actorEmployeeId !== employee.id &&
+        (request.actorUserAccountId !== employee.id &&
           (employee.role !== "admin" || request.kind === "download"))
       )
         return null;
@@ -1115,7 +1115,7 @@ export function createPrismaLedgerDeliveryRepository({
               orgId: employee.orgId,
               partitionId: i.partitionId,
               generation: { gt: i.generation },
-              request: { actorKind: "employee", actorEmployeeId: employee.id, kind: "refresh" }
+              request: { actorKind: "employee", actorUserAccountId: employee.id, kind: "refresh" }
             },
             orderBy: { generation: "desc" },
             select: { requestId: true, status: true }
@@ -1134,7 +1134,7 @@ export function createPrismaLedgerDeliveryRepository({
         ...(rebuildRequired ? { rebuildRequired: true } : {}),
         allowEmptyRequest:
           request.kind === "refresh" &&
-          request.actorEmployeeId === employee.id &&
+          request.actorUserAccountId === employee.id &&
           request.items.length === 0,
         status: request.status,
         scope,
@@ -1143,7 +1143,7 @@ export function createPrismaLedgerDeliveryRepository({
           ? {
               requestId: request.id,
               orgId: request.orgId,
-              employeeId: request.actorEmployeeId!,
+              userAccountId: request.actorUserAccountId!,
               status: request.status,
               manifest,
               zipObjectKey: request.zipObjectKey,

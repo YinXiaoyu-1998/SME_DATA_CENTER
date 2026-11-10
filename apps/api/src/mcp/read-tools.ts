@@ -142,7 +142,7 @@ function routeForReadOnlyTool(
         path:
           query.mode === "list"
             ? "/v1/admin/permissions/accounts"
-            : `/v1/admin/permissions/accounts/${encodeURIComponent(query.employeeId)}`
+            : `/v1/admin/permissions/accounts/${encodeURIComponent(query.userAccountId)}`
       };
     }
     case "get_permission_directory": {
@@ -303,11 +303,11 @@ function compactDateToIso(value: string): string {
 }
 
 function currentUserFromMe(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || !("employee" in value)) {
+  if (typeof value !== "object" || value === null || !("userAccount" in value)) {
     throw new Error("Invalid current-user response.");
   }
 
-  const employee = value.employee;
+  const employee = value.userAccount;
   if (
     typeof employee !== "object" ||
     employee === null ||

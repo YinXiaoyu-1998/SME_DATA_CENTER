@@ -41,7 +41,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           select: {
             id: true,
             orgId: true,
-            employeeId: true,
+            userAccountId: true,
             passwordHash: true,
             disabled: true,
             failedAttemptCount: true,
@@ -57,7 +57,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             ? {
                 id: identity.id,
                 orgId: identity.orgId,
-                employeeId: identity.employeeId,
+                userAccountId: identity.userAccountId,
                 passwordHash: identity.passwordHash,
                 disabled: identity.disabled,
                 employeeDisabled: identity.employee.disabled,
@@ -123,7 +123,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         );
         const identity = await tx.loginIdentity.findUniqueOrThrow({
           where: { id: input.identityId },
-          select: { orgId: true, employeeId: true }
+          select: { orgId: true, userAccountId: true }
         });
         await tx.passwordSetupSession.updateMany({
           where: {
@@ -158,7 +158,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             reason: input.purpose,
             orgId: identity.orgId,
             identityId: input.identityId,
-            employeeId: identity.employeeId,
+            userAccountId: identity.userAccountId,
             createdAt: input.now
           }
         });
@@ -205,7 +205,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         });
         const identity = await tx.loginIdentity.findUniqueOrThrow({
           where: { id: grant.identityId },
-          select: { orgId: true, employeeId: true }
+          select: { orgId: true, userAccountId: true }
         });
         await tx.authSecurityEvent.create({
           data: {
@@ -214,7 +214,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             reason: grant.purpose,
             orgId: identity.orgId,
             identityId: grant.identityId,
-            employeeId: identity.employeeId,
+            userAccountId: identity.userAccountId,
             ...eventAudit(input.audit),
             createdAt: input.now
           }
@@ -266,7 +266,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               select: { purpose: true }
             },
             identity: {
-              select: { orgId: true, employeeId: true }
+              select: { orgId: true, userAccountId: true }
             }
           }
         });
@@ -316,7 +316,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason: "password_reset",
               orgId: setupSession.identity.orgId,
               identityId: setupSession.identityId,
-              employeeId: setupSession.identity.employeeId,
+              userAccountId: setupSession.identity.userAccountId,
               sessionId: session.id,
               ...eventAudit(input.audit),
               createdAt: input.now
@@ -330,7 +330,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             reason: setupSession.grant.purpose,
             orgId: setupSession.identity.orgId,
             identityId: setupSession.identityId,
-            employeeId: setupSession.identity.employeeId,
+            userAccountId: setupSession.identity.userAccountId,
             ...eventAudit(input.audit),
             createdAt: input.now
           }
@@ -422,7 +422,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           !identity ||
           identity.disabled ||
           identity.employee.disabled ||
-          identity.employeeId !== input.employeeId ||
+          identity.userAccountId !== input.userAccountId ||
           identity.orgId !== input.orgId ||
           identity.employee.orgId !== input.orgId
         ) {
@@ -433,7 +433,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           data: {
             status: "completed",
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             orgId: input.orgId,
             completedAt: input.now
           }
@@ -447,7 +447,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             outcome: "succeeded",
             orgId: input.orgId,
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             ...eventAudit(input.audit),
             createdAt: input.now
           }
@@ -492,7 +492,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           if (
             record.redeemedAt !== null ||
             !record.identityId ||
-            !record.employeeId ||
+            !record.userAccountId ||
             !record.orgId
           ) {
             return { status: "invalid" };
@@ -512,7 +512,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           return {
             status: "redeemed",
             identityId: record.identityId,
-            employeeId: record.employeeId,
+            userAccountId: record.userAccountId,
             orgId: record.orgId
           };
         }
@@ -534,7 +534,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           !identity ||
           identity.disabled ||
           identity.employee.disabled ||
-          identity.employeeId !== input.employeeId ||
+          identity.userAccountId !== input.userAccountId ||
           identity.orgId !== input.orgId ||
           identity.employee.orgId !== input.orgId
         ) {
@@ -543,7 +543,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
         const session = await tx.authSession.create({
           data: {
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             orgId: input.orgId,
             absoluteExpiresAt: input.absoluteExpiresAt,
             createdAt: input.now
@@ -562,7 +562,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           data: {
             sessionId: session.id,
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             orgId: input.orgId,
             tokenHash: input.accessTokenHash,
             expiresAt: input.accessTokenExpiresAt,
@@ -575,7 +575,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             outcome: "succeeded",
             orgId: input.orgId,
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             sessionId: session.id,
             ...eventAudit(input.audit),
             createdAt: input.now
@@ -603,7 +603,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason: "consumed_generation_reused",
               orgId: credential.session.orgId,
               identityId: credential.session.identityId,
-              employeeId: credential.session.employeeId,
+              userAccountId: credential.session.userAccountId,
               sessionId: credential.sessionId,
               ...eventAudit(input.audit),
               createdAt: input.now
@@ -616,7 +616,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason: "credential_replay",
               orgId: credential.session.orgId,
               identityId: credential.session.identityId,
-              employeeId: credential.session.employeeId,
+              userAccountId: credential.session.userAccountId,
               sessionId: credential.sessionId,
               ...eventAudit(input.audit),
               createdAt: input.now
@@ -640,7 +640,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
                 reason: "absolute_lifetime_elapsed",
                 orgId: credential.session.orgId,
                 identityId: credential.session.identityId,
-                employeeId: credential.session.employeeId,
+                userAccountId: credential.session.userAccountId,
                 sessionId: credential.sessionId,
                 ...eventAudit(input.audit),
                 createdAt: input.now
@@ -662,7 +662,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason: "concurrent_generation_reuse",
               orgId: credential.session.orgId,
               identityId: credential.session.identityId,
-              employeeId: credential.session.employeeId,
+              userAccountId: credential.session.userAccountId,
               sessionId: credential.sessionId,
               ...eventAudit(input.audit),
               createdAt: input.now
@@ -675,7 +675,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason: "credential_replay",
               orgId: credential.session.orgId,
               identityId: credential.session.identityId,
-              employeeId: credential.session.employeeId,
+              userAccountId: credential.session.userAccountId,
               sessionId: credential.sessionId,
               ...eventAudit(input.audit),
               createdAt: input.now
@@ -695,7 +695,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           data: {
             sessionId: credential.sessionId,
             identityId: credential.session.identityId,
-            employeeId: credential.session.employeeId,
+            userAccountId: credential.session.userAccountId,
             orgId: credential.session.orgId,
             tokenHash: input.accessTokenHash,
             expiresAt: input.accessTokenExpiresAt,
@@ -706,7 +706,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           status: "rotated",
           sessionId: credential.sessionId,
           identityId: credential.session.identityId,
-          employeeId: credential.session.employeeId,
+          userAccountId: credential.session.userAccountId,
           orgId: credential.session.orgId
         };
       });
@@ -749,7 +749,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason: "absolute_lifetime_elapsed",
               orgId: token.orgId,
               identityId: token.identityId,
-              employeeId: token.employeeId,
+              userAccountId: token.userAccountId,
               sessionId: token.sessionId,
               ...eventAudit(audit),
               createdAt: now
@@ -764,7 +764,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
       });
       return {
         identityId: token.identityId,
-        employeeId: token.employeeId,
+        userAccountId: token.userAccountId,
         orgId: token.orgId,
         organizationName: token.employee.organization.name,
         displayName: token.employee.displayName,
@@ -796,7 +796,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             reason,
             orgId: session.orgId,
             identityId: session.identityId,
-            employeeId: session.employeeId,
+            userAccountId: session.userAccountId,
             sessionId: session.id,
             ...eventAudit(audit),
             createdAt: now
@@ -809,7 +809,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
             reason,
             orgId: session.orgId,
             identityId: session.identityId,
-            employeeId: session.employeeId,
+            userAccountId: session.userAccountId,
             sessionId: session.id,
             ...eventAudit(audit),
             createdAt: now
@@ -836,7 +836,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           await revokeSessionFamily(tx, session.id, reason, now);
           const details = await tx.authSession.findUniqueOrThrow({
             where: { id: session.id },
-            select: { orgId: true, identityId: true, employeeId: true }
+            select: { orgId: true, identityId: true, userAccountId: true }
           });
           await tx.authSecurityEvent.create({
             data: {
@@ -845,7 +845,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
               reason,
               orgId: details.orgId,
               identityId: details.identityId,
-              employeeId: details.employeeId,
+              userAccountId: details.userAccountId,
               sessionId: session.id,
               createdAt: now
             }
@@ -866,7 +866,7 @@ export function createPrismaAuthCoreRepository(prisma: PrismaClient): AuthCoreRe
           launcherVersion: event.launcherVersion,
           orgId: event.orgId,
           identityId: event.identityId,
-          employeeId: event.employeeId,
+          userAccountId: event.userAccountId,
           sessionId: event.sessionId,
           createdAt: event.createdAt
         }

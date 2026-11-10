@@ -330,12 +330,12 @@ integrationRun: try {
       requiredDimensionIds: [],
       createOnly: true
     });
-    await identitySetup.employee.update({ where: { id: "emp_admin" }, data: { clearance: 0 } });
-    await identitySetup.employee.update({
+    await identitySetup.userAccount.update({ where: { id: "emp_admin" }, data: { clearance: 0 } });
+    await identitySetup.userAccount.update({
       where: { id: "emp_baoli_employee" },
       data: { clearance: 0 }
     });
-    await identitySetup.employee.update({
+    await identitySetup.userAccount.update({
       where: { id: "emp_suzhou_employee" },
       data: { clearance: 3 }
     });
@@ -934,7 +934,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     });
     await permissions.configureAccount({
       ...(await context()),
-      employeeId: "emp_suzhou_employee",
+      userAccountId: "emp_suzhou_employee",
       clearance: 3,
       grants: grant(oldCategories.map((category) => category.id))
     });
@@ -1021,7 +1021,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     );
     await permissions.configureAccount({
       ...(await context()),
-      employeeId: "emp_suzhou_employee",
+      userAccountId: "emp_suzhou_employee",
       clearance: 1,
       grants: grant([initialCategory.id])
     });
@@ -1031,7 +1031,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     );
     await permissions.configureAccount({
       ...(await context()),
-      employeeId: "emp_suzhou_employee",
+      userAccountId: "emp_suzhou_employee",
       clearance: 3,
       grants: grant([initialCategory.id], ["合成甲店"])
     });
@@ -1056,7 +1056,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
       });
     await permissions.configureAccount({
       ...(await context()),
-      employeeId: "emp_suzhou_employee",
+      userAccountId: "emp_suzhou_employee",
       clearance: 3,
       grants: grant([initialCategory.id], ["合成甲店", "合成乙店"], "other-enterprise")
     });
@@ -1066,14 +1066,14 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     );
     await permissions.configureAccount({
       ...(await context()),
-      employeeId: "emp_suzhou_employee",
+      userAccountId: "emp_suzhou_employee",
       clearance: 3,
       grants: grant([initialCategory.id])
     });
     await prisma.organization.create({
       data: { id: "in-store-other-org", name: "Synthetic other organization" }
     });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: "in-store-other-reader",
         orgId: "in-store-other-org",
@@ -1113,7 +1113,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     });
     await permissions.configureAccount({
       ...(await otherContext()),
-      employeeId: "in-store-other-reader",
+      userAccountId: "in-store-other-reader",
       clearance: 3,
       grants: [
         {
@@ -1130,7 +1130,7 @@ async function assertOrderPartitionsWorkflow(dataset: "in_store_orders" | "takea
     await prisma.loginIdentity.create({
       data: {
         orgId: "in-store-other-org",
-        employeeId: "in-store-other-reader",
+        userAccountId: "in-store-other-reader",
         normalizedEmail: "in-store-other@example.invalid",
         passwordHash: null
       }
@@ -1885,7 +1885,7 @@ async function assertCostCardWorkflow(input: {
     });
     await permissions.configureAccount({
       ...(await context()),
-      employeeId: "emp_suzhou_employee",
+      userAccountId: "emp_suzhou_employee",
       clearance: 3,
       grants: [
         {
@@ -2070,7 +2070,7 @@ async function assertCostCardWorkflow(input: {
 
 async function assertEmployeeUploadDenied(
   employeeAuth: Record<string, string>,
-  employeeId: string
+  userAccountId: string
 ): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!) });
   const snapshot = async () => ({
@@ -2085,7 +2085,7 @@ async function assertEmployeeUploadDenied(
       }
     )
   });
-  const requestId = `employee_upload_denied_${employeeId}_${Date.now()}`;
+  const requestId = `employee_upload_denied_${userAccountId}_${Date.now()}`;
   try {
     const before = await snapshot();
     const response = await fetch(`${apiUrl}/v1/documents/evidence`, {
@@ -2110,7 +2110,7 @@ async function assertEmployeeUploadDenied(
       audit.length === 1 &&
         audit[0]?.action === "file_upload.denied" &&
         audit[0]?.result === "denied" &&
-        audit[0]?.actorEmployeeId === employeeId &&
+        audit[0]?.actorUserAccountId === userAccountId &&
         audit[0]?.targetId === null &&
         metadata?.["uploadSurface"] === "evidence_document" &&
         metadata["reason"] === "admin_role_required" &&
@@ -2301,22 +2301,22 @@ async function assertDualCollectionEvidenceReindex(input: {
   assert(crossVersionCursor.status === 400, "A V1 evidence cursor must be rejected by V2.");
 }
 
-async function createOfficialIntegrationAccessToken(employeeId: string): Promise<string> {
+async function createOfficialIntegrationAccessToken(userAccountId: string): Promise<string> {
   const prisma = new PrismaClient({
     adapter: new PrismaMariaDb(integrationEnv["DATABASE_URL"]!)
   });
   const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
   const identity = await prisma.loginIdentity.findFirst({
-    where: { employeeId, disabled: false },
-    select: { id: true, employeeId: true, orgId: true }
+    where: { userAccountId, disabled: false },
+    select: { id: true, userAccountId: true, orgId: true }
   });
   if (!identity) {
     await prisma.$disconnect();
-    throw new Error(`Seeded official identity is missing for ${employeeId}.`);
+    throw new Error(`Seeded official identity is missing for ${userAccountId}.`);
   }
   const session = await auth.createSession({
     identityId: identity.id,
-    employeeId: identity.employeeId,
+    userAccountId: identity.userAccountId,
     orgId: identity.orgId
   });
   officialSessionCleanup.push(async () => {
@@ -2562,8 +2562,8 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
 
   try {
     const identity = await prisma.loginIdentity.findFirst({
-      where: { employeeId: "emp_admin", disabled: false },
-      select: { id: true, employeeId: true, orgId: true }
+      where: { userAccountId: "emp_admin", disabled: false },
+      select: { id: true, userAccountId: true, orgId: true }
     });
     assert(
       Boolean(identity),
@@ -2572,7 +2572,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
 
     const operatorSession = await auth.createSession({
       identityId: identity!.id,
-      employeeId: identity!.employeeId,
+      userAccountId: identity!.userAccountId,
       orgId: identity!.orgId
     });
     sessionIds.push(operatorSession.sessionId);
@@ -2647,7 +2647,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       oauthAuthorization.userCode,
       {
         identityId: identity!.id,
-        employeeId: identity!.employeeId,
+        userAccountId: identity!.userAccountId,
         orgId: identity!.orgId
       },
       { requestId: `${runId}_oauth_setup`, sourceIp: "127.0.0.1", launcherVersion: null }
@@ -2816,7 +2816,7 @@ async function assertAuditProvenanceMatrix(accessToken: string): Promise<void> {
       device.user_code,
       {
         identityId: identity!.id,
-        employeeId: identity!.employeeId,
+        userAccountId: identity!.userAccountId,
         orgId: identity!.orgId
       },
       { requestId: `${deviceRunId}_complete`, sourceIp: "198.51.100.38", launcherVersion: null }
@@ -3227,7 +3227,7 @@ async function assertWorkerLeaseRecovery(): Promise<void> {
   const leaseStart = Date.now();
   const leaseTime = (offset: number) => new Date(leaseStart + offset);
   try {
-    const employee = await prisma.employee.findFirst({
+    const employee = await prisma.userAccount.findFirst({
       where: { orgId: "default-org", email: "baoli.employee@example.com" }
     });
     assert(Boolean(employee), "Worker lease integration requires the seeded Baoli employee.");

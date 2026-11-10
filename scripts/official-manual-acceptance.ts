@@ -181,13 +181,13 @@ async function runControllerCommand(args: ParsedArgs): Promise<void> {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(databaseUrl) });
   try {
     if (run.reuseSession) {
-      const employee = await prisma.employee.findUnique({
+      const employee = await prisma.userAccount.findUnique({
         where: { email: run.reuseSession },
         select: { id: true, orgId: true, role: true, disabled: true }
       });
       if (!employee || employee.role !== "admin" || employee.disabled)
         throw new Error("Existing-session acceptance requires the selected active admin.");
-      run.reusedEmployeeId = employee.id;
+      run.reusedUserAccountId = employee.id;
       run.orgId = employee.orgId;
     }
     if (args.command === "controller-cleanup") {
@@ -703,27 +703,27 @@ export async function cleanupRun(
         in: acceptanceAccountEmails(run.runId)
       }
     },
-    select: { employeeId: true }
+    select: { userAccountId: true }
   });
-  const uploaderEmployeeIds = identities.map((identity) => identity.employeeId);
+  const uploaderUserAccountIds = identities.map((identity) => identity.userAccountId);
   // The reused employee is deliberately never added to this uploader-wide selector.
-  if (run.reusedEmployeeId) {
+  if (run.reusedUserAccountId) {
     const foreignDocuments = await prisma.document.count({
       where: {
         id: { in: run.documentIds },
-        NOT: { uploaderId: run.reusedEmployeeId, orgId: run.orgId }
+        NOT: { uploaderId: run.reusedUserAccountId, orgId: run.orgId }
       }
     });
     const foreignJobs = await prisma.partitionImportJob.count({
       where: {
         id: { in: run.partitionJobIds },
-        NOT: { uploaderId: run.reusedEmployeeId, orgId: run.orgId }
+        NOT: { uploaderId: run.reusedUserAccountId, orgId: run.orgId }
       }
     });
     const foreignRequests = await prisma.ledgerArtifactRequest.count({
       where: {
         id: { in: run.ledgerRequestIds },
-        NOT: { actorEmployeeId: run.reusedEmployeeId, orgId: run.orgId, kind: "download" }
+        NOT: { actorUserAccountId: run.reusedUserAccountId, orgId: run.orgId, kind: "download" }
       }
     });
     if (foreignDocuments || foreignJobs || foreignRequests)
@@ -733,7 +733,7 @@ export async function cleanupRun(
     where: {
       orgId: run.orgId,
       OR: [
-        { uploaderId: { in: uploaderEmployeeIds } },
+        { uploaderId: { in: uploaderUserAccountIds } },
         { enterpriseName: run.enterpriseName },
         { id: { in: run.partitionJobIds } }
       ]
@@ -745,7 +745,7 @@ export async function cleanupRun(
     where: { publishedByJobId: { in: partitionJobIds } },
     select: { objectKey: true }
   });
-  const documentFilters = officialManualDocumentFilters(run, uploaderEmployeeIds);
+  const documentFilters = officialManualDocumentFilters(run, uploaderUserAccountIds);
   const documents = await prisma.document.findMany({
     where: { orgId: run.orgId, OR: documentFilters },
     select: {
@@ -820,7 +820,7 @@ export async function cleanupRun(
     where: {
       orgId: run.orgId,
       OR: [
-        { actorEmployeeId: { in: uploaderEmployeeIds } },
+        { actorUserAccountId: { in: uploaderUserAccountIds } },
         { id: { in: run.ledgerRequestIds } },
         { items: { some: { partitionId: { in: ledgerPartitionIds } } } }
       ]
@@ -981,7 +981,7 @@ export async function cleanupRun(
     costCardIds,
     costCardResourceIds,
     costCardSourceResourceIds,
-    uploaderEmployeeIds
+    uploaderUserAccountIds
   });
   const ledgerResidue = await Promise.all([
     prisma.ledgerArtifactRequest.count({ where: { id: { in: ledgerRequestIds } } }),
@@ -994,14 +994,14 @@ export async function cleanupRun(
 
 function officialManualDocumentFilters(
   run: ReturnType<typeof runConfig>,
-  uploaderEmployeeIds: string[]
+  uploaderUserAccountIds: string[]
 ) {
   return [
     { sourceSystem: run.evidenceSourceSystem },
     { title: { startsWith: `${run.enterpriseName}_` } },
     { title: { startsWith: run.titlePrefix } },
     { id: { in: run.documentIds } },
-    ...(uploaderEmployeeIds.length > 0 ? [{ uploaderId: { in: uploaderEmployeeIds } }] : [])
+    ...(uploaderUserAccountIds.length > 0 ? [{ uploaderId: { in: uploaderUserAccountIds } }] : [])
   ];
 }
 
@@ -1065,7 +1065,7 @@ async function verifyCleanup(
     costCardIds: string[];
     costCardResourceIds: string[];
     costCardSourceResourceIds: string[];
-    uploaderEmployeeIds: string[];
+    uploaderUserAccountIds: string[];
   }
 ): Promise<void> {
   const storage = createStorageAdapter(process.env);
@@ -1100,7 +1100,7 @@ async function verifyCleanup(
     prisma.document.count({
       where: {
         orgId: run.orgId,
-        OR: officialManualDocumentFilters(run, deleted.uploaderEmployeeIds)
+        OR: officialManualDocumentFilters(run, deleted.uploaderUserAccountIds)
       }
     }),
     countByIds(deleted.importBatchIds, (ids) =>
@@ -1339,7 +1339,7 @@ export function runConfig(
     evidenceConfig: scope.evidenceConfig,
     ledgerRequestIds: scope.ledgerRequestIds ?? [],
     orgId: "default-org",
-    reusedEmployeeId: undefined as string | undefined,
+    reusedUserAccountId: undefined as string | undefined,
     runId: safeRunId,
     titlePrefix: `[manual-acceptance:${safeRunId}]`,
     evidenceSourceSystem: `manual_acceptance_${compact}`,

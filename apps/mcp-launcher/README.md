@@ -1,6 +1,6 @@
 # SMEDC MCP Launcher
 
-Official stdio MCP launcher for authenticated uploads, authorized queries and verified local downloads. Source candidate `0.17.0` replaces 13 permission and enterprise workflow tools with six and advertises 50 tools in total. Use the official `smedc-mcp` Skill for the approved installation pin and consult `docs/implementation/staging-readiness.md` for verified package and service rollout status.
+Official stdio MCP launcher for authenticated uploads, authorized queries and verified local downloads. Source candidate `0.18.0` replaces 13 permission and enterprise workflow tools with six and advertises 50 tools in total. Use the official `smedc-mcp` Skill for the approved installation pin and consult `docs/implementation/staging-readiness.md` for verified package and service rollout status.
 
 ## Installation and identity
 

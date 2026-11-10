@@ -90,7 +90,7 @@ export async function requireBinding(
   if (
     !run ||
     run.installationId !== binding.installationId ||
-    run.employeeId !== actor.id ||
+    run.userAccountId !== actor.id ||
     run.assignmentEpoch !== binding.assignmentEpoch ||
     run.finishedAt
   )
@@ -273,7 +273,7 @@ export async function runOperation(
         orgId: actor.orgId,
         workflowId: workflow.id,
         installationId: op.installationId,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         configurationVersion: workflow.version,
         integrationVersion: source.version,
         controlVersion: workflow.controlVersion,
@@ -310,7 +310,7 @@ export async function runOperation(
         id: op.runId,
         orgId: actor.orgId,
         workflowId: workflow.id,
-        employeeId: actor.id,
+        userAccountId: actor.id,
         installationId: op.installationId,
         assignmentEpoch: op.assignmentEpoch
       }

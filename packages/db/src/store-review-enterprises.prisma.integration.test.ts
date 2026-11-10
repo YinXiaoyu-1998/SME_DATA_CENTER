@@ -27,7 +27,7 @@ if (run) {
     await prisma.organization.create({
       data: { id: orgId, name: "Never substitute this organization name" }
     });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         orgId,
         id,
@@ -71,7 +71,7 @@ if (run) {
     return repo.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: state.version.toString(),
       clearance: 2,
       grants: [
@@ -192,9 +192,9 @@ if (run) {
     await grant("alpha", { kind: "fixed", values: ["同名门店"] });
     await prisma.businessStore.updateMany({ where: { orgId }, data: { retired: true } });
     expect(await card()).toMatchObject({ write: [], read: [{ enterpriseName: "Alpha" }] });
-    await prisma.employee.update({ where: { id }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "employee" } });
     expect(await card()).toMatchObject({ write: [], read: [{ enterpriseName: "Alpha" }] });
-    await prisma.employee.update({ where: { id }, data: { clearance: 1 } });
+    await prisma.userAccount.update({ where: { id }, data: { clearance: 1 } });
     expect(await card()).toEqual({ complete: true, write: [], read: [] });
   });
   it("fails closed for disabled accounts, missing levels and every inactive mode", async () => {
@@ -205,9 +205,9 @@ if (run) {
       expect(await card()).toEqual({ complete: true, write: [], read: [] });
     }
     await prisma.businessAuthorizationState.update({ where: { orgId }, data: { mode: "enabled" } });
-    await prisma.employee.update({ where: { id }, data: { disabled: true } });
+    await prisma.userAccount.update({ where: { id }, data: { disabled: true } });
     expect(await card()).toEqual({ complete: true, write: [], read: [] });
-    await prisma.employee.update({ where: { id }, data: { disabled: false } });
+    await prisma.userAccount.update({ where: { id }, data: { disabled: false } });
     await prisma.businessCategory.updateMany({
       where: { orgId },
       data: { confidentialityLevel: null }

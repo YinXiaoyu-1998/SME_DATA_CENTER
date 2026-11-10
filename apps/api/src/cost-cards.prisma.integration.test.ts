@@ -34,7 +34,7 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
   const orgId = "cost_card_query_org",
     otherOrg = "cost_card_query_other",
     adminId = "cost_card_query_admin",
-    employeeId = "cost_card_query_employee";
+    userAccountId = "cost_card_query_employee";
   const enterpriseName = "Synthetic restaurant",
     enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
   let root: string,
@@ -47,7 +47,7 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
     for (const org of [orgId, otherOrg]) {
       await prisma.organization.create({ data: { id: org, name: "Synthetic" } });
       const admin = org === orgId ? adminId : "cost_card_query_other_admin";
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: {
           id: admin,
           orgId: org,
@@ -75,9 +75,9 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
         where: { orgId_key: { orgId, key: "cost_cards" } }
       })
     ).id;
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
-        id: employeeId,
+        id: userAccountId,
         orgId,
         email: "cost-card-reader@example.invalid",
         displayName: "Reader",
@@ -206,7 +206,7 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
         urlTtlSeconds: 900
       }),
       authenticateAccessToken: async (id) => {
-        const employee = await prisma.employee.findUnique({ where: { id } });
+        const employee = await prisma.userAccount.findUnique({ where: { id } });
         return employee ? { ...employee, organizationName: "Synthetic" } : null;
       },
       cursorSigningSecret: "synthetic-cost-card-query-cursor",
@@ -322,10 +322,10 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
       urlTtlSeconds: 900
     });
     await expect(
-      limited.createCostCardManifest({ auth: { id: employeeId, orgId }, selection: {} })
+      limited.createCostCardManifest({ auth: { id: userAccountId, orgId }, selection: {} })
     ).rejects.toThrow("COST_CARD_MANIFEST_TOO_LARGE");
     expect(
-      (await request("POST", "/v1/cost-cards/cost_query_small/archive", undefined, employeeId))
+      (await request("POST", "/v1/cost-cards/cost_query_small/archive", undefined, userAccountId))
         .statusCode
     ).toBe(403);
   });
@@ -433,7 +433,7 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
     method: "GET" | "POST",
     url: string,
     payload?: Record<string, unknown>,
-    actor = employeeId
+    actor = userAccountId
   ) {
     return app.inject({
       method,
@@ -448,7 +448,7 @@ suite("cost card directory authorization and immutable manifest snapshots", () =
       actorId: adminId,
       expectedVersion: (await permissions.loadAuthorizationSnapshot(adminId, orgId))
         .authorizationVersion,
-      employeeId,
+      userAccountId,
       clearance,
       grants: allowed
         ? [

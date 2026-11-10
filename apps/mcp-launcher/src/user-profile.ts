@@ -18,10 +18,10 @@ export const cachedUserProfileSchema = z.strictObject({
   organizationName: nonblankString
 });
 
-const currentUserResponseSchema = z.object({ employee: z.record(z.string(), z.unknown()) });
+const currentUserResponseSchema = z.object({ userAccount: z.record(z.string(), z.unknown()) });
 
 export function parseCurrentUserProfileResponse(value: unknown): CachedUserProfile {
-  const { employee } = currentUserResponseSchema.parse(value);
+  const { userAccount: employee } = currentUserResponseSchema.parse(value);
   return cachedUserProfileSchema.parse({
     displayName: employee.displayName,
     email: employee.email,

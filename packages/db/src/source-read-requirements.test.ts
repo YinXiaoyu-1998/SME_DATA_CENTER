@@ -230,7 +230,7 @@ describe("current directory eligibility", () => {
     const { directory, tx, input } = fixture();
     directory.store = true;
     const historicalSupplement = {
-      actorEmployeeId: "admin",
+      actorUserAccountId: "admin",
       reason: "Repair the historical August receipt"
     };
     await requireCurrentDirectoryEligibility(tx as never, {
@@ -244,7 +244,7 @@ describe("current directory eligibility", () => {
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          actorEmployeeId: "admin",
+          actorUserAccountId: "admin",
           metadata: expect.objectContaining({ historicalSupplement, businessDates: ["2026-08-19"] })
         })
       })

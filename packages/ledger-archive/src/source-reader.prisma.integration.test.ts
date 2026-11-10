@@ -62,7 +62,7 @@ if (enabled) {
     });
     worker = createPrismaProcessingWorkerRepository(databaseUrl);
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic ledger snapshot" } });
-    await prisma.employee.createMany({
+    await prisma.userAccount.createMany({
       data: [actor, low].map(({ id, email, clearance }) => ({
         id,
         email,
@@ -88,7 +88,7 @@ if (enabled) {
     await prisma.businessStore.deleteMany({ where });
     await prisma.businessAuthorizationState.deleteMany({ where });
     await prisma.document.deleteMany({ where });
-    await prisma.employee.deleteMany({ where });
+    await prisma.userAccount.deleteMany({ where });
     await prisma.organization.delete({ where: { id: orgId } });
     await Promise.all([
       prisma.$disconnect(),
@@ -101,7 +101,7 @@ if (enabled) {
   async function photo(receiptId: string, suffix: string, clearance = 0, actorId = actor.id) {
     return certificates.createCertificate({
       orgId,
-      actorEmployeeId: actorId,
+      actorUserAccountId: actorId,
       sourceDocumentId: `${orgId}_${suffix}`,
       title: "Synthetic photo",
       receiptId,
@@ -197,7 +197,7 @@ if (enabled) {
     }
     const applied = await imports.applyReservedStructuredImport({
       orgId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       importBatchId: batch.id,
       rows,
       audit
@@ -206,7 +206,7 @@ if (enabled) {
     const revision = (await reader.readLedgerSnapshot({ ...key, storeName })).dataRevision;
     await imports.applyReservedStructuredImport({
       orgId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       importBatchId: batch.id,
       rows,
       audit
@@ -245,7 +245,7 @@ if (enabled) {
     await documents.archiveDocument({
       orgId,
       documentId: early.sourceDocumentId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       audit
     });
     const archived = await reader.readLedgerSnapshot(key);
@@ -256,7 +256,7 @@ if (enabled) {
     await documents.archiveDocument({
       orgId,
       documentId: early.sourceDocumentId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       audit
     });
     expect((await reader.readLedgerSnapshot(key)).dataRevision).toBe(4);
@@ -288,7 +288,7 @@ if (enabled) {
   it("rejects reusing an applied receipt with different content and returns stable replay partition hints", async () => {
     const reservation = {
       orgId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       documentId: `${orgId}_conflict`,
       dataset: "delivery_ledger" as const,
       fileType: "xlsx" as const,
@@ -494,7 +494,7 @@ if (enabled) {
     await documents.archiveDocument({
       orgId,
       documentId: supplierId,
-      actorEmployeeId: actor.id,
+      actorUserAccountId: actor.id,
       audit
     });
     expect(
@@ -618,10 +618,10 @@ if (enabled) {
     const visible = await delivery.facts(low, { storeNames: stores, dates: [key.purchaseDate] });
     expect(visible).toHaveLength(20);
     expect(visible.some((fact) => fact.key.storeName === "Batch Shop")).toBe(false);
-    await prisma.employee.update({ where: { id: actor.id }, data: { disabled: true } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { disabled: true } });
     expect(await delivery.facts(actor, { storeNames: stores, dates: [key.purchaseDate] })).toEqual(
       []
     );
-    await prisma.employee.update({ where: { id: actor.id }, data: { disabled: false } });
+    await prisma.userAccount.update({ where: { id: actor.id }, data: { disabled: false } });
   }, 15_000);
 });

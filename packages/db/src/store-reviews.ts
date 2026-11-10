@@ -107,7 +107,7 @@ export function createPrismaStoreReviewRepository({
           );
           const shapeHash = hashStoreReviewQueryScope({
             orgId: actor.orgId,
-            employeeId: actor.id,
+            userAccountId: actor.id,
             enterpriseKey,
             authorizationVersion: snapshot.authorizationVersion,
             query
@@ -456,7 +456,7 @@ export function createPrismaStoreReviewRepository({
           await tx.auditLog.create({
             data: {
               orgId: actor.orgId,
-              actorEmployeeId: actor.id,
+              actorUserAccountId: actor.id,
               action: "store_reviews.upsert",
               targetType: "store_review_batch",
               result: "succeeded",

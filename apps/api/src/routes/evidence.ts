@@ -539,7 +539,7 @@ export function registerEvidenceRoutes(
             document,
             dependencies.retrievalConfigVersion ?? DEFAULT_RETRIEVAL_CONFIG_VERSION
           );
-        if (document.uploaderId !== snapshot.employeeId)
+        if (document.uploaderId !== snapshot.userAccountId)
           return reply.code(404).send(errorResponse("DOCUMENT_NOT_FOUND", "Document not found."));
         return evidenceUploadResponse(
           document,

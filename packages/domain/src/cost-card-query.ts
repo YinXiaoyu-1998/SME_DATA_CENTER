@@ -148,7 +148,7 @@ export function compileCostCardQuery(input: CostCardQueryInput): StructuredCompi
     .update(
       JSON.stringify({
         orgId: input.orgId,
-        employeeId: input.employee.id,
+        userAccountId: input.employee.id,
         clearance: input.employee.clearance,
         authorization: input.businessAuthorization,
         query: { ...query, page: { limit: query.page.limit, cursor: null } }

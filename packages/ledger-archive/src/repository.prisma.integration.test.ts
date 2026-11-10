@@ -52,7 +52,7 @@ if (enabled) {
     await first.deliveryLedgerRow.deleteMany({ where });
     await first.importBatch.deleteMany({ where });
     await first.document.deleteMany({ where });
-    await first.employee.deleteMany({ where });
+    await first.userAccount.deleteMany({ where });
     await first.organization.deleteMany({ where: { id: { in: [orgId, otherOrgId, pagedOrgId] } } });
     await Promise.all([first.$disconnect(), second.$disconnect()]);
   });
@@ -70,7 +70,7 @@ if (enabled) {
         };
       })
     });
-    const uploader = await first.employee.create({
+    const uploader = await first.userAccount.create({
       data: {
         orgId,
         email: `${orgId}@example.invalid`,
@@ -225,7 +225,7 @@ if (enabled) {
     expect(await first.processingRun.count({ where: { orgId } })).toBe(206);
     expect(await first.deliveryLedgerRow.findMany({ where: { orgId } })).toEqual(original);
     const audit = await first.auditLog.findFirstOrThrow({ where: { orgId } });
-    expect(audit.actorEmployeeId).toBeNull();
+    expect(audit.actorUserAccountId).toBeNull();
     expect(audit.metadata).toMatchObject({
       actor: { kind: "operator", label: "synthetic-ops" },
       scope: { selection }
@@ -454,7 +454,7 @@ if (enabled) {
   });
 
   it("discovers facts without an index and enforces org foreign keys", async () => {
-    const employee = await first.employee.create({
+    const employee = await first.userAccount.create({
       data: {
         orgId,
         email: `${orgId}@example.invalid`,
@@ -540,7 +540,7 @@ if (enabled) {
     await expect(
       service.requestRefresh({
         orgId: otherOrgId,
-        actor: { kind: "employee", employeeId: employee.id },
+        actor: { kind: "employee", userAccountId: employee.id },
         idempotencyKey: "wrong-org-actor",
         scope: { storeNames: [key.storeName], dates: [key.purchaseDate] }
       })

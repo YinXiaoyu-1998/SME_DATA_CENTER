@@ -10,7 +10,7 @@ export interface BrowserPrincipal extends AuthenticatedEmployee {
 }
 export interface BrowserLoginIdentity {
   identityId: string;
-  employeeId: string;
+  userAccountId: string;
   orgId: string;
   /** Internal proof of the password verified by AuthCore, never sent to a browser. */
   credentialFingerprint: string;

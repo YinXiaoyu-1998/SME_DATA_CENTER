@@ -464,7 +464,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       });
       expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
         orgId: employee.orgId,
-        actorEmployeeId: employee.id,
+        actorUserAccountId: employee.id,
         uploadSurface: surface,
         audit: {
           requestId: "denied_upload_req",
@@ -543,7 +543,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(appendDenied).toHaveBeenCalledOnce();
     expect(appendDenied.mock.calls[0]).toEqual([
       expect.objectContaining({
-        actorEmployeeId: adminEmployee.id,
+        actorUserAccountId: adminEmployee.id,
         uploadSurface: "evidence_document"
       })
     ]);
@@ -1298,7 +1298,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(appendDenied).toHaveBeenCalledTimes(1);
     expect(appendDenied).toHaveBeenCalledWith(
       expect.objectContaining({
-        actorEmployeeId: employee.id,
+        actorUserAccountId: employee.id,
         uploadSurface: "evidence_document"
       })
     );
@@ -1396,7 +1396,7 @@ describe("HTTP and official MCP business authorization parity", () => {
   function permissionFixture() {
     const snapshot: AuthorizationSnapshot = {
       orgId: employee.orgId,
-      employeeId: employee.id,
+      userAccountId: employee.id,
       role: "employee",
       disabled: false,
       mode: "enabled",
@@ -1426,16 +1426,16 @@ describe("HTTP and official MCP business authorization parity", () => {
     const repository = {
       loadPermissionCard: vi.fn(async (id: string, orgId: string) => ({
         ...snapshot,
-        employeeId: id,
+        userAccountId: id,
         orgId,
         storeReviewEnterprises: { complete: true, read: [], write: [] }
       })),
       loadAuthorizationSnapshot: vi.fn(async (id: string, orgId: string) => {
         if (id === "foreign") throw new Error("AUTHORIZATION_ACCOUNT_NOT_FOUND");
-        return { ...snapshot, employeeId: id, orgId };
+        return { ...snapshot, userAccountId: id, orgId };
       }),
       listAccounts: vi.fn(async () => [
-        { employeeId: employee.id, clearance: 1, grants: snapshot.grants }
+        { userAccountId: employee.id, clearance: 1, grants: snapshot.grants }
       ]),
       configureAccount: vi.fn(async (input: { expectedVersion: string }) => {
         if (input.expectedVersion !== snapshot.authorizationVersion)
@@ -1690,15 +1690,15 @@ describe("HTTP and official MCP business authorization parity", () => {
     });
     try {
       const headers = { authorization: `Bearer ${await accessToken(adminEmployee)}` };
-      for (const employeeId of [adminEmployee.id, employee.id]) {
+      for (const userAccountId of [adminEmployee.id, employee.id]) {
         const http = await app.inject({
-          url: `/v1/admin/permissions/accounts/${employeeId}`,
+          url: `/v1/admin/permissions/accounts/${userAccountId}`,
           headers
         });
         const mcp = await call(
           app,
           "query_account_permissions",
-          { query: { mode: "detail", employeeId } },
+          { query: { mode: "detail", userAccountId } },
           adminEmployee
         );
         expect(mcp.payload).toEqual(http.json());
@@ -1737,11 +1737,11 @@ describe("HTTP and official MCP business authorization parity", () => {
       const foreign = await call(
         app,
         "query_account_permissions",
-        { query: { mode: "detail", employeeId: "foreign" } },
+        { query: { mode: "detail", userAccountId: "foreign" } },
         adminEmployee
       );
       expect(foreign.payload).toMatchObject({ error: { code: "AUTHORIZATION_ACCOUNT_NOT_FOUND" } });
-      const args = { employeeId: employee.id, expectedVersion: "6", clearance: 1, grants: [] };
+      const args = { userAccountId: employee.id, expectedVersion: "6", clearance: 1, grants: [] };
       const conflict = await call(app, "update_account_permissions", args, adminEmployee);
       expect(conflict.payload).toMatchObject({ error: { code: "AUTHORIZATION_VERSION_CONFLICT" } });
       fixture.snapshot.role = "employee";
@@ -1752,7 +1752,7 @@ describe("HTTP and official MCP business authorization parity", () => {
       const deniedMcp = await call(
         app,
         "query_account_permissions",
-        { query: { mode: "detail", employeeId: employee.id } },
+        { query: { mode: "detail", userAccountId: employee.id } },
         adminEmployee
       );
       expect(denied.statusCode).toBe(403);

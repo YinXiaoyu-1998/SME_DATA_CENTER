@@ -271,7 +271,9 @@ export function createPrismaPartitionDownloadRepository(
     await tx.$queryRaw(
       Prisma.sql`SELECT id FROM employees WHERE id=${actor.id} AND org_id=${actor.orgId} FOR SHARE`
     );
-    const employee = await tx.employee.findFirst({ where: { id: actor.id, orgId: actor.orgId } });
+    const employee = await tx.userAccount.findFirst({
+      where: { id: actor.id, orgId: actor.orgId }
+    });
     if (!employee || employee.disabled) throw error("PARTITION_DOWNLOAD_FORBIDDEN");
     return {
       id: employee.id,

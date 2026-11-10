@@ -13,7 +13,7 @@ describe("transaction-local account permission listing", () => {
       clearance: i % 4
     }));
     const tx = {
-      employee: { findMany: vi.fn(async () => accounts) },
+      userAccount: { findMany: vi.fn(async () => accounts) },
       businessAuthorizationState: {
         findUnique: vi.fn(async () => ({ mode: "enabled", version: 7n }))
       },
@@ -35,7 +35,7 @@ describe("transaction-local account permission listing", () => {
           {
             id: "only-one-account",
             orgId: "org",
-            employeeId: "account-1",
+            userAccountId: "account-1",
             enterpriseKey: "enterprise",
             ownership: "group",
             categories: [{ categoryId: "memo" }],
@@ -54,18 +54,18 @@ describe("transaction-local account permission listing", () => {
     const result = await repository.listAccounts("org", "account-0");
     expect(result).toHaveLength(20);
     expect(result[0]).toMatchObject({
-      employeeId: "account-0",
+      userAccountId: "account-0",
       clearance: 0,
       authorizationVersion: "7",
       grants: []
     });
     expect(result[1]?.grants.map((grant) => grant.id)).toEqual(["only-one-account"]);
     expect(result.slice(2).every((account) => account.grants.length === 0)).toBe(true);
-    expect(tx.employee.findMany).toHaveBeenCalledWith(
+    expect(tx.userAccount.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { orgId: "org" } })
     );
     for (const read of [
-      tx.employee.findMany,
+      tx.userAccount.findMany,
       tx.businessAuthorizationState.findUnique,
       tx.businessCategory.findMany,
       tx.businessGrant.findMany
@@ -102,7 +102,7 @@ describe("operator permission attribution", () => {
     const operatorLog = { create: vi.fn(async () => ({})) };
     const tx = {
       $queryRaw: vi.fn(async () => []),
-      employee: { findUnique: vi.fn(async () => actor) },
+      userAccount: { findUnique: vi.fn(async () => actor) },
       businessAuthorizationState: {
         updateMany: vi.fn(async () => ({ count: conflict ? 0 : 1 })),
         findUnique: vi.fn(async () => ({ version: 7n }))
@@ -153,7 +153,7 @@ describe("operator permission attribution", () => {
     );
     expect(operatorLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        actorEmployeeId: null,
+        actorUserAccountId: null,
         clientSource: "operator_cli",
         targetId: "change-audit",
         metadata: expect.objectContaining({

@@ -62,13 +62,13 @@ describe("official auth schema", () => {
     );
   });
 
-  it("uses unique indexed SHA-256 hash columns and explicit employee/organization foreign keys", async () => {
+  it("uses unique indexed SHA-256 hash columns and explicit account/organization foreign keys", async () => {
     const schema = await readFile(schemaUrl, "utf8");
 
     expect(schema.match(/tokenHash\s+String\s+@unique/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(schema).toContain("credentialHash String");
     expect(schema).not.toContain("transactionHash");
     expect(schema).toMatch(/organization\s+Organization/);
-    expect(schema).toMatch(/employee\s+Employee/);
+    expect(schema).toMatch(/employee\s+UserAccount/);
   });
 });

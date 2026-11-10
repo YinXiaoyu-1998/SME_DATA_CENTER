@@ -88,7 +88,7 @@ describe("evidence routes", () => {
       });
       expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
         orgId: baoliEmployee.orgId,
-        actorEmployeeId: baoliEmployee.id,
+        actorUserAccountId: baoliEmployee.id,
         uploadSurface: "evidence_document",
         audit: {
           requestId: "req_upload_denied",
@@ -712,7 +712,7 @@ describe("evidence routes", () => {
     });
     expect(JSON.stringify(body)).not.toContain("answer");
     expect(evidenceRepository.queries).toEqual([
-      { query: "差评处理 SOP", employeeId: adminEmployee.id }
+      { query: "差评处理 SOP", userAccountId: adminEmployee.id }
     ]);
     expect(evidenceRepository.inputs[0]?.audit).toEqual({
       requestId: "req_http_1",

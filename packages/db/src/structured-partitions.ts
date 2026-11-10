@@ -477,7 +477,7 @@ export function createPrismaStructuredPartitionRepository(
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.uploaderId,
+                actorUserAccountId: input.uploaderId,
                 action: "partition.order_scope.confirmed",
                 targetType: "partition_import_job",
                 targetId: job.id,
@@ -495,7 +495,7 @@ export function createPrismaStructuredPartitionRepository(
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.uploaderId,
+                actorUserAccountId: input.uploaderId,
                 action: "partition.historical_supplement.requested",
                 targetType: "partition_import_job",
                 targetId: job.id,
@@ -699,8 +699,8 @@ export function createPrismaStructuredPartitionRepository(
             );
             if (
               historicalSupplement &&
-              (historicalSupplement.actorEmployeeId !== job.uploaderId ||
-                historicalRequest?.actorEmployeeId !== job.uploaderId)
+              (historicalSupplement.actorUserAccountId !== job.uploaderId ||
+                historicalRequest?.actorUserAccountId !== job.uploaderId)
             )
               throw new ResourceAttributesError("RESOURCE_HISTORICAL_INTENT_INVALID");
             if (!input.candidates.length || input.totalRowCount <= 0n)

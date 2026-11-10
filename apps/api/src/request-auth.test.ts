@@ -114,7 +114,7 @@ describe("request authentication", () => {
     let loads = 0;
     const current: AuthorizationSnapshot = {
       orgId: enabledEmployee.orgId,
-      employeeId: enabledEmployee.id,
+      userAccountId: enabledEmployee.id,
       role: "employee",
       disabled: false,
       clearance: 3,

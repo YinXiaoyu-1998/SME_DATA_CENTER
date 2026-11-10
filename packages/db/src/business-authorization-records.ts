@@ -69,17 +69,17 @@ export function toBusinessGrant(
 export async function loadBusinessGrants(
   tx: Prisma.TransactionClient,
   orgId: string,
-  employeeId?: string
+  userAccountId?: string
 ) {
   const rows = await tx.businessGrant.findMany({
-    where: { orgId, ...(employeeId !== undefined ? { employeeId } : {}) },
+    where: { orgId, ...(userAccountId !== undefined ? { userAccountId } : {}) },
     include: grantsInclude
   });
   const byEmployee = new Map<string, BusinessGrant[]>();
   for (const row of rows) {
-    const grants = byEmployee.get(row.employeeId) ?? [];
+    const grants = byEmployee.get(row.userAccountId) ?? [];
     grants.push(toBusinessGrant(row));
-    byEmployee.set(row.employeeId, grants);
+    byEmployee.set(row.userAccountId, grants);
   }
   return byEmployee;
 }

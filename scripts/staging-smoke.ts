@@ -50,8 +50,8 @@ async function main() {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const auth = new AuthCore(createPrismaAuthCoreRepository(prisma));
   const identity = await prisma.loginIdentity.findFirst({
-    where: { employeeId: "emp_admin", disabled: false },
-    select: { id: true, employeeId: true, orgId: true }
+    where: { userAccountId: "emp_admin", disabled: false },
+    select: { id: true, userAccountId: true, orgId: true }
   });
   if (!identity) {
     await prisma.$disconnect();
@@ -72,7 +72,7 @@ async function main() {
   const categoryId = `staging-smoke-${randomUUID()}`;
   const session = await auth.createSession({
     identityId: identity.id,
-    employeeId: identity.employeeId,
+    userAccountId: identity.userAccountId,
     orgId: identity.orgId
   });
   const headers = { authorization: `Bearer ${session.accessToken}` };

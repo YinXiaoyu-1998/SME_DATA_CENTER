@@ -90,7 +90,7 @@ it.skipIf(!enabled)(
       await prisma.organization.create({
         data: { id: orgId, name: "Synthetic browser enterprise" }
       });
-      const owner = await prisma.employee.create({
+      const owner = await prisma.userAccount.create({
         data: {
           orgId,
           email: `${orgId}@example.invalid`,
@@ -99,7 +99,7 @@ it.skipIf(!enabled)(
           clearance: 0
         }
       });
-      const admin = await prisma.employee.create({
+      const admin = await prisma.userAccount.create({
         data: {
           orgId,
           email: `${orgId}-admin@example.invalid`,
@@ -112,7 +112,7 @@ it.skipIf(!enabled)(
       const passwordHash = await hashPassword(password);
       for (const employee of [owner, admin])
         await prisma.loginIdentity.create({
-          data: { orgId, employeeId: employee.id, normalizedEmail: employee.email, passwordHash }
+          data: { orgId, userAccountId: employee.id, normalizedEmail: employee.email, passwordHash }
         });
       await prisma.businessAuthorizationState.create({ data: { orgId, mode: "enabled" } });
       await prisma.businessCategory.createMany({
@@ -136,7 +136,7 @@ it.skipIf(!enabled)(
         data: {
           id: "browser-pdf-grant",
           orgId,
-          employeeId: owner.id,
+          userAccountId: owner.id,
           enterpriseKey: "synthetic",
           ownership: "store",
           allStores: false
@@ -221,7 +221,7 @@ it.skipIf(!enabled)(
       for (const key of keys) {
         const result = await archive.reserveRefresh({
           orgId,
-          actor: { kind: "employee", employeeId: owner.id },
+          actor: { kind: "employee", userAccountId: owner.id },
           idempotencyKey: randomUUID(),
           requestFingerprint: "c".repeat(64),
           scope: { storeNames: [key.storeName], dates: [key.purchaseDate] },
@@ -295,11 +295,14 @@ it.skipIf(!enabled)(
         expect(context.status).toBe(200);
         return {
           cookie,
-          context: (await context.json()) as { identity: { employeeId: string }; csrfToken: string }
+          context: (await context.json()) as {
+            identity: { userAccountId: string };
+            csrfToken: string;
+          }
         };
       }
       const browser = await login(owner.email);
-      expect(browser.context.identity.employeeId).toBe(owner.id);
+      expect(browser.context.identity.userAccountId).toBe(owner.id);
       const persisted = await prisma.browserSession.findUniqueOrThrow({
         where: { secretHash: hashOpaqueSecret(browser.cookie.split("=")[1]!) }
       });
@@ -412,12 +415,12 @@ it.skipIf(!enabled)(
       }
       // The existing authenticated HTTP/MCP admin refresh contract remains available.
       const adminIdentity = await prisma.loginIdentity.findFirstOrThrow({
-        where: { orgId, employeeId: admin.id }
+        where: { orgId, userAccountId: admin.id }
       });
       const adminToken = randomUUID();
       await createPrismaAuthCoreRepository(prisma).createSessionBundle({
         identityId: adminIdentity.id,
-        employeeId: admin.id,
+        userAccountId: admin.id,
         orgId,
         credentialHash: hashOpaqueSecret(randomUUID()),
         accessTokenHash: hashOpaqueSecret(adminToken),

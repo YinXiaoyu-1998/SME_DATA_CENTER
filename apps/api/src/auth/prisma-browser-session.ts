@@ -23,7 +23,7 @@ export function createPrismaBrowserSessionRepository(
           identity.employee.disabled ||
           identity.orgId !== input.orgId ||
           identity.employee.orgId !== input.orgId ||
-          identity.employeeId !== input.employeeId ||
+          identity.userAccountId !== input.userAccountId ||
           !identity.passwordHash ||
           hashOpaqueSecret(identity.passwordHash) !== input.credentialFingerprint
         )
@@ -31,7 +31,7 @@ export function createPrismaBrowserSessionRepository(
         await tx.browserSession.create({
           data: {
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             orgId: input.orgId,
             secretHash: input.secretHash,
             credentialFingerprint: input.credentialFingerprint,
@@ -45,7 +45,7 @@ export function createPrismaBrowserSessionRepository(
             outcome: "succeeded",
             reason: "browser_sign_in",
             identityId: input.identityId,
-            employeeId: input.employeeId,
+            userAccountId: input.userAccountId,
             orgId: input.orgId,
             ...eventAudit(input.audit),
             createdAt: input.now
@@ -69,7 +69,7 @@ export function createPrismaBrowserSessionRepository(
         row.identity.employee.disabled ||
         !row.identity.passwordHash ||
         row.identityId !== row.identity.id ||
-        row.employeeId !== row.identity.employeeId ||
+        row.userAccountId !== row.identity.userAccountId ||
         row.orgId !== row.identity.orgId ||
         row.orgId !== row.identity.employee.orgId
       )
@@ -97,7 +97,7 @@ export function createPrismaBrowserSessionRepository(
       await prisma.$transaction(async (tx) => {
         const row = await tx.browserSession.findUnique({
           where: { secretHash },
-          select: { identityId: true, employeeId: true, orgId: true }
+          select: { identityId: true, userAccountId: true, orgId: true }
         });
         const result = await tx.browserSession.updateMany({
           where: { secretHash, revokedAt: null },

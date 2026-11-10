@@ -103,7 +103,7 @@ describe("quarantine certificate routes", () => {
       });
       expect(appendDenied).toHaveBeenCalledExactlyOnceWith({
         orgId: baoliEmployee.orgId,
-        actorEmployeeId: baoliEmployee.id,
+        actorUserAccountId: baoliEmployee.id,
         uploadSurface: "quarantine_certificate",
         audit: {
           requestId: "req_upload_denied",

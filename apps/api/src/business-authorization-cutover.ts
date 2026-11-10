@@ -224,7 +224,7 @@ export function createAuthorizationCutoverService(
       where: { orgId, archivedAt: null, status: { notIn: ["archived", "uploading"] } },
       include: { importBatch: { select: { dataset: true } } }
     });
-    const accounts = await tx.employee.findMany({ where: { orgId }, select: { id: true } });
+    const accounts = await tx.userAccount.findMany({ where: { orgId }, select: { id: true } });
     const dimensions = await tx.businessDimension.findMany({
       where: { orgId },
       include: { values: true }
@@ -290,12 +290,12 @@ export function createAuthorizationCutoverService(
       };
     },
     activateAuthorizationCutover(
-      actor: { orgId: string; employeeId: string },
+      actor: { orgId: string; userAccountId: string },
       expectedVersion: string,
       confirm: true
     ) {
       return repository.activateAuthorizationCutover(
-        { orgId: actor.orgId, actorId: actor.employeeId, expectedVersion, confirm },
+        { orgId: actor.orgId, actorId: actor.userAccountId, expectedVersion, confirm },
         (tx) => inspect(actor.orgId, tx)
       );
     }

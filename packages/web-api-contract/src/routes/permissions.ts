@@ -92,7 +92,7 @@ export const permissionsWebApiRoutes: readonly WebApiRoute[] = Object.freeze([
   defineWebApiRoute({
     id: "permissions.accounts.read",
     method: "GET",
-    path: `${base}/accounts/:employeeId`,
+    path: `${base}/accounts/:userAccountId`,
     auth: "session",
     params: permissionAccountParams,
     response: permissionAccountResponse,
@@ -102,7 +102,7 @@ export const permissionsWebApiRoutes: readonly WebApiRoute[] = Object.freeze([
   defineWebApiRoute({
     id: "permissions.accounts.update",
     method: "PATCH",
-    path: `${base}/accounts/:employeeId`,
+    path: `${base}/accounts/:userAccountId`,
     auth: "session-write",
     params: permissionAccountParams,
     body: permissionAccountUpdateBody,

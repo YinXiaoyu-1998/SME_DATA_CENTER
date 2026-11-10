@@ -85,7 +85,7 @@ it("rejects another uploader's explicit cleanup IDs before deleting any data", a
     documentIds: ["doc_other_owner"],
     partitionJobIds: []
   });
-  run.reusedEmployeeId = "emp_qa";
+  run.reusedUserAccountId = "emp_qa";
   const findDocuments = vi.fn();
   const prisma = {
     loginIdentity: { findMany: vi.fn().mockResolvedValue([]) },

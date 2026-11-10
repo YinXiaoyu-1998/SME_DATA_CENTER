@@ -22,7 +22,7 @@ const prisma = vi.hoisted(() => ({
     update: vi.fn()
   },
   businessResource: { findMany: vi.fn() },
-  employee: { findFirst: vi.fn() },
+  userAccount: { findFirst: vi.fn() },
   businessAuthorizationState: { upsert: vi.fn() },
   businessCategory: { findUnique: vi.fn() },
   vipRow: {
@@ -120,7 +120,7 @@ function reservationInput(
 
   return {
     orgId: "org_1",
-    actorEmployeeId: "emp_1",
+    actorUserAccountId: "emp_1",
     documentId: "doc_1",
     dataset,
     fileType: "csv" as const,
@@ -276,7 +276,7 @@ function useStatefulReservationPrisma(
 describe("Prisma structured import audit provenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    prisma.employee.findFirst.mockImplementation(
+    prisma.userAccount.findFirst.mockImplementation(
       async ({
         where
       }: {
@@ -384,7 +384,7 @@ describe("Prisma structured import audit provenance", () => {
 
     await repository.reserveStructuredImport({
       orgId: "org_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       documentId: "doc_1",
       dataset: "vip",
       fileType: "csv",
@@ -434,7 +434,7 @@ describe("Prisma structured import audit provenance", () => {
 
     await repository.applyReservedStructuredImport({
       orgId: "org_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       importBatchId: "imp_1",
       rows: [
         {
@@ -481,7 +481,7 @@ describe("Prisma structured import audit provenance", () => {
 
     await repository.applyReservedStructuredImport({
       orgId: "org_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       importBatchId: "imp_1",
       rows: [
         {
@@ -659,7 +659,7 @@ describe("Prisma structured import audit provenance", () => {
 
       await repository.reserveStructuredImport({
         orgId: "org_1",
-        actorEmployeeId: "emp_2",
+        actorUserAccountId: "emp_2",
         documentId: "doc_2",
         dataset: "vip",
         fileType: "csv",
@@ -725,7 +725,7 @@ describe("Prisma structured import audit provenance", () => {
 
     const baseInput = {
       orgId: "org_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       dataset: "dish_catalog" as const,
       fileType: "csv" as const,
       startDate: "20260819",
@@ -1000,7 +1000,7 @@ describe("Prisma structured import audit provenance", () => {
 
     await repository.applyReservedStructuredImport({
       orgId: "org_1",
-      actorEmployeeId: "emp_1",
+      actorUserAccountId: "emp_1",
       importBatchId: "imp_1",
       rows: [
         {

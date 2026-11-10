@@ -52,7 +52,7 @@ export interface ResourceReadRequirement {
 }
 export interface AuthorizationSnapshot {
   orgId: string;
-  employeeId: string;
+  userAccountId: string;
   role: "admin" | "employee";
   disabled: boolean;
   clearance: number;

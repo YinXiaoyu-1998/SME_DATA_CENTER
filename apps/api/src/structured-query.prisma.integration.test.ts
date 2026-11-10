@@ -35,7 +35,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
 
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Confidentiality Query Test" } });
-    await prisma.employee.createMany({
+    await prisma.userAccount.createMany({
       data: [
         {
           id: "cq-clearance-0",
@@ -132,7 +132,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
       });
     const snapshot: AuthorizationSnapshot = {
       orgId,
-      employeeId: "cq-clearance-0",
+      userAccountId: "cq-clearance-0",
       role: "employee",
       disabled: false,
       clearance: 0,
@@ -310,7 +310,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
     });
     const compiled = compileStructuredQuery({
       orgId,
-      employee: { id: snapshot.employeeId, clearance: 0 },
+      employee: { id: snapshot.userAccountId, clearance: 0 },
       cursorSecret: "synthetic",
       query: { dataset: "vip", aggregates: [{ op: "count", as: "total" }] },
       businessAuthorization: {
@@ -321,7 +321,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
     expect(await prisma.$queryRawUnsafe(compiled.sql, ...compiled.params)).toEqual([{ total: 2n }]);
     const compiledCoverage = compileStructuredCoverageQuery({
       orgId,
-      employee: { id: snapshot.employeeId, clearance: 0 },
+      employee: { id: snapshot.userAccountId, clearance: 0 },
       dataset: "vip",
       businessAuthorization: compileStructuredReadScope(snapshot, "coverage", "vip")
     });
@@ -343,7 +343,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
       data: {
         id: "read-vip",
         orgId,
-        employeeId: originalActor.id,
+        userAccountId: originalActor.id,
         enterpriseKey: "enterprise",
         ownership: "group"
       }
@@ -463,7 +463,7 @@ describeIntegration("Prisma confidentiality persistence", () => {
       data: {
         orgId,
         id: "memo-B",
-        employeeId: "cq-clearance-0",
+        userAccountId: "cq-clearance-0",
         enterpriseKey: "enterprise",
         ownership: "store"
       }

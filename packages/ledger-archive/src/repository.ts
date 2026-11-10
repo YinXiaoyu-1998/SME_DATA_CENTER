@@ -139,14 +139,14 @@ function dateString(value: Date): string {
 function actorFields(actor: LedgerActor) {
   return {
     actorKind: actor.kind,
-    actorEmployeeId: actor.kind === "employee" ? actor.employeeId : null,
+    actorUserAccountId: actor.kind === "employee" ? actor.userAccountId : null,
     actorLabel: actor.kind === "operator" ? actor.label : null,
     reconciliationRunId: actor.kind === "system_reconciler" ? actor.reconciliationRunId : null
   };
 }
 function requestActor(request: LedgerArtifactRequest): LedgerActor {
-  if (request.actorKind === "employee" && request.actorEmployeeId)
-    return { kind: "employee", employeeId: request.actorEmployeeId };
+  if (request.actorKind === "employee" && request.actorUserAccountId)
+    return { kind: "employee", userAccountId: request.actorUserAccountId };
   if (request.actorKind === "operator" && request.actorLabel)
     return { kind: "operator", label: request.actorLabel };
   if (request.actorKind === "system_reconciler" && request.reconciliationRunId)
@@ -316,7 +316,8 @@ export function createPrismaLedgerArchiveRepository({
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.actor.kind === "employee" ? input.actor.employeeId : null,
+                actorUserAccountId:
+                  input.actor.kind === "employee" ? input.actor.userAccountId : null,
                 action: "ledger_pdf.refresh_requested",
                 targetType: "ledger_artifact_request",
                 targetId: request.id,
@@ -582,7 +583,8 @@ export function createPrismaLedgerArchiveRepository({
             await tx.auditLog.create({
               data: {
                 orgId: input.orgId,
-                actorEmployeeId: input.actor.kind === "employee" ? input.actor.employeeId : null,
+                actorUserAccountId:
+                  input.actor.kind === "employee" ? input.actor.userAccountId : null,
                 action: "ledger_pdf.refresh_requested",
                 targetType: "ledger_artifact_request",
                 targetId: request.id,

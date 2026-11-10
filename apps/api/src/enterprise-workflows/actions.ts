@@ -553,7 +553,7 @@ export async function actionOperation(
   });
   if (!run) fail("WORKFLOW_INSTALLATION_MISMATCH");
   const original =
-    run.employeeId === actor.id &&
+    run.userAccountId === actor.id &&
     run.installationId === op.installationId &&
     run.assignmentEpoch === op.assignmentEpoch;
   const assigned =

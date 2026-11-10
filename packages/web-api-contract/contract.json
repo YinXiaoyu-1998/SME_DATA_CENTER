@@ -15,7 +15,7 @@
           "identity": {
             "type": "object",
             "properties": {
-              "employeeId": {
+              "userAccountId": {
                 "type": "string",
                 "minLength": 1
               },
@@ -33,7 +33,7 @@
               }
             },
             "required": [
-              "employeeId",
+              "userAccountId",
               "orgId",
               "displayName",
               "organizationName"
@@ -580,7 +580,7 @@
                 "orgId": {
                   "type": "string"
                 },
-                "employeeId": {
+                "userAccountId": {
                   "type": "string"
                 },
                 "role": {
@@ -722,7 +722,7 @@
               },
               "required": [
                 "orgId",
-                "employeeId",
+                "userAccountId",
                 "role",
                 "disabled",
                 "clearance",
@@ -805,7 +805,7 @@
     {
       "id": "permissions.accounts.read",
       "method": "GET",
-      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:employeeId",
+      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:userAccountId",
       "auth": "session",
       "summary": "读取单个账号的授权快照",
       "request": {
@@ -816,14 +816,14 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
-            "employeeId": {
+            "userAccountId": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             }
           },
           "required": [
             "orgId",
-            "employeeId"
+            "userAccountId"
           ],
           "additionalProperties": false
         }
@@ -834,7 +834,7 @@
           "orgId": {
             "type": "string"
           },
-          "employeeId": {
+          "userAccountId": {
             "type": "string"
           },
           "role": {
@@ -967,7 +967,7 @@
         },
         "required": [
           "orgId",
-          "employeeId",
+          "userAccountId",
           "role",
           "disabled",
           "clearance",
@@ -1041,7 +1041,7 @@
     {
       "id": "permissions.accounts.update",
       "method": "PATCH",
-      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:employeeId",
+      "path": "/api/web/v1/orgs/:orgId/permissions/accounts/:userAccountId",
       "auth": "session-write",
       "summary": "按期望版本保存账号密级与业务授权",
       "request": {
@@ -1052,14 +1052,14 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             },
-            "employeeId": {
+            "userAccountId": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,64}$"
             }
           },
           "required": [
             "orgId",
-            "employeeId"
+            "userAccountId"
           ],
           "additionalProperties": false
         },
@@ -3499,7 +3499,7 @@
           "orgId": {
             "type": "string"
           },
-          "employeeId": {
+          "userAccountId": {
             "type": "string"
           },
           "role": {
@@ -3659,7 +3659,7 @@
         },
         "required": [
           "orgId",
-          "employeeId",
+          "userAccountId",
           "role",
           "disabled",
           "clearance",
@@ -3959,7 +3959,7 @@
           "identity": {
             "type": "object",
             "properties": {
-              "employeeId": {
+              "userAccountId": {
                 "type": "string",
                 "minLength": 1
               },
@@ -3993,7 +3993,7 @@
               }
             },
             "required": [
-              "employeeId",
+              "userAccountId",
               "displayName",
               "email",
               "orgId",
@@ -4064,7 +4064,7 @@
           "identity": {
             "type": "object",
             "properties": {
-              "employeeId": {
+              "userAccountId": {
                 "type": "string",
                 "minLength": 1
               },
@@ -4098,7 +4098,7 @@
               }
             },
             "required": [
-              "employeeId",
+              "userAccountId",
               "displayName",
               "email",
               "orgId",
@@ -5620,7 +5620,7 @@
                 "installationId": {
                   "type": "string"
                 },
-                "employeeId": {
+                "userAccountId": {
                   "type": "string"
                 },
                 "version": {
@@ -5821,7 +5821,7 @@
                 "orgId",
                 "workflowId",
                 "installationId",
-                "employeeId",
+                "userAccountId",
                 "version",
                 "deviceAlias",
                 "host",
@@ -5856,7 +5856,7 @@
                 "installationId": {
                   "type": "string"
                 },
-                "employeeId": {
+                "userAccountId": {
                   "type": "string"
                 },
                 "configurationVersion": {
@@ -6004,7 +6004,7 @@
                 "orgId",
                 "workflowId",
                 "installationId",
-                "employeeId",
+                "userAccountId",
                 "configurationVersion",
                 "integrationVersion",
                 "controlVersion",
@@ -10371,7 +10371,7 @@
               "installationId": {
                 "type": "string"
               },
-              "employeeId": {
+              "userAccountId": {
                 "type": "string"
               },
               "version": {
@@ -10507,7 +10507,7 @@
               "orgId",
               "workflowId",
               "installationId",
-              "employeeId",
+              "userAccountId",
               "version",
               "deviceAlias",
               "host",
@@ -13196,7 +13196,7 @@
               "installationId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema8"
               },
-              "employeeId": {
+              "userAccountId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema9"
               },
               "configurationVersion": {
@@ -13264,7 +13264,7 @@
               "orgId",
               "workflowId",
               "installationId",
-              "employeeId",
+              "userAccountId",
               "configurationVersion",
               "integrationVersion",
               "controlVersion",
@@ -13337,7 +13337,7 @@
               "installationId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema8"
               },
-              "employeeId": {
+              "userAccountId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema9"
               },
               "configurationVersion": {
@@ -13397,7 +13397,7 @@
               "orgId",
               "workflowId",
               "installationId",
-              "employeeId",
+              "userAccountId",
               "configurationVersion",
               "integrationVersion",
               "controlVersion",

@@ -41,7 +41,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     orgId = `review_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
     id = `${orgId}_admin`;
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic reviews" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         orgId,
         id,
@@ -86,7 +86,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await permissions.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: state.version.toString(),
       clearance: 3,
       grants: [
@@ -138,7 +138,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     expect(
       (await repo.query(actor(), { enterpriseName: "企业A", storeNames: ["B店"] })).rows
     ).toEqual([]);
-    await prisma.employee.update({ where: { id }, data: { clearance: 1 } });
+    await prisma.userAccount.update({ where: { id }, data: { clearance: 1 } });
     await expect(repo.query(actor(), { enterpriseName: "企业A" })).rejects.toThrow(
       "STORE_REVIEW_ACCESS_DENIED"
     );
@@ -162,7 +162,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     await permissions.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: state.version.toString(),
       clearance: 3,
       grants: [
@@ -243,7 +243,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
       offset: 1,
       shapeHash: hashStoreReviewQueryScope({
         orgId,
-        employeeId: id,
+        userAccountId: id,
         enterpriseKey: "企业a",
         authorizationVersion: state.version.toString(),
         query: parseStoreReviewQuery(input)
@@ -314,7 +314,7 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     const otherOrg = orgId + "_other",
       otherId = id + "_2";
     await prisma.organization.create({ data: { id: otherOrg, name: "Synthetic isolated tenant" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         orgId: otherOrg,
         id: otherId,
@@ -381,15 +381,15 @@ reviewIntegrationSuite("store reviews transactional MySQL repository", () => {
     expect(await prisma.businessResource.count({ where: { orgId } })).toBe(1);
   });
   it("rejects current demoted or disabled admin and unconfigured/retired identities atomically", async () => {
-    await prisma.employee.update({ where: { id }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "employee" } });
     await expect(repo.upsert(actor(), { reviews: [row()] })).rejects.toThrow(
       "UPLOAD_ADMIN_REQUIRED"
     );
-    await prisma.employee.update({ where: { id }, data: { role: "admin", disabled: true } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "admin", disabled: true } });
     await expect(repo.upsert(actor(), { reviews: [row()] })).rejects.toThrow(
       "UPLOAD_ADMIN_REQUIRED"
     );
-    await prisma.employee.update({ where: { id }, data: { disabled: false } });
+    await prisma.userAccount.update({ where: { id }, data: { disabled: false } });
     await expect(
       repo.upsert(actor(), { reviews: [row(), { ...row("other"), enterpriseName: "不存在" }] })
     ).rejects.toThrow("STORE_REVIEW_IDENTITY_NOT_AVAILABLE");

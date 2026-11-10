@@ -294,11 +294,11 @@ export function createPrismaLedgerBundleArchive({
       const request = await prisma.ledgerArtifactRequest.findFirst({
         where: { id: requestId, kind: "download", actorKind: "employee" }
       });
-      if (!request?.actorEmployeeId) return null;
+      if (!request?.actorUserAccountId) return null;
       return {
         requestId: request.id,
         orgId: request.orgId,
-        employeeId: request.actorEmployeeId,
+        userAccountId: request.actorUserAccountId,
         status: request.status,
         manifest: parseLedgerBundleManifest(request.scope),
         zipObjectKey: request.zipObjectKey,

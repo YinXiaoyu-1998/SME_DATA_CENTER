@@ -1,0 +1,2 @@
+-- UserAccount maps to the existing employees table and account foreign-key columns.
+-- This forward migration intentionally leaves all persisted identities and references unchanged.

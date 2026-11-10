@@ -4,29 +4,29 @@ describe("internal permissions operator CLI", () => {
   it("plans role-only changes through their separate controlled operation", async () => {
     const { planPermissionChange } = await import("./cli.js");
     for (const role of ["admin", "employee"]) {
-      expect(planPermissionChange("account.role.set", { employeeId: "target", role }, "7")).toEqual(
-        {
-          method: "PATCH",
-          url: "/internal/permissions/accounts/target/role",
-          body: { role, expectedVersion: "7" }
-        }
-      );
+      expect(
+        planPermissionChange("account.role.set", { userAccountId: "target", role }, "7")
+      ).toEqual({
+        method: "PATCH",
+        url: "/internal/permissions/accounts/target/role",
+        body: { role, expectedVersion: "7" }
+      });
     }
     for (const role of [undefined, null, "owner", " admin"])
       expect(() =>
-        planPermissionChange("account.role.set", { employeeId: "target", role }, "7")
+        planPermissionChange("account.role.set", { userAccountId: "target", role }, "7")
       ).toThrow("OPERATOR_INVALID_ROLE");
     expect(() =>
       planPermissionChange(
         "account.role.set",
-        { employeeId: "target", role: "admin", clearance: 3 },
+        { userAccountId: "target", role: "admin", clearance: 3 },
         "7"
       )
     ).toThrow("OPERATOR_UNEXPECTED_INPUT_FIELD");
     expect(() =>
       planPermissionChange(
         "account.set",
-        { employeeId: "target", role: "admin", clearance: 3, grants: [] },
+        { userAccountId: "target", role: "admin", clearance: 3, grants: [] },
         "7"
       )
     ).toThrow("OPERATOR_UNEXPECTED_INPUT_FIELD");
@@ -63,7 +63,11 @@ describe("internal permissions operator CLI", () => {
   it("allows only named configuration operations and never accepts actor/tenant/version overrides", async () => {
     const { planPermissionChange } = await import("./cli.js");
     expect(
-      planPermissionChange("account.set", { employeeId: "target", clearance: 1, grants: [] }, "7")
+      planPermissionChange(
+        "account.set",
+        { userAccountId: "target", clearance: 1, grants: [] },
+        "7"
+      )
     ).toEqual({
       method: "PATCH",
       url: "/internal/permissions/accounts/target",
@@ -73,7 +77,7 @@ describe("internal permissions operator CLI", () => {
     expect(() =>
       planPermissionChange(
         "account.set",
-        { employeeId: "target", clearance: 1, grants: [], orgId: "other" },
+        { userAccountId: "target", clearance: 1, grants: [], orgId: "other" },
         "7"
       )
     ).toThrow();

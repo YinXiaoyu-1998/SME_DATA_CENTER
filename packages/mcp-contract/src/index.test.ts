@@ -213,9 +213,9 @@ const validInputs = {
     endDate: "20260731"
   },
   get_my_permissions: {},
-  query_account_permissions: { query: { mode: "detail", employeeId: "actor" } },
+  query_account_permissions: { query: { mode: "detail", userAccountId: "actor" } },
   update_account_permissions: {
-    employeeId: "actor",
+    userAccountId: "actor",
     expectedVersion: "7",
     clearance: 2,
     grants: []
@@ -258,7 +258,7 @@ const invalidConsolidatedInputCases = [
     tool: "query_account_permissions",
     cases: [
       { label: "detail without employee ID", input: { query: { mode: "detail" } } },
-      { label: "list with employee ID", input: { query: { mode: "list", employeeId: "actor" } } }
+      { label: "list with employee ID", input: { query: { mode: "list", userAccountId: "actor" } } }
     ]
   },
   {
@@ -325,7 +325,7 @@ const invalidInputCases = [
   { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
     tool: "smedc_get_current_user",
-    cases: [{ label: "cross-employee selector", input: { employeeId: "someone-else" } }]
+    cases: [{ label: "cross-employee selector", input: { userAccountId: "someone-else" } }]
   },
   {
     tool: "smedc_list_skills",
@@ -779,7 +779,9 @@ describe("SMEDC MCP contract", () => {
     );
 
     expect(currentUser?.inputSchema.safeParse({}).success).toBe(true);
-    expect(currentUser?.inputSchema.safeParse({ employeeId: "someone-else" }).success).toBe(false);
+    expect(currentUser?.inputSchema.safeParse({ userAccountId: "someone-else" }).success).toBe(
+      false
+    );
     expect(currentUser?.resultShape).toEqual([
       "user: { displayName, email, role, clearance, organizationName }"
     ]);

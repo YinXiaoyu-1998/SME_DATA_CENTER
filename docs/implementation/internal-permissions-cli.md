@@ -57,8 +57,8 @@ permissions-operator apply --org-id ORG_ID --requested-by-admin-id ADMIN_ID \
 | `value.create` / `value.update`         | `dimensionId`、`id`、`name`、可选 `retired`                                                                                                  |
 | `category.create`                       | `id`、`name`、`ownerships`（`group`／`store`）、`requiredDimensionIds`、可选 `retired`；仅新增普通文档类别                                   |
 | `category.update`                       | `id`、`name`、可选 `retired`；固定类别还需 `confidentialityLevel`；普通文档类别还需完整 `ownerships`、`requiredDimensionIds`                 |
-| `account.set`                           | `employeeId`、`clearance`（0–3）、完整 `grants`；替换该账号全部业务授权，必须保留仍需生效的原有 grant                                        |
-| `account.role.set`                      | `employeeId`、`role`（严格为 `admin` 或 `employee`）；仅修改角色，保留密级、业务授权和登录身份                                               |
+| `account.set`                           | `userAccountId`、`clearance`（0–3）、完整 `grants`；替换该账号全部业务授权，必须保留仍需生效的原有 grant                                     |
+| `account.role.set`                      | `userAccountId`、`role`（严格为 `admin` 或 `employee`）；仅修改角色，保留密级、业务授权和登录身份                                            |
 | `document.set`                          | `documentId`、`categoryId`、`fileConfidentialityLevel`（0–3）、完整 `scopes`；按现有规则可带 `historicalSupplementReason`                    |
 
 `grants` 与 `scopes` 沿用现有业务权限合同。每条 grant 包含 `id`、当前 `orgId`、`enterpriseKey`、`categoryIds`、`ownership` 和 `dimensions`；门店级还需 `stores`。选择集为 `{"kind":"all"}` 或 `{"kind":"fixed","values":["精确值"]}`。每条 scope 包含 `enterpriseKey`、`ownership`、`dimensions`，门店级还需 `storeName`。维度键和值使用已有持久 ID，不使用显示名猜测。集团级与全部门店不同。
@@ -67,7 +67,7 @@ permissions-operator apply --org-id ORG_ID --requested-by-admin-id ADMIN_ID \
 
 成功写入在同一事务中保存配置、版本、业务审计和操作者审计；任一审计失败则整体回滚。业务审计 `actorId` 记录提出请求的管理员，action 以 `operator.` 标明代办，并保留变更前后值。关联的通用审计使用 `permissions.operator.change`／`operator_cli`，实际员工 actor 留空，元数据记录操作者声明、管理员、原因、请求引用和版本，避免把代办伪装成管理员本人操作。已进入仓库写入逻辑的拒绝会记录拒绝审计；解析、预览和提前拒绝不宣称已保存审计。
 
-角色变更使用独立的 `account.role.set`，不通过 `account.set` 混改角色与读取授权。例如将受控输入保存为 `{"employeeId":"EXISTING_EMPLOYEE_ID","role":"employee"}`，沿用上述 `apply` 命令的组织、请求管理员、操作者、原因、请求引用和当前版本参数，先预览，再加 `--execute`。提升与降级都要求当前有效的同组织管理员请求；执行时在原权限版本锁下重新核验。不能将最后一位未停用管理员降为 employee，返回 `AUTHORIZATION_LAST_ADMIN_REQUIRED`；停用的管理员和其他组织的管理员不计入保留人数。有另一位有效管理员时允许自行降级，降级后原账号不能再进行管理操作。
+角色变更使用独立的 `account.role.set`，不通过 `account.set` 混改角色与读取授权。例如将受控输入保存为 `{"userAccountId":"EXISTING_USER_ACCOUNT_ID","role":"employee"}`，沿用上述 `apply` 命令的组织、请求管理员、操作者、原因、请求引用和当前版本参数，先预览，再加 `--execute`。提升与降级都要求当前有效的同组织管理员请求；执行时在原权限版本锁下重新核验。不能将最后一位未停用管理员降为 employee，返回 `AUTHORIZATION_LAST_ADMIN_REQUIRED`；停用的管理员和其他组织的管理员不计入保留人数。有另一位有效管理员时允许自行降级，降级后原账号不能再进行管理操作。
 
 角色不会自动改变密级或业务读取授权。employee 保留原有授权范围内的查询／下载能力，但不能上传或写入店铺评价；admin 恢复管理和上传能力，普通读取仍需完整业务授权与密级。后续请求使用服务端当前角色；该操作不重置密码、不主动撤销登录会话，也不额外撤销已经签发的对象存储链接或承诺终止在途操作。
 

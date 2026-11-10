@@ -319,7 +319,7 @@ export function registerQuarantineCertificateRoutes(
     try {
       const certificate = await dependencies.quarantineCertificates().createCertificate({
         orgId: employee.orgId,
-        actorEmployeeId: employee.id,
+        actorUserAccountId: employee.id,
         sourceDocumentId,
         title: `检疫证明 ${normalizedReceiptId} - ${file.fileName}`,
         receiptId: normalizedReceiptId,

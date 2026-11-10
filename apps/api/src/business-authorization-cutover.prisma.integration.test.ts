@@ -45,7 +45,7 @@ suite("fixed category bootstrap through supported administration", () => {
     const orgId = `init_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
     const actorId = `${orgId}_admin`;
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic existing tenant" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: actorId,
         orgId,
@@ -202,7 +202,7 @@ suite("fixed category bootstrap through supported administration", () => {
     const categories = await repository.listCategories(orgId);
     expect(categories.map((c) => c.key).sort()).toEqual(Object.keys(ownership).sort());
     expect(categories.every((c) => c.confidentialityLevel === null)).toBe(true);
-    expect(await repository.loadAuthorizationSnapshot(account.employeeId, orgId)).toMatchObject({
+    expect(await repository.loadAuthorizationSnapshot(account.userAccountId, orgId)).toMatchObject({
       mode: "legacy",
       grants: []
     });
@@ -219,7 +219,7 @@ suite("atomic tenant authorization cutover", () => {
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
   const repository = createBusinessAuthorizationRepository({ prisma });
   const service = createAuthorizationCutoverService(repository);
-  let actor: { orgId: string; employeeId: string };
+  let actor: { orgId: string; userAccountId: string };
   const snapshot = () => repository.loadAuthorizationSnapshot(actorId, orgId);
   const context = async () => ({
     orgId,
@@ -238,9 +238,9 @@ suite("atomic tenant authorization cutover", () => {
   beforeEach(async () => {
     orgId = `cut_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
     actorId = `${orgId}_admin`;
-    actor = { orgId, employeeId: actorId };
+    actor = { orgId, userAccountId: actorId };
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic cutover" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id: actorId,
         orgId,
@@ -403,7 +403,7 @@ suite("atomic tenant authorization cutover", () => {
           }
         ]
       });
-      await prisma.employee.update({ where: { id: actorId }, data: { role: "employee" } });
+      await prisma.userAccount.update({ where: { id: actorId }, data: { role: "employee" } });
       expect(await category(fixed, changedValue.authorizationVersion)).toMatchObject({
         error: { code: "AUTHORIZATION_ADMIN_REQUIRED" }
       });
@@ -464,7 +464,7 @@ suite("atomic tenant authorization cutover", () => {
     prepared = await service.prepareAuthorizationCutover(orgId);
     await repository.configureAccount({
       ...(await context()),
-      employeeId: actorId,
+      userAccountId: actorId,
       clearance: 3,
       grants: []
     });
@@ -513,17 +513,17 @@ suite("atomic tenant authorization cutover", () => {
   });
   it("rechecks the current same-tenant active admin in the enabling transaction", async () => {
     const before = await snapshot();
-    await prisma.employee.update({ where: { id: actorId }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id: actorId }, data: { role: "employee" } });
     await expect(
       service.activateAuthorizationCutover(actor, before.authorizationVersion, true)
     ).rejects.toThrow("AUTHORIZATION_ADMIN_REQUIRED");
-    await prisma.employee.update({ where: { id: actorId }, data: { role: "admin" } });
+    await prisma.userAccount.update({ where: { id: actorId }, data: { role: "admin" } });
     await prisma.organization.create({
       data: { id: `${orgId}_foreign`, name: "Synthetic other tenant" }
     });
     await expect(
       service.activateAuthorizationCutover(
-        { orgId: `${orgId}_foreign`, employeeId: actorId },
+        { orgId: `${orgId}_foreign`, userAccountId: actorId },
         "0",
         true
       )
@@ -638,7 +638,7 @@ suite("atomic tenant authorization cutover", () => {
     };
     await repository.configureAccount({
       ...(await context()),
-      employeeId: actorId,
+      userAccountId: actorId,
       clearance: 3,
       grants: [grant]
     });
@@ -701,7 +701,7 @@ suite("atomic tenant authorization cutover", () => {
       });
       await repository.configureAccount({
         ...(await context()),
-        employeeId: actorId,
+        userAccountId: actorId,
         clearance: 3,
         grants: [{ ...grant, dimensions: { project: { kind: "all" } } }]
       });
@@ -727,7 +727,7 @@ suite("atomic tenant authorization cutover", () => {
     const before = await snapshot();
     await repository.configureAccount({
       ...(await context()),
-      employeeId: actorId,
+      userAccountId: actorId,
       clearance: 2,
       grants: []
     });

@@ -14,7 +14,7 @@ import {
 export interface LoginIdentityRecord {
   id: string;
   orgId: string;
-  employeeId: string;
+  userAccountId: string;
   passwordHash: string | null;
   disabled: boolean;
   employeeDisabled: boolean;
@@ -25,7 +25,7 @@ export interface LoginIdentityRecord {
 
 export interface AccessAuthenticationRecord {
   identityId: string;
-  employeeId: string;
+  userAccountId: string;
   orgId: string;
   organizationName: string;
   displayName: string;
@@ -48,7 +48,7 @@ export type RotateCredentialResult =
       status: "rotated";
       sessionId: string;
       identityId: string;
-      employeeId: string;
+      userAccountId: string;
       orgId: string;
     }
   | { status: "replayed"; sessionId: string }
@@ -58,7 +58,7 @@ export type DeviceCodeRedemption =
   | {
       status: "redeemed";
       identityId: string;
-      employeeId: string;
+      userAccountId: string;
       orgId: string;
     }
   | { status: "authorization_pending" }
@@ -94,7 +94,7 @@ export interface SecurityEventInput {
   launcherVersion?: string;
   orgId?: string;
   identityId?: string;
-  employeeId?: string;
+  userAccountId?: string;
   sessionId?: string;
 }
 
@@ -162,7 +162,7 @@ export interface AuthCoreRepository {
   completeDeviceAuthorization(input: {
     userCodeHash: string;
     identityId: string;
-    employeeId: string;
+    userAccountId: string;
     orgId: string;
     now: Date;
     audit: AuthRequestAudit;
@@ -175,7 +175,7 @@ export interface AuthCoreRepository {
   }): Promise<DeviceCodeRedemption>;
   createSessionBundle(input: {
     identityId: string;
-    employeeId: string;
+    userAccountId: string;
     orgId: string;
     credentialHash: string;
     accessTokenHash: string;
@@ -233,7 +233,7 @@ export class AuthCore {
     | {
         ok: true;
         identityId: string;
-        employeeId: string;
+        userAccountId: string;
         orgId: string;
         credentialFingerprint: string;
       }
@@ -269,7 +269,7 @@ export class AuthCore {
             : "identity_or_employee_disabled",
         orgId: identity.orgId,
         identityId: identity.id,
-        employeeId: identity.employeeId,
+        userAccountId: identity.userAccountId,
         ...eventAudit(audit),
         createdAt: now
       });
@@ -284,7 +284,7 @@ export class AuthCore {
         reason: "invalid_credentials",
         orgId: identity.orgId,
         identityId: identity.id,
-        employeeId: identity.employeeId,
+        userAccountId: identity.userAccountId,
         ...eventAudit(audit),
         createdAt: now
       });
@@ -295,7 +295,7 @@ export class AuthCore {
           reason: "progressive_cooldown",
           orgId: identity.orgId,
           identityId: identity.id,
-          employeeId: identity.employeeId,
+          userAccountId: identity.userAccountId,
           ...eventAudit(audit),
           createdAt: now
         });
@@ -309,14 +309,14 @@ export class AuthCore {
       outcome: "succeeded",
       orgId: identity.orgId,
       identityId: identity.id,
-      employeeId: identity.employeeId,
+      userAccountId: identity.userAccountId,
       ...eventAudit(audit),
       createdAt: now
     });
     return {
       ok: true,
       identityId: identity.id,
-      employeeId: identity.employeeId,
+      userAccountId: identity.userAccountId,
       orgId: identity.orgId,
       credentialFingerprint: hashOpaqueSecret(identity.passwordHash)
     };
@@ -423,7 +423,7 @@ export class AuthCore {
 
   async completeDeviceAuthorization(
     userCode: string,
-    identity: { identityId: string; employeeId: string; orgId: string },
+    identity: { identityId: string; userAccountId: string; orgId: string },
     audit: AuthRequestAudit
   ): Promise<boolean> {
     return this.repository.completeDeviceAuthorization({
@@ -448,7 +448,7 @@ export class AuthCore {
   }
 
   async createSession(
-    input: { identityId: string; employeeId: string; orgId: string },
+    input: { identityId: string; userAccountId: string; orgId: string },
     audit?: AuthRequestAudit
   ): Promise<{
     sessionId: string;
@@ -532,7 +532,7 @@ export class AuthCore {
       return null;
     }
     return {
-      id: record.employeeId,
+      id: record.userAccountId,
       orgId: record.orgId,
       organizationName: record.organizationName,
       displayName: record.displayName,

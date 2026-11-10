@@ -105,7 +105,7 @@ export interface ReserveStructuredImportInput {
   enterpriseName?: string;
   onDatabaseRetry?: (event: DatabaseRetryEvent) => void;
   orgId: string;
-  actorEmployeeId: string;
+  actorUserAccountId: string;
   documentId: string;
   dataset: StructuredDatasetName;
   fileType: Extract<Phase3FileType, "xlsx" | "csv">;
@@ -130,7 +130,7 @@ export interface ReserveStructuredImportInput {
 
 export interface ApplyReservedStructuredImportInput {
   orgId: string;
-  actorEmployeeId: string;
+  actorUserAccountId: string;
   importBatchId: string;
   rows: StructuredImportRowInput[];
   audit: RequestAuditContext;
@@ -466,7 +466,7 @@ export function createPrismaStructuredImportRepository(options: {
         try {
           const batch = await prisma.$transaction(
             async (tx) => {
-              await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+              await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
               let confidentialityLevel = input.document.confidentialityLevel;
               if (input.dataset === "cost_cards") {
                 if (
@@ -482,7 +482,7 @@ export function createPrismaStructuredImportRepository(options: {
                 )
                   throw new StructuredImportError("INVALID_COST_CARD_METADATA");
                 const state = await lockAuthorizationPublication(tx, input.orgId);
-                await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+                await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
                 if (state.mode !== "enabled")
                   throw new ResourceAttributesError("AUTHORIZATION_NOT_ENABLED");
                 const category = await tx.businessCategory.findUnique({
@@ -512,7 +512,7 @@ export function createPrismaStructuredImportRepository(options: {
               const historicalSupplement = await bindHistoricalSupplementIntent(
                 tx,
                 input.orgId,
-                input.actorEmployeeId,
+                input.actorUserAccountId,
                 input.historicalSupplementReason,
                 [input.startDate, input.endDate].filter((date): date is string => !!date)
               );
@@ -530,7 +530,7 @@ export function createPrismaStructuredImportRepository(options: {
                   contentType: input.document.contentType,
                   byteSize: input.document.byteSize,
                   checksumSha256: input.document.checksumSha256,
-                  uploaderId: input.actorEmployeeId,
+                  uploaderId: input.actorUserAccountId,
                   sourceSystem: "structured_import",
                   sourceMetadata: {
                     ...(input.dataset === "cost_cards"
@@ -589,7 +589,7 @@ export function createPrismaStructuredImportRepository(options: {
               await tx.auditLog.create({
                 data: {
                   orgId: input.orgId,
-                  actorEmployeeId: input.actorEmployeeId,
+                  actorUserAccountId: input.actorUserAccountId,
                   action: AUDIT_ACTIONS.structuredImportStarted,
                   targetType: "import_batch",
                   targetId: importBatchId,
@@ -647,7 +647,7 @@ export function createPrismaStructuredImportRepository(options: {
             if (!existing) throw new Error("Reserved import batch was not found.");
             if (existing.status === ImportBatchStatus.applied)
               return recordWithPartitions(existing, tx);
-            await requireCurrentUploadAdmin(tx, input.orgId, input.actorEmployeeId);
+            await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
             await persistStructuredSourceReadRequirements(tx, {
               orgId: input.orgId,
               sourceDocumentId: existing.sourceDocumentId,
@@ -777,7 +777,7 @@ export function createPrismaStructuredImportRepository(options: {
                 tx.auditLog.create({
                   data: {
                     orgId: input.orgId,
-                    actorEmployeeId: input.actorEmployeeId,
+                    actorUserAccountId: input.actorUserAccountId,
                     action: AUDIT_ACTIONS.structuredImportApplied,
                     targetType: "import_batch",
                     targetId: input.importBatchId,

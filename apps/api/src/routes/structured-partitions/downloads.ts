@@ -23,7 +23,7 @@ import { errorResponse } from "../../request-errors.js";
 export interface PartitionDownloadAuditRepository {
   append(input: {
     orgId: string;
-    actorEmployeeId: string;
+    actorUserAccountId: string;
     action: "prepare" | "status" | "url";
     targetId: string | null;
     result: "succeeded" | "denied";
@@ -43,7 +43,7 @@ export function createPrismaPartitionDownloadAuditRepository(
       await prisma.auditLog.create({
         data: {
           orgId: input.orgId,
-          actorEmployeeId: input.actorEmployeeId,
+          actorUserAccountId: input.actorUserAccountId,
           action: `partition_download_${input.action}`,
           targetType: "partition_download_request",
           targetId: input.targetId,
@@ -167,7 +167,7 @@ export function registerPartitionDownloadRoutes(
         const record = (result: "succeeded" | "denied", errorCode?: string) =>
           dependencies.audit().append({
             orgId: actor.orgId,
-            actorEmployeeId: actor.id,
+            actorUserAccountId: actor.id,
             action,
             targetId,
             result,

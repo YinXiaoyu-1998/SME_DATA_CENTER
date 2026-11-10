@@ -161,14 +161,14 @@ export function registerAdminPermissionsRoutes(
   permissionRoute("permissions.accounts.list", async (context) => {
     const actor = await current(context);
     return {
-      accounts: await service().repository.listAccounts(actor.orgId, actor.employeeId)
+      accounts: await service().repository.listAccounts(actor.orgId, actor.userAccountId)
     };
   });
 
   permissionRoute("permissions.accounts.read", async (context) => {
     const actor = await current(context);
     return service().repository.loadAuthorizationSnapshot(
-      String(context.params["employeeId"]),
+      String(context.params["userAccountId"]),
       actor.orgId
     );
   });
@@ -186,8 +186,8 @@ export function registerAdminPermissionsRoutes(
       return fail(context.reply, 400, "INVALID_PERMISSION_CONFIGURATION");
     return service().repository.configureAccount({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
-      employeeId: String(context.params["employeeId"]),
+      actorId: actor.userAccountId,
+      userAccountId: String(context.params["userAccountId"]),
       expectedVersion: body.expectedVersion,
       clearance: body.clearance,
       grants
@@ -207,7 +207,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionStoreBody.parse(context.body);
     return service().repository.putStore({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       ...(body.enterpriseKey !== undefined ? { enterpriseKey: body.enterpriseKey } : {}),
       ...(body.enterpriseName !== undefined ? { enterpriseName: body.enterpriseName } : {}),
@@ -229,7 +229,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionCategoryCreateBody.parse(context.body);
     return service().repository.configureCategory({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       id: body.id,
       name: body.name,
@@ -252,7 +252,7 @@ export function registerAdminPermissionsRoutes(
     if (!existing) return fail(context.reply, 404, "CATEGORY_NOT_FOUND");
     const shared = {
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       id,
       name: body.name,
@@ -288,7 +288,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionVersionBody.parse(context.body);
     return service().repository.initializeFixedCategories({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion
     });
   });
@@ -306,7 +306,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionDimensionCreateBody.parse(context.body);
     return service().repository.defineDimension({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       id: body.id,
       name: body.name,
@@ -321,7 +321,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionDimensionUpdateBody.parse(context.body);
     return service().repository.defineDimension({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       id: String(context.params["id"]),
       name: body.name,
@@ -336,7 +336,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionDimensionValueCreateBody.parse(context.body);
     return service().repository.defineDimensionValue({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       id: body.id,
       dimensionId: String(context.params["dimensionId"]),
@@ -352,7 +352,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionDimensionUpdateBody.parse(context.body);
     return service().repository.defineDimensionValue({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       id: String(context.params["id"]),
       dimensionId: String(context.params["dimensionId"]),
@@ -385,7 +385,7 @@ export function registerAdminPermissionsRoutes(
       return fail(context.reply, 400, "INVALID_PERMISSION_CONFIGURATION");
     return service().repository.configureEvidenceDocument({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       documentId: String(context.params["documentId"]),
       categoryId: body.categoryId,
@@ -410,7 +410,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionEnterpriseDeclareBody.parse(context.body);
     return service().repository.declareEnterpriseIdentity({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       name: body.name
     });
@@ -441,7 +441,7 @@ export function registerAdminPermissionsRoutes(
     const body = permissionCutoverBody.parse(context.body);
     return service().repository.suspendAuthorizationReads({
       orgId: actor.orgId,
-      actorId: actor.employeeId,
+      actorId: actor.userAccountId,
       expectedVersion: body.expectedVersion,
       confirm: true
     });

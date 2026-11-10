@@ -105,7 +105,7 @@ if (run) {
   const body = (result: Awaited<ReturnType<typeof write>>) => JSON.parse(result.content[0]!.text);
   beforeAll(async () => {
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic" } });
-    await prisma.employee.create({
+    await prisma.userAccount.create({
       data: {
         id,
         orgId,
@@ -139,7 +139,7 @@ if (run) {
     await permissions.configureAccount({
       orgId,
       actorId: id,
-      employeeId: id,
+      userAccountId: id,
       expectedVersion: "1",
       clearance: 3,
       grants: [
@@ -397,13 +397,13 @@ if (run) {
       requestId: expect.any(String)
     });
     expect(await prisma.storeReview.count({ where: { orgId, reviewerName: "rollback" } })).toBe(0);
-    await prisma.employee.update({ where: { id }, data: { role: "employee" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "employee" } });
     const denied = await write({ reviews: [{ ...row, reviewerName: "demoted" }] });
     expect(body(denied).error.code).toBe("UPLOAD_ADMIN_REQUIRED");
     expect(await prisma.storeReview.count({ where: { orgId, reviewerName: "demoted" } })).toBe(0);
   });
   it("pages large full rows within the default SDK stdio output buffer without skipping rows", async () => {
-    await prisma.employee.update({ where: { id }, data: { role: "admin" } });
+    await prisma.userAccount.update({ where: { id }, data: { role: "admin" } });
     const content = '中\n"'.repeat(5_461);
     const scores = { ["维".repeat(16_000)]: 9 };
     const reviews = Array.from({ length: 100 }, (_, index) => ({

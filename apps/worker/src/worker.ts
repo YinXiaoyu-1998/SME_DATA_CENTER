@@ -883,7 +883,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: "structured_import.validating",
               targetType: "import_batch",
               targetId: batch.id,
@@ -902,7 +902,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: AUDIT_ACTIONS.documentProcessingStarted,
               targetType: "document",
               targetId: run.documentId,
@@ -1080,7 +1080,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: AUDIT_ACTIONS.documentActivated,
             targetType: "document",
             targetId: input.documentId,
@@ -1119,7 +1119,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: (await tx.processingRun.findUniqueOrThrow({ where: { id: input.runId } })).orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: "structured_import.applying",
             targetType: "import_batch",
             targetId: input.importBatchId,
@@ -1245,7 +1245,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: AUDIT_ACTIONS.structuredImportApplied,
             targetType: "import_batch",
             targetId: batch.id,
@@ -1322,7 +1322,7 @@ export function createPrismaProcessingWorkerRepository(
         await tx.auditLog.create({
           data: {
             orgId: run.orgId,
-            actorEmployeeId: null,
+            actorUserAccountId: null,
             action: "structured_import.rejected",
             targetType: "import_batch",
             targetId: input.importBatchId,
@@ -1479,7 +1479,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: "structured_import.failed",
               targetType: "import_batch",
               targetId: batch?.id ?? input.documentId,
@@ -1531,7 +1531,7 @@ export function createPrismaProcessingWorkerRepository(
           await tx.auditLog.create({
             data: {
               orgId: run.orgId,
-              actorEmployeeId: null,
+              actorUserAccountId: null,
               action: AUDIT_ACTIONS.documentProcessingFailed,
               targetType: "document",
               targetId: input.documentId,

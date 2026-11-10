@@ -210,8 +210,8 @@ for the inputs and release gate.
 | MCP tool                                                         | HTTP operation                                                                                   |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `get_my_permissions`                                             | `GET /v1/permissions/me`                                                                         |
-| `query_account_permissions`                                      | `GET /v1/admin/permissions/accounts[/:employeeId]`, selected by `query.mode`                     |
-| `update_account_permissions`                                     | `PATCH /v1/admin/permissions/accounts/:employeeId`                                               |
+| `query_account_permissions`                                      | `GET /v1/admin/permissions/accounts[/:userAccountId]`, selected by `query.mode`                  |
+| `update_account_permissions`                                     | `PATCH /v1/admin/permissions/accounts/:userAccountId`                                            |
 | `get_permission_directory`                                       | `GET /v1/admin/permissions/{categories,dimensions,stores}`, selected by `section`                |
 | `configure_business_category`                                    | `POST /v1/admin/permissions/categories` or `PATCH /v1/admin/permissions/categories/:categoryId`  |
 | `configure_business_dimension`                                   | `POST /v1/admin/permissions/dimensions` or `PATCH /v1/admin/permissions/dimensions/:dimensionId` |
@@ -401,7 +401,7 @@ Existing `/v1` and MCP routes retain their current bearer authentication and con
 
 API POSTs require Cookie, matching Origin and `x-csrf-token`; login forms use their existing
 short-lived CSRF cookie and body token. Authenticated API GETs require the browser cookie. Responses are no-store.
-Context returns `identity.{employeeId,orgId,displayName,organizationName}`, `csrfToken`, and
+Context returns `identity.{userAccountId,orgId,displayName,organizationName}`, `csrfToken`, and
 `limits.{files,bytes,stores,dates,pageSize}`. Organization is always derived from the session.
 
 Coverage accepts exactly one of `{scope,cursor?}` or `{selection,cursor?}`. Scope has optional

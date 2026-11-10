@@ -413,7 +413,7 @@ export function registerStructuredImportRoutes(
           dependencies.structuredImports().reserveStructuredImport({
             onDatabaseRetry: logDatabaseRetry("reserve_import"),
             orgId: employee.orgId,
-            actorEmployeeId: employee.id,
+            actorUserAccountId: employee.id,
             documentId: candidateDocumentId,
             dataset,
             enterpriseKey: normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
@@ -586,7 +586,7 @@ export function registerStructuredImportRoutes(
       if (
         !importBatch ||
         snapshot.orgId !== employee.orgId ||
-        snapshot.employeeId !== employee.id ||
+        snapshot.userAccountId !== employee.id ||
         importBatch.orgId !== snapshot.orgId
       ) {
         return reply
@@ -631,7 +631,7 @@ export function registerStructuredImportRoutes(
               document: { confidentialityLevel: importBatch.sourceDocumentConfidentialityLevel }
             });
       if (readable) return responseForReservedImport(importBatch);
-      if (importBatch.uploaderId === snapshot.employeeId)
+      if (importBatch.uploaderId === snapshot.userAccountId)
         return structuredImportProgressResponse(importBatch);
       return reply
         .code(404)

@@ -54,7 +54,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       );
       prisma = new PrismaClient({ adapter: createDatabaseAdapter(database.databaseUrl) });
       await prisma.organization.create({ data: { id: actor.orgId, name: "Synthetic" } });
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: {
           id: actor.id,
           orgId: actor.orgId,

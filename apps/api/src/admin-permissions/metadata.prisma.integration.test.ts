@@ -15,7 +15,7 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
       await prisma.organization.create({
         data: { id: orgId, name: "Never infer this organization name" }
       });
-      await prisma.employee.create({
+      await prisma.userAccount.create({
         data: {
           id: `${orgId}_admin`,
           orgId,
@@ -58,7 +58,7 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
     await prisma.businessStore.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.document.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.businessAuthorizationState.deleteMany({ where: { orgId: { in: organizations } } });
-    await prisma.employee.deleteMany({ where: { orgId: { in: organizations } } });
+    await prisma.userAccount.deleteMany({ where: { orgId: { in: organizations } } });
     await prisma.organization.deleteMany({ where: { id: { in: organizations } } });
     await prisma.$disconnect();
   });

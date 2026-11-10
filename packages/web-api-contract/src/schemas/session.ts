@@ -3,7 +3,7 @@ import { z } from "zod";
 /** 网页会话里可安全下发给浏览器的员工身份。禁用标记与凭据指纹永不出现在这里。 */
 export const webSessionIdentitySchema = z
   .object({
-    employeeId: z.string().min(1),
+    userAccountId: z.string().min(1),
     displayName: z.string().min(1),
     email: z.string().min(1),
     orgId: z.string().min(1),

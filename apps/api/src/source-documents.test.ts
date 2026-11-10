@@ -7,7 +7,7 @@ vi.mock("@smedc/db", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@smedc/db")>()),
   createBusinessAuthorizationRepository: () => ({
     loadAuthorizationSnapshot: async () => ({
-      employeeId: "synthetic",
+      userAccountId: "synthetic",
       orgId: "org_synthetic",
       clearance: 1,
       mode: "legacy",

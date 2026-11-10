@@ -193,7 +193,7 @@ export function registerLedgerWebRoutes(
         throw new Error("ledger.context reached without an authenticated session");
       return {
         identity: {
-          employeeId: principal.id,
+          userAccountId: principal.id,
           orgId: principal.orgId,
           displayName: principal.displayName,
           organizationName: principal.organizationName

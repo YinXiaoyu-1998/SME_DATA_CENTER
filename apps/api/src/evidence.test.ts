@@ -1024,7 +1024,7 @@ describe("evidence MySQL revalidation", () => {
   it("keeps shared B/C document text out of rerank and citations when only B is granted", async () => {
     const authorization = {
       orgId: "default-org",
-      employeeId: baoliEmployee.id,
+      userAccountId: baoliEmployee.id,
       role: "employee" as const,
       clearance: 3,
       disabled: false,

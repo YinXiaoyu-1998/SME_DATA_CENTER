@@ -6,8 +6,8 @@ const VERSION = "1.1.0";
 const MAX_INPUT_BYTES = 262144;
 const base = "/internal/permissions";
 const operations = {
-  "account.set": ["PATCH", "accounts", ["employeeId"], ["clearance", "grants"]],
-  "account.role.set": ["PATCH", "accounts", ["employeeId"], ["role"]],
+  "account.set": ["PATCH", "accounts", ["userAccountId"], ["clearance", "grants"]],
+  "account.role.set": ["PATCH", "accounts", ["userAccountId"], ["role"]],
   "category.create": [
     "POST",
     "categories",
@@ -281,7 +281,7 @@ Usage:
 Operations: ${Object.keys(operations).join(", ")}
 Apply previews by default. --execute saves one operation. Input is JSON, maximum ${MAX_INPUT_BYTES} bytes.
 An active same-organization admin must have requested the change. Runtime database access authenticates the operator; operator-id and request-reference are audit declarations, not credentials.
-Use account.role.set with {employeeId,role:"admin"|"employee"} for audited role-only changes. Clearance and read grants stay unchanged; removing the last active admin is rejected.
+Use account.role.set with {userAccountId,role:"admin"|"employee"} for audited role-only changes. Clearance and read grants stay unchanged; removing the last active admin is rejected.
 Use release-ops with its approved server runtime environment. No public listener, account password, token, account lifecycle, activation, or arbitrary SQL/API path is supported.`;
 }
 async function readInput(path: string): Promise<unknown> {

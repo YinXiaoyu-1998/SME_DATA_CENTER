@@ -1,17 +1,17 @@
 import type { EvidenceSearchRepository } from "../evidence.js";
 
 export function createEvidenceSearchRepository(): EvidenceSearchRepository & {
-  queries: Array<{ query: string; employeeId: string }>;
+  queries: Array<{ query: string; userAccountId: string }>;
   inputs: Array<{
     orgId: string;
-    employeeId: string;
+    userAccountId: string;
     audit: Parameters<EvidenceSearchRepository["searchEvidence"]>[0]["audit"];
   }>;
 } {
-  const queries: Array<{ query: string; employeeId: string }> = [];
+  const queries: Array<{ query: string; userAccountId: string }> = [];
   const inputs: Array<{
     orgId: string;
-    employeeId: string;
+    userAccountId: string;
     audit: Parameters<EvidenceSearchRepository["searchEvidence"]>[0]["audit"];
   }> = [];
 
@@ -19,8 +19,8 @@ export function createEvidenceSearchRepository(): EvidenceSearchRepository & {
     queries,
     inputs,
     async searchEvidence(input) {
-      queries.push({ query: input.query, employeeId: input.employee.id });
-      inputs.push({ orgId: input.orgId, employeeId: input.employee.id, audit: input.audit });
+      queries.push({ query: input.query, userAccountId: input.employee.id });
+      inputs.push({ orgId: input.orgId, userAccountId: input.employee.id, audit: input.audit });
 
       return {
         results: [

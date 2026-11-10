@@ -82,7 +82,7 @@ async function main() {
   });
 
   for (const employee of employees) {
-    await prisma.employee.upsert({
+    await prisma.userAccount.upsert({
       where: { email: employee.email },
       create: {
         id: employee.id,
@@ -106,13 +106,13 @@ async function main() {
       create: {
         id: `identity_${employee.id}`,
         orgId: org.id,
-        employeeId: employee.id,
+        userAccountId: employee.id,
         normalizedEmail: employee.email,
         passwordHash: null
       },
       update: {
         orgId: org.id,
-        employeeId: employee.id,
+        userAccountId: employee.id,
         disabled: false
       }
     });
@@ -152,7 +152,7 @@ async function main() {
 
   const [organizationCount, employeeCount, skillEntryCount] = await Promise.all([
     prisma.organization.count(),
-    prisma.employee.count({ where: { orgId: org.id } }),
+    prisma.userAccount.count({ where: { orgId: org.id } }),
     prisma.skillEntry.count({ where: { orgId: org.id } })
   ]);
 

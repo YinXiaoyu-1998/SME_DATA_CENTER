@@ -54,7 +54,7 @@ describe("structured partition repository boundaries", () => {
       };
       const tx = {
         partitionImportJob,
-        employee: { findFirst: vi.fn(async () => ({ id: "emp_2" })) }
+        userAccount: { findFirst: vi.fn(async () => ({ id: "emp_2" })) }
       };
       const prisma = {
         ...tx,

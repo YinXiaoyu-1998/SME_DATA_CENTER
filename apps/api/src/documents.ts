@@ -84,13 +84,13 @@ export interface DocumentStatusRecord {
 export interface ArchiveDocumentInput {
   orgId: string;
   documentId: string;
-  actorEmployeeId: string;
+  actorUserAccountId: string;
   audit: RequestAuditContext;
 }
 
 export interface AppendAuditLogInput {
   orgId: string;
-  actorEmployeeId: string | null;
+  actorUserAccountId: string | null;
   action: string;
   targetType: string;
   targetId: string | null;
@@ -218,7 +218,7 @@ export function createPrismaDocumentCatalogRepository(
         await tx.auditLog.create({
           data: {
             orgId: input.orgId,
-            actorEmployeeId: input.uploaderId,
+            actorUserAccountId: input.uploaderId,
             action: AUDIT_ACTIONS.documentUploaded,
             targetType: "document",
             targetId: input.id,
@@ -255,7 +255,7 @@ export function createPrismaDocumentCatalogRepository(
       await prisma.auditLog.create({
         data: {
           orgId: input.orgId,
-          actorEmployeeId: input.actorEmployeeId,
+          actorUserAccountId: input.actorUserAccountId,
           action: input.action,
           targetType: input.targetType,
           targetId: input.targetId,
@@ -272,9 +272,9 @@ export function createPrismaDocumentCatalogRepository(
       const document = await retryIdempotentDatabaseOperation(() =>
         prisma.$transaction(async (tx) => {
           await lockLedgerSourceMutation(tx, input.orgId);
-          const actor = await tx.employee.findFirst({
+          const actor = await tx.userAccount.findFirst({
             where: {
-              id: input.actorEmployeeId,
+              id: input.actorUserAccountId,
               orgId: input.orgId,
               role: "admin",
               disabled: false
@@ -301,7 +301,7 @@ export function createPrismaDocumentCatalogRepository(
               : [];
           const visibleHints = await readableLedgerPartitionHints(
             tx,
-            input.actorEmployeeId,
+            input.actorUserAccountId,
             affectedLedgerPartitions
           );
           const changed = await tx.document.updateMany({
@@ -325,7 +325,7 @@ export function createPrismaDocumentCatalogRepository(
           await tx.auditLog.create({
             data: {
               orgId: input.orgId,
-              actorEmployeeId: input.actorEmployeeId,
+              actorUserAccountId: input.actorUserAccountId,
               action: AUDIT_ACTIONS.documentArchived,
               targetType: "document",
               targetId: input.documentId,
