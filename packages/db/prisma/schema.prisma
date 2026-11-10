@@ -1170,12 +1170,51 @@ model BusinessStore {
   orgId String @map("org_id") @db.VarChar(64)
   enterpriseKey String @map("enterprise_key") @db.VarChar(128)
   name String @db.VarChar(255)
+  storeId String @unique @default(uuid()) @map("store_id") @db.VarChar(36)
+  officialName String @map("official_name") @db.VarChar(255)
+  confirmation StoreConfirmation @default(pending)
+  version BigInt @default(0) @db.UnsignedBigInt
   retired Boolean @default(false)
   state BusinessAuthorizationState @relation(fields: [orgId], references: [orgId], onDelete: Restrict)
   grants BusinessGrantStore[]
   scopes BusinessResourceScope[]
   @@id([orgId, enterpriseKey, name])
   @@map("business_stores")
+}
+enum StoreConfirmation {
+  pending
+  confirmed
+  historical
+}
+enum DirectoryEmployeeStatus {
+  active
+  departed
+}
+model BusinessDepartment {
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  departmentId String @id @map("department_id") @db.VarChar(36)
+  name String @db.VarChar(255)
+  retired Boolean @default(false)
+  version BigInt @default(0) @db.UnsignedBigInt
+  @@unique([orgId, enterpriseKey, departmentId], map: "business_departments_org_enterprise_id_uq")
+  @@map("business_departments")
+}
+model Employee {
+  employeeUid String @id @map("employee_uid") @db.VarChar(36)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  name String @db.VarChar(255)
+  departmentId String @map("department_id") @db.VarChar(36)
+  storeId String? @map("store_id") @db.VarChar(36)
+  status DirectoryEmployeeStatus @default(active)
+  version BigInt @default(0) @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  @@index([orgId, enterpriseKey, status, employeeUid], map: "employee_directory_enterprise_status_idx")
+  @@index([orgId, enterpriseKey, departmentId, status], map: "employee_directory_department_idx")
+  @@index([orgId, enterpriseKey, storeId, status], map: "employee_directory_store_idx")
+  @@map("employee_directory_profiles")
 }
 model BusinessGrant {
   orgId String @map("org_id") @db.VarChar(64)

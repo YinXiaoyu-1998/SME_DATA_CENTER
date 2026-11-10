@@ -34,6 +34,9 @@ function context(
   }
 ): ApiServerContext {
   return {
+    directory: () => {
+      throw new Error("not used");
+    },
     workflows: () => {
       throw new Error("unused");
     },

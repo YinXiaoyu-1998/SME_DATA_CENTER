@@ -14,6 +14,10 @@ export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
   quarantine_certificate: "store",
   ledger_pdf: "store"
 } as const satisfies Record<string, BusinessOwnership>;
+export const EMPLOYEE_PROFILE_CATEGORY = {
+  key: "employee_profiles",
+  ownerships: ["group", "store"]
+} as const;
 export type FixedBusinessCategoryKey = keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP;
 export const FIXED_BUSINESS_CATEGORY_KEYS = Object.keys(
   FIXED_BUSINESS_CATEGORY_OWNERSHIP

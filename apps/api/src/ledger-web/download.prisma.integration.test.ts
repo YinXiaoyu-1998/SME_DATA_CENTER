@@ -130,7 +130,13 @@ it.skipIf(!enabled)(
       const stores = ["合成甲店", "合成乙店"];
       const dates = ["2026-10-01", "2026-10-02"];
       await prisma.businessStore.createMany({
-        data: stores.map((name) => ({ orgId, enterpriseKey: "synthetic", name }))
+        data: stores.map((name) => ({
+          orgId,
+          enterpriseKey: "synthetic",
+          name,
+          officialName: name,
+          confirmation: "confirmed"
+        }))
       });
       const grant = await prisma.businessGrant.create({
         data: {

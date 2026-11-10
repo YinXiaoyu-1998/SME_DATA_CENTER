@@ -1,3 +1,4 @@
+import { createEmployeeDirectoryService } from "./employee-directory/service.js";
 import {
   createEnterpriseWorkflowService,
   type EnterpriseWorkflowService
@@ -121,6 +122,7 @@ export interface ApiServerOptions {
 }
 
 export interface ApiServerContext {
+  directory: () => ReturnType<typeof createEmployeeDirectoryService>;
   workflows: () => EnterpriseWorkflowService;
   storeReviews: () => StoreReviewService;
   costCards: () => CostCardService;
@@ -167,6 +169,17 @@ function requireCursorSigningSecret(environment: NodeJS.ProcessEnv): string {
 
 export function createApiServerContext(options: ApiServerOptions = {}): ApiServerContext {
   const environment = options.runtimeEnv ?? process.env;
+  let directoryPrisma: PrismaClient | undefined;
+  let directoryService: ReturnType<typeof createEmployeeDirectoryService> | undefined;
+  function directory() {
+    if (!directoryService) {
+      const url = environment["DATABASE_URL"];
+      if (!url) throw new Error("DATABASE_URL is required for employee directory.");
+      directoryPrisma = new PrismaClient({ adapter: createDatabaseAdapter(url) });
+      directoryService = createEmployeeDirectoryService(directoryPrisma);
+    }
+    return directoryService;
+  }
   let workflowService = options.enterpriseWorkflowService;
   const workflowRetentionTimer = setInterval(() => {
     void workflowService?.pruneRetention().catch(() => undefined);
@@ -405,6 +418,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await permissionService?.disconnect?.();
     await workflowService?.disconnect?.();
     await authPrisma?.$disconnect();
+    await directoryPrisma?.$disconnect();
     await ledgerPrisma?.$disconnect();
     await storeReviewPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
@@ -423,6 +437,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   }
 
   return {
+    directory,
     workflows,
     permissions,
     environment,

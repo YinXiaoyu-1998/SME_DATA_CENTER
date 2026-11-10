@@ -270,7 +270,16 @@ export const permissionAccountUpdateResponse = versioned(
 );
 
 const storeRow = z
-  .object({ orgId: z.string(), enterpriseKey: z.string(), name: z.string(), retired: z.boolean() })
+  .object({
+    orgId: z.string(),
+    enterpriseKey: z.string(),
+    name: z.string(),
+    retired: z.boolean(),
+    storeId: z.string().uuid().optional(),
+    officialName: z.string().optional(),
+    confirmation: z.enum(["pending", "confirmed", "historical"]).optional(),
+    version: z.string().optional()
+  })
   .strict();
 
 export const permissionStoresResponse = z

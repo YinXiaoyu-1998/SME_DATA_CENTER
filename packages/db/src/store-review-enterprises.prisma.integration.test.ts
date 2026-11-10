@@ -60,7 +60,13 @@ if (run) {
       data: { orgId, enterpriseKey: name.toLowerCase(), enterpriseName: name }
     });
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: name.toLowerCase(), name: "同名门店" }
+      data: {
+        orgId,
+        enterpriseKey: name.toLowerCase(),
+        name: "同名门店",
+        officialName: "同名门店",
+        confirmation: "confirmed"
+      }
     });
   };
   const grant = async (
@@ -90,7 +96,13 @@ if (run) {
   it("registers a new enterprise in the ordinary first-store save, without requiring any review data", async () => {
     const metadata = createPrismaPermissionsUiMetadata(prisma);
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: "unconfirmed", name: "Unconfirmed" }
+      data: {
+        orgId,
+        enterpriseKey: "unconfirmed",
+        name: "Unconfirmed",
+        officialName: "Unconfirmed",
+        confirmation: "confirmed"
+      }
     });
     expect(await metadata.listEnterprises(orgId)).toEqual([]);
     const saved = await repo.putStore({
@@ -132,7 +144,15 @@ if (run) {
     ]);
   });
   it("rejects an unregistered review grant atomically instead of saving unusable permissions", async () => {
-    await prisma.businessStore.create({ data: { orgId, enterpriseKey: "unknown", name: "Store" } });
+    await prisma.businessStore.create({
+      data: {
+        orgId,
+        enterpriseKey: "unknown",
+        name: "Store",
+        officialName: "Store",
+        confirmation: "confirmed"
+      }
+    });
     await expect(grant("unknown")).rejects.toThrow("ENTERPRISE_NAME_REQUIRED");
     expect(await prisma.businessGrant.count({ where: { orgId } })).toBe(0);
     expect(await prisma.businessAuthorizationState.findUnique({ where: { orgId } })).toMatchObject({
@@ -179,7 +199,13 @@ if (run) {
     });
     await declare("Beta");
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: "undeclared", name: "historic" }
+      data: {
+        orgId,
+        enterpriseKey: "undeclared",
+        name: "historic",
+        officialName: "historic",
+        confirmation: "confirmed"
+      }
     });
     const options = await card();
     expect(options.write.map((e) => e.enterpriseName)).toEqual(["Alpha", "Beta"]);

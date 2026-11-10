@@ -195,7 +195,15 @@ describeIntegration("Prisma confidentiality persistence", () => {
           publishedByJobId: "fixture"
         }
       });
-      await prisma.businessStore.create({ data: { orgId, enterpriseKey: "enterprise", name } });
+      await prisma.businessStore.create({
+        data: {
+          orgId,
+          enterpriseKey: "enterprise",
+          name,
+          officialName: name,
+          confirmation: "confirmed"
+        }
+      });
       await prisma.businessResource.create({
         data: {
           id,
@@ -425,7 +433,15 @@ describeIntegration("Prisma confidentiality persistence", () => {
         allowStore: true
       }
     });
-    await prisma.businessStore.create({ data: { orgId, enterpriseKey: "enterprise", name: "C" } });
+    await prisma.businessStore.create({
+      data: {
+        orgId,
+        enterpriseKey: "enterprise",
+        name: "C",
+        officialName: "C",
+        confirmation: "confirmed"
+      }
+    });
     await prisma.document.create({
       data: {
         id: documentId,

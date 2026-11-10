@@ -94,7 +94,7 @@ suite("cost cards: real atomic directory and storage lifecycle", () => {
     });
     expect(first).toMatchObject({
       authorizationVersion: "2",
-      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length - 1 }
+      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length + 1 }
     });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }

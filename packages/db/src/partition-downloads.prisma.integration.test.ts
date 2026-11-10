@@ -188,7 +188,13 @@ suite("partition download persistence", () => {
       }
     });
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: "synthetic", name: "Store 0" }
+      data: {
+        orgId,
+        enterpriseKey: "synthetic",
+        name: "Store 0",
+        officialName: "Store 0",
+        confirmation: "confirmed"
+      }
     });
     await prisma.businessResource.create({
       data: {
@@ -488,7 +494,13 @@ suite("partition download persistence", () => {
     });
     for (let i = 0; i < 3; i++) {
       await prisma.businessStore.create({
-        data: { orgId, enterpriseKey: "synthetic", name: `Store ${i}` }
+        data: {
+          orgId,
+          enterpriseKey: "synthetic",
+          name: `Store ${i}`,
+          officialName: `Store ${i}`,
+          confirmation: "confirmed"
+        }
       });
       await prisma.businessResource.create({
         data: {

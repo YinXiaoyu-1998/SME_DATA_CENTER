@@ -66,8 +66,20 @@ if (enabled && !["localhost", "127.0.0.1"].includes(new URL(url).hostname))
     expect(await metadata.listEnterprises(organizations[0]!)).toEqual([]);
     await prisma.businessStore.createMany({
       data: [
-        { orgId: organizations[0]!, enterpriseKey: "declared-enterprise", name: "本企业门店" },
-        { orgId: organizations[1]!, enterpriseKey: "foreign-enterprise", name: "外企业门店" }
+        {
+          orgId: organizations[0]!,
+          enterpriseKey: "declared-enterprise",
+          name: "本企业门店",
+          officialName: "本企业门店",
+          confirmation: "confirmed"
+        },
+        {
+          orgId: organizations[1]!,
+          enterpriseKey: "foreign-enterprise",
+          name: "外企业门店",
+          officialName: "外企业门店",
+          confirmation: "confirmed"
+        }
       ]
     });
     expect(await metadata.listEnterprises(organizations[0]!)).toEqual([]);
