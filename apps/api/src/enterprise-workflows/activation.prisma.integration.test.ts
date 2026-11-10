@@ -71,7 +71,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: { orgId: actor.orgId, enterpriseKey: "enterprise", enterpriseName: "enterprise" }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey: "enterprise", name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey: "enterprise",
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       app = buildApiServer({
         logger: false,

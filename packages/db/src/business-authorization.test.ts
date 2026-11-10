@@ -109,7 +109,8 @@ describe("operator permission attribution", () => {
       },
       businessStore: {
         findUnique: vi.fn(async () => null),
-        upsert: vi.fn(async () => ({ name: "A ", retired: true }))
+        upsert: vi.fn(async () => ({ name: "A ", retired: true })),
+        create: vi.fn(async () => ({ name: "A ", retired: true }))
       },
       businessEnterpriseIdentity: {
         findUnique: vi.fn(async () => ({

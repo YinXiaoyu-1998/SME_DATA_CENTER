@@ -105,7 +105,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: { orgId: actor.orgId, enterpriseKey: "enterprise", enterpriseName: "enterprise" }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey: "enterprise", name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey: "enterprise",
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       storageRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-recovery-"));
       storage = new LocalFileSystemStorageAdapter({ root: storageRoot });
@@ -699,7 +705,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: { orgId: actor.orgId, enterpriseKey, enterpriseName: enterpriseKey }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey, name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey,
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       await prisma.businessCategory.create({
         data: {
@@ -1064,7 +1076,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         }
       });
       await prisma.businessStore.create({
-        data: { orgId: actor.orgId, enterpriseKey: "migration", name: "Store A" }
+        data: {
+          orgId: actor.orgId,
+          enterpriseKey: "migration",
+          name: "Store A",
+          officialName: "Store A",
+          confirmation: "confirmed"
+        }
       });
       const migrationSelector = { ...selector, enterpriseKey: "migration" };
       const expected = {
@@ -2599,7 +2617,9 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         data: reportStores.map((name) => ({
           orgId: actor.orgId,
           enterpriseKey: "enterprise",
-          name
+          name,
+          officialName: name,
+          confirmation: "confirmed"
         }))
       });
       const weekly = { enterpriseKey: "enterprise", workflowType: "weekly-business-report" };

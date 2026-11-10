@@ -154,8 +154,8 @@ describe("published launcher artifact", () => {
       expect(client.getServerVersion()?.version).toBe("0.18.0");
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(50);
-      expect(new Set(names).size).toBe(50);
+      expect(names).toHaveLength(52);
+      expect(new Set(names).size).toBe(52);
       const retiredNames = [
         "list_account_permissions",
         "get_account_permissions",

@@ -84,3 +84,12 @@ export const manageEmployeeDirectoryInput = z.discriminatedUnion("action", [
   directoryInputSchemas.create_employee.extend({ action: z.literal("create_employee") }),
   directoryInputSchemas.update_employee.extend({ action: z.literal("update_employee") })
 ]);
+
+export const DIRECTORY_MCP_TOOL_NAMES = [
+  "query_employee_directory",
+  "manage_employee_directory"
+] as const;
+export const DIRECTORY_MCP_INPUT_SCHEMAS = {
+  query_employee_directory: z.object({ request: queryEmployeeDirectoryInput }).strict(),
+  manage_employee_directory: z.object({ request: manageEmployeeDirectoryInput }).strict()
+} as const;

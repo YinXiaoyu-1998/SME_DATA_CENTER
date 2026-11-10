@@ -989,12 +989,18 @@ export function createBusinessAuthorizationRepository({
         if (
           input.kind === "fixed" &&
           (!input.key ||
-            !Object.hasOwn(FIXED_BUSINESS_CATEGORY_OWNERSHIP, input.key) ||
-            input.ownerships.length !== 1 ||
-            input.ownerships[0] !==
-              FIXED_BUSINESS_CATEGORY_OWNERSHIP[
-                input.key as keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP
-              ])
+            (input.key !== "employee_profiles" &&
+              !Object.hasOwn(FIXED_BUSINESS_CATEGORY_OWNERSHIP, input.key)) ||
+            (input.key === "employee_profiles"
+              ? input.ownerships.length !== 2 ||
+                !input.ownerships.includes("group") ||
+                !input.ownerships.includes("store") ||
+                input.requiredDimensionIds.length !== 0
+              : input.ownerships.length !== 1 ||
+                input.ownerships[0] !==
+                  FIXED_BUSINESS_CATEGORY_OWNERSHIP[
+                    input.key as keyof typeof FIXED_BUSINESS_CATEGORY_OWNERSHIP
+                  ]))
         )
           throw new Error("INVALID_FIXED_CATEGORY");
         const where = { orgId_id: { orgId: input.orgId, id: input.id } };
@@ -1048,6 +1054,7 @@ export function createBusinessAuthorizationRepository({
       return mutate(input, "store.configure", input.name, async (tx) => {
         if (!input.name.trim()) throw new Error("STORE_NAME_REQUIRED");
         const identity = await saveEnterpriseIdentity(tx, input.orgId, input);
+        const enterpriseKey = identity.after.enterpriseKey;
         if (!identity.before)
           await writeAudit(tx, {
             orgId: input.orgId,
@@ -1059,25 +1066,46 @@ export function createBusinessAuthorizationRepository({
             outcome: "succeeded",
             version: BigInt(input.expectedVersion) + 1n
           });
-        const where = {
-          orgId_enterpriseKey_name: {
-            orgId: input.orgId,
-            enterpriseKey: identity.after.enterpriseKey,
-            name: input.name
-          }
-        };
-        const before = await tx.businessStore.findUnique({ where });
-        return {
-          before,
-          after: {
-            ...(await tx.businessStore.upsert({
-              where,
-              create: { ...where.orgId_enterpriseKey_name, retired: input.retired ?? false },
-              update: { retired: input.retired ?? before?.retired ?? false }
-            })),
-            enterpriseName: identity.after.enterpriseName
-          }
-        };
+        await tx.$queryRaw`SELECT enterprise_key FROM business_enterprise_identities WHERE org_id = ${input.orgId} AND BINARY enterprise_key = BINARY ${enterpriseKey} FOR UPDATE`;
+        const rows = await tx.$queryRaw<
+          Array<{ name: string }>
+        >`SELECT name FROM business_stores WHERE org_id = ${input.orgId} AND enterprise_key = ${enterpriseKey} AND BINARY official_name = BINARY ${input.name} FOR UPDATE`;
+        const before = rows[0]
+          ? await tx.businessStore.findFirst({
+              where: { orgId: input.orgId, enterpriseKey, name: rows[0].name }
+            })
+          : null;
+        if (
+          before?.confirmation === "historical" ||
+          (before && before.confirmation !== "confirmed")
+        )
+          throw new Error("STORE_DIRECTORY_CONFIRMATION_REQUIRED");
+        if (
+          before &&
+          input.retired === true &&
+          (await tx.employee.count({
+            where: { orgId: input.orgId, enterpriseKey, storeId: before.storeId, status: "active" }
+          }))
+        )
+          throw new Error("STORE_DIRECTORY_IN_USE");
+        const after = before
+          ? await tx.businessStore.update({
+              where: {
+                orgId_enterpriseKey_name: { orgId: input.orgId, enterpriseKey, name: before.name }
+              },
+              data: { retired: input.retired ?? before.retired, version: { increment: 1 } }
+            })
+          : await tx.businessStore.create({
+              data: {
+                orgId: input.orgId,
+                enterpriseKey,
+                name: input.name,
+                officialName: input.name,
+                confirmation: "confirmed",
+                retired: input.retired ?? false
+              }
+            });
+        return { before, after: { ...after, enterpriseName: identity.after.enterpriseName } };
       });
     },
     putResource(input: ResourceAuthorizationWrite) {

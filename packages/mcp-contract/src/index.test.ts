@@ -43,6 +43,14 @@ it("retains server admin-only upload authorization and explains fixed category a
 });
 
 const validInputs = {
+  query_employee_directory: { request: { action: "list_directory", enterpriseKey: "synthetic" } },
+  manage_employee_directory: {
+    request: {
+      action: "manage_store",
+      enterpriseKey: "synthetic",
+      operation: { kind: "create", name: "Store" }
+    }
+  },
   prepare_order_scope_transition: {
     enterpriseName: "Synthetic",
     startDate: "2026-10-26",
@@ -694,7 +702,9 @@ const invalidInputCases = [
       "manage_workflow_installation",
       "manage_workflow_run",
       "record_workflow_action",
-      "get_workflow_status"
+      "get_workflow_status",
+      "query_employee_directory",
+      "manage_employee_directory"
     ] as const
   ).map((tool) => ({
     tool,
@@ -754,7 +764,9 @@ describe("SMEDC MCP contract", () => {
       "manage_workflow_installation",
       "manage_workflow_run",
       "record_workflow_action",
-      "get_workflow_status"
+      "get_workflow_status",
+      "query_employee_directory",
+      "manage_employee_directory"
     ]);
     expect(
       SMEDC_MCP_TOOL_NAMES.filter((toolName) => toolName === "describe_structured_dataset_coverage")

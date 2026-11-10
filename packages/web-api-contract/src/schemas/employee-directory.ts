@@ -10,6 +10,7 @@ const version = z.string().regex(/^(0|[1-9]\d*)$/);
 const store = z
   .object({
     storeId: uuid,
+    storeKey: z.string().optional(),
     name: z.string(),
     status: z.enum(["confirmed", "pending", "historical", "retired"]),
     version

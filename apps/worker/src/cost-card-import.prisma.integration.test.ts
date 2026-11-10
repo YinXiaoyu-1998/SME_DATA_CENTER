@@ -110,7 +110,7 @@ suite("cost card API to worker publication", () => {
     expect(initialized.statusCode).toBe(200);
     expect(initialized.json()).toMatchObject({
       authorizationVersion: "2",
-      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length }
+      value: { createdCount: FIXED_BUSINESS_CATEGORY_KEYS.length + 1 }
     });
     const category = await prisma.businessCategory.findUniqueOrThrow({
       where: { orgId_key: { orgId, key: "cost_cards" } }

@@ -1,3 +1,4 @@
+import { DIRECTORY_MCP_TOOL_NAMES, DIRECTORY_MCP_INPUT_SCHEMAS } from "./employee-directory.js";
 import {
   ENTERPRISE_WORKFLOW_LAUNCHER_VERSION,
   WORKFLOW_MCP_INPUT_SCHEMAS,
@@ -1009,7 +1010,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url",
   ...PERMISSION_MCP_TOOL_NAMES,
-  ...WORKFLOW_MCP_TOOL_NAMES
+  ...WORKFLOW_MCP_TOOL_NAMES,
+  ...DIRECTORY_MCP_TOOL_NAMES
 ] as const;
 
 export type SmedcMcpToolName = (typeof SMEDC_MCP_TOOL_NAMES)[number];
@@ -1112,6 +1114,28 @@ const permissionToolDescriptions: Record<keyof PermissionMcpInputs, string> = {
 };
 
 export const SMEDC_MCP_TOOL_CONTRACTS = [
+  ...DIRECTORY_MCP_TOOL_NAMES.map((name) =>
+    defineToolContract({
+      name,
+      title: name.replaceAll("_", " "),
+      description:
+        "Access the current organization employee and formal directory using a controlled operation. Requires launcher 0.18.0 or later.",
+      inputSchema: DIRECTORY_MCP_INPUT_SCHEMAS[name],
+      inputFields: [
+        {
+          name: "request",
+          required: true,
+          description: "Directory action and its strictly validated fields."
+        }
+      ],
+      resultShape: ["Authorized directory or employee results; creation returns only employeeUid."],
+      annotations: {
+        readOnlyHint: name === "query_employee_directory",
+        destructiveHint: name === "manage_employee_directory",
+        idempotentHint: name === "query_employee_directory"
+      }
+    })
+  ),
   defineToolContract({
     name: "prepare_order_scope_transition",
     title: "Prepare order source scope transition",
@@ -2105,3 +2129,5 @@ export {
   queryEmployeeDirectoryInput,
   manageEmployeeDirectoryInput
 } from "./employee-directory.js";
+
+export { DIRECTORY_MCP_TOOL_NAMES, DIRECTORY_MCP_INPUT_SCHEMAS } from "./employee-directory.js";
