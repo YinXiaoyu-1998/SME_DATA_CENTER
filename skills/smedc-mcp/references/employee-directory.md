@@ -8,11 +8,11 @@ SMEDC user account IDs identify login and authorization subjects.
 
 | Goal                                                                    | Tool and action                                                                                                                                        |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Read active stores and departments                                      | `query_employee_directory { request: { action: "list_directory", enterpriseKey }`                                                                      |
+| Read active stores and departments                                      | `query_employee_directory { request: { action: "list_directory", enterpriseKey } }`                                                                    |
 | Read pending, historical or retired directory items as an administrator | Use `list_directory` with `management: true`                                                                                                           |
-| List readable employee records                                          | `query_employee_directory { request: { action: "list_employees", enterpriseKey }`                                                                      |
-| Read one employee record                                                | `query_employee_directory { request: { action: "get_employee", enterpriseKey, employeeUid }`                                                           |
-| Add a record                                                            | `manage_employee_directory { request: { action: "create_employee", enterpriseKey, name, departmentId, scope }`                                         |
+| List readable employee records                                          | `query_employee_directory { request: { action: "list_employees", enterpriseKey } }`                                                                    |
+| Read one employee record                                                | `query_employee_directory { request: { action: "get_employee", enterpriseKey, employeeUid } }`                                                         |
+| Add a record                                                            | `manage_employee_directory { request: { action: "create_employee", enterpriseKey, name, departmentId, scope } }`                                       |
 | Edit, mark departed or restore                                          | `manage_employee_directory { request: { action: "update_employee", enterpriseKey, employeeUid, expectedVersion, name, departmentId, scope, status } }` |
 | Manage a store or department                                            | Use `manage_store` or `manage_department` with `enterpriseKey` and the matching `operation`                                                            |
 

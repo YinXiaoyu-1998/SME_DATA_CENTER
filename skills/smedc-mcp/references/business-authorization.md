@@ -122,6 +122,10 @@ fields. Use the current `authorizationVersion` as `expectedVersion`. A stale ver
 entire write. Create requires a new ID, update requires an existing target, and category updates
 check the actual category type.
 
+The permission directory uses the stable store authorization key (`name` in the permission directory
+or `storeKey` in the management directory). Use that key in fixed grant store values. For data
+intake, use the current official name from the business directory, even when the key is older.
+
 ### Separate administration tools
 
 | Purpose                               | Tool and parameters                                                                                                                              |
@@ -133,13 +137,14 @@ check the actual category type.
 | Read-only preparation                 | `prepare_authorization_cutover {}`                                                                                                               |
 | Explicit activation / read suspension | `activate_authorization_cutover` / `suspend_authorization_reads { expectedVersion, confirm: true }`                                              |
 
-Read current directories/configuration before writing. The service initializes all eight fixed
-categories through deployment migration for existing tenants and account onboarding for new tenants.
+Read current directories/configuration before writing. The service initializes the registered fixed categories through deployment migration for existing
+tenants and account onboarding for new tenants.
 Initialization preserves existing IDs, levels and retirement choices; new levels remain unset and no
 grants or activation are inferred. Use IDs returned by the category directory. Never invent
 `fixed:…` IDs or create an evidence category to replace a missing fixed category. If the service
 still reports a missing fixed category, report incomplete service initialization to its operator.
-Only the seven readable fixed categories need administrator-declared levels. `delivery_ledger`
+Readable fixed categories require administrator-declared levels. In the directory candidate,
+`employee_profiles` requires its own level and grant for reading employee records. `delivery_ledger`
 retains its internal category identity and complete enterprise/store/source associations, without
 an administrator level or ordinary read grant. `ledger_pdf` keeps its own level and grants;
 existing stored internal levels are preserved and never open raw-ledger reads.
