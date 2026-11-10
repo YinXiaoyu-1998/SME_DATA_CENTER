@@ -179,38 +179,86 @@ describe("published launcher artifact", () => {
           content: [{ type: "text", text: expect.stringMatching(/not found|unknown/i) }]
         });
       }
-      for (const name of [
-        "query_account_permissions",
-        "get_permission_directory",
-        "query_enterprise_workflows"
-      ]) {
-        expect(tools.tools.find((tool) => tool.name === name)).toMatchObject({
-          annotations: { readOnlyHint: true }
-        });
-      }
-      for (const name of [
-        "configure_business_category",
-        "configure_business_dimension",
-        "configure_business_dimension_value"
-      ]) {
-        expect(tools.tools.find((tool) => tool.name === name)).toMatchObject({
-          annotations: { readOnlyHint: false, destructiveHint: true },
+      expect(tools.tools.find((tool) => tool.name === "get_permission_directory")).toMatchObject({
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          additionalProperties: false,
+          required: ["section"],
+          properties: { section: { enum: ["categories", "dimensions", "stores"] } }
+        }
+      });
+      const evidenceFields = ["name", "ownerships", "requiredDimensionIds"] as const;
+      const dimensionFields = ["dimensionId", "name"] as const;
+      const valueFields = [...dimensionFields, "valueId"] as const;
+      const branchCases = {
+        query_account_permissions: [
+          "query",
+          [
+            ["list", []],
+            ["detail", ["employeeId"]]
+          ]
+        ],
+        query_enterprise_workflows: [
+          "query",
+          [
+            ["list", [], ["enterpriseKey", "cursor", "limit"]],
+            ["detail", ["enterpriseKey", "workflowType"]]
+          ]
+        ],
+        configure_business_category: [
+          "operation",
+          [
+            ["create_evidence", ["id", ...evidenceFields], ["retired"]],
+            ["update_evidence", ["categoryId", ...evidenceFields], ["retired"]],
+            ["update_fixed", ["categoryId", "name", "confidentialityLevel"], ["retired"]]
+          ]
+        ],
+        configure_business_dimension: [
+          "operation",
+          [
+            ["create", dimensionFields, ["retired"]],
+            ["update", dimensionFields, ["retired"]]
+          ]
+        ],
+        configure_business_dimension_value: [
+          "operation",
+          [
+            ["create", valueFields, ["retired"]],
+            ["update", valueFields, ["retired"]]
+          ]
+        ]
+      } as const;
+      type DiscoveryBranch = {
+        properties?: Record<string, { const?: string }>;
+        required?: string[];
+      };
+      for (const [name, [selector, expectedBranches]] of Object.entries(branchCases)) {
+        const tool = tools.tools.find((tool) => tool.name === name);
+        const readOnly = selector === "query";
+        const discriminator = readOnly ? "mode" : "kind";
+        expect(tool, name).toMatchObject({
+          annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly },
           inputSchema: {
             additionalProperties: false,
-            required: expect.arrayContaining(["expectedVersion", "operation"])
+            required: readOnly ? ["query"] : ["expectedVersion", "operation"]
           }
         });
+        const nested = tool?.inputSchema.properties?.[selector] as
+          { oneOf?: DiscoveryBranch[]; anyOf?: DiscoveryBranch[] } | undefined;
+        const branches = nested?.oneOf ?? nested?.anyOf;
+        expect(branches, name).toHaveLength(expectedBranches.length);
+        for (const [literal, fields, optional = []] of expectedBranches) {
+          const branch = branches?.find(
+            (candidate) => candidate.properties?.[discriminator]?.const === literal
+          );
+          const required = [discriminator, ...fields];
+          expect(branch, `${name} ${literal}`).toMatchObject({ additionalProperties: false });
+          expect([...branch!.required!].sort()).toEqual(required.sort());
+          expect(Object.keys(branch!.properties!).sort()).toEqual(
+            [...required, ...optional].sort()
+          );
+        }
       }
-      const querySchema = tools.tools.find((tool) => tool.name === "query_account_permissions")
-        ?.inputSchema.properties?.["query"] as { oneOf?: unknown[]; anyOf?: unknown[] } | undefined;
-      expect(querySchema?.oneOf ?? querySchema?.anyOf).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            additionalProperties: false,
-            required: expect.arrayContaining(["mode", "employeeId"])
-          })
-        ])
-      );
       expect(
         tools.tools.find((tool) => tool.name === "upsert_store_reviews")?.inputSchema
       ).toMatchObject({

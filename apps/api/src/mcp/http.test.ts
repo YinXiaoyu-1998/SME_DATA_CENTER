@@ -1631,6 +1631,49 @@ describe("HTTP and official MCP business authorization parity", () => {
       await app.close();
     }
   });
+  it.each([
+    ["query_account_permissions", { query: { mode: "detail" } }],
+    [
+      "configure_business_category",
+      {
+        expectedVersion: "7",
+        operation: {
+          kind: "update_fixed",
+          categoryId: "vip",
+          name: "VIP",
+          confidentialityLevel: 2,
+          ownerships: ["group"],
+          requiredDimensionIds: []
+        }
+      }
+    ]
+  ] as const)("rejects an invalid branch for %s through /mcp", async (name, args) => {
+    const fixture = permissionFixture();
+    fixture.snapshot.role = "admin";
+    const app = buildMcpTestServer({ businessAuthorizationService: fixture.service });
+    try {
+      const response = await postMcp(
+        app,
+        { jsonrpc: "2.0", id: 91, method: "tools/call", params: { name, arguments: args } },
+        { "mcp-protocol-version": "2025-11-25", "x-smedc-launcher-version": "0.17.0" },
+        { employee: adminEmployee }
+      );
+      expect(response.statusCode).toBe(200);
+      expect(parseJsonRpc(response.payload).result).toMatchObject({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining(
+              `MCP error ${ErrorCode.InvalidParams}: Input validation error: Invalid arguments for tool ${name}`
+            )
+          }
+        ]
+      });
+    } finally {
+      await app.close();
+    }
+  });
   it("reads full admin self/other configuration live and applies current role, tenant and version checks", async () => {
     const fixture = permissionFixture();
     fixture.snapshot.role = "admin";
