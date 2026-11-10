@@ -6,6 +6,7 @@ import { performance } from "node:perf_hooks";
 import { PARTITION_ERROR_CODES, type PartitionDatasetName } from "@smedc/domain";
 import {
   createPrismaStructuredPartitionRepository,
+  FormalStoreIntakeError,
   StructuredPartitionRepositoryError,
   type PartitionCandidate,
   type StructuredPartitionRepository
@@ -263,6 +264,7 @@ export function createPartitionImporter(input: {
                   storeKey: partition.storeKey,
                   merchantId: partition.merchantId,
                   storeName: partition.storeName,
+                  sourceRowNumber: partition.sourceRowNumber,
                   businessDate: partition.businessDate,
                   objectKey,
                   rowCount: partition.rowCount,
@@ -319,8 +321,9 @@ export function createPartitionImporter(input: {
           );
         }
         if (
-          error instanceof StructuredPartitionRepositoryError &&
-          ["ORDER_SCOPE_CONFLICT", "ORDER_SCOPE_REQUIRED"].includes(error.code)
+          error instanceof FormalStoreIntakeError ||
+          (error instanceof StructuredPartitionRepositoryError &&
+            ["ORDER_SCOPE_CONFLICT", "ORDER_SCOPE_REQUIRED"].includes(error.code))
         ) {
           await repository.finishJob({
             lease,
@@ -328,7 +331,12 @@ export function createPartitionImporter(input: {
             jobId: job.jobId,
             status: "rejected",
             errorCode: error.code,
-            errorSummary: error.message
+            errorSummary: error.message,
+            ...(error instanceof FormalStoreIntakeError
+              ? {
+                  validationErrors: [{ code: error.code, message: error.message, ...error.details }]
+                }
+              : {})
           });
           await cleanupPartitionSource(storage, repository, job.temporaryObjectKey, timingContext);
           totalOutcome = "rejected";

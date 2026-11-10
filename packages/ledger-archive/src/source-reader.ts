@@ -1,3 +1,4 @@
+import { ledgerStoreKeySql } from "./store-identity.js";
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
@@ -49,7 +50,7 @@ function sourceChecksum(value: unknown): string {
 function factFilter(key: LedgerPartitionKey) {
   return Prisma.sql`r.org_id = ${key.orgId} AND d.status = 'active' AND d.archived_at IS NULL
     AND b.status = 'applied' AND b.archived_at IS NULL
-    AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) = CAST(${key.storeName} AS BINARY)
+    AND CAST(${ledgerStoreKeySql} AS BINARY) = CAST(${key.storeName} AS BINARY)
     AND JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) = ${key.purchaseDate}`;
 }
 function factFrom() {
@@ -247,9 +248,9 @@ export async function readReadableLedgerSourceMetadataBatch(
       " UNION ALL "
     );
     return Prisma.sql`(${requested}) k JOIN delivery_ledger_rows r ON r.org_id = ${employee.orgId}
-      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) = CAST(k.storeName AS BINARY)
       AND JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) = k.purchaseDate
       JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
+        AND CAST(${ledgerStoreKeySql} AS BINARY) = CAST(k.storeName AS BINARY)
       JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id`;
   }
   const active = Prisma.sql`d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL`;
@@ -571,7 +572,7 @@ export function createPrismaLedgerSourceReader({ prisma }: { prisma: PrismaClien
         { storeName: string; purchaseDate: string }[]
       >(Prisma.sql`
         SELECT CONVERT(storeName USING utf8mb4) AS storeName, purchaseDate FROM (
-          SELECT DISTINCT CAST(JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) AS BINARY) AS storeName,
+          SELECT DISTINCT CAST(${ledgerStoreKeySql} AS BINARY) AS storeName,
             JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) AS purchaseDate FROM ${factFrom()}
           WHERE r.org_id = ${input.orgId} AND d.status = 'active' AND d.archived_at IS NULL AND b.status = 'applied' AND b.archived_at IS NULL
         ) facts WHERE storeName IS NOT NULL AND purchaseDate IS NOT NULL ${after} ORDER BY CAST(storeName AS BINARY), purchaseDate LIMIT ${input.limit + 1}`);

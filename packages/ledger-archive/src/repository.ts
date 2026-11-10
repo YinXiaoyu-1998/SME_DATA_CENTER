@@ -1,3 +1,4 @@
+import { ledgerStoreKeySql } from "./store-identity.js";
 import {
   Prisma,
   type PrismaClient,
@@ -407,7 +408,7 @@ export function createPrismaLedgerArchiveRepository({
       // partitions remain discoverable. Exact names are deliberately binary, never normalized.
       const rows = await prisma.$queryRaw<{ storeName: string; purchaseDate: string }[]>(Prisma.sql`
         SELECT store_name AS storeName, purchase_date AS purchaseDate FROM (
-          SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.store_name')) COLLATE utf8mb4_0900_bin AS store_name,
+          SELECT DISTINCT ${ledgerStoreKeySql} COLLATE utf8mb4_0900_bin AS store_name,
             JSON_UNQUOTE(JSON_EXTRACT(r.payload, '$.purchase_date')) COLLATE utf8mb4_0900_bin AS purchase_date
           FROM delivery_ledger_rows r JOIN documents d ON d.id = r.source_document_id AND d.org_id = r.org_id
           JOIN import_batches b ON b.id = r.import_batch_id AND b.org_id = r.org_id

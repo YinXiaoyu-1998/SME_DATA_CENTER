@@ -508,6 +508,7 @@ model StructuredPartition {
   enterpriseKey        String           @map("enterprise_key") @db.VarChar(191)
   enterpriseName       String           @map("enterprise_name") @db.VarChar(255)
   dataset              PartitionDataset
+  directoryStoreId     String?          @map("directory_store_id") @db.VarChar(36)
   storeKey             String           @map("store_key") @db.VarChar(255)
   merchantId           String?          @map("merchant_id") @db.VarChar(255)
   storeName            String           @map("store_name") @db.VarChar(255)
@@ -523,6 +524,7 @@ model StructuredPartition {
   organization         Organization     @relation(fields: [orgId], references: [id], onDelete: Restrict)
 
   @@unique([orgId, enterpriseKey, dataset, storeKey, businessDate], map: "structured_partitions_identity_uq")
+  @@unique([orgId, enterpriseKey, dataset, directoryStoreId, businessDate], map: "structured_partitions_directory_store_day_uq")
   @@index([orgId, dataset, enterpriseKey, businessDate], map: "structured_partitions_manifest_idx")
   @@index([orgId, confidentialityLevel, dataset, businessDate], map: "structured_partitions_auth_idx")
   @@map("structured_partitions")

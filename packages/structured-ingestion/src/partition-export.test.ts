@@ -96,7 +96,7 @@ describe("exportStructuredPartitions", () => {
     const rows = parseCsv(await readFile(result.partitions[0]!.filePath)) as string[][];
     expect(rows[0]).toEqual(headers);
     expect(rows[1]).toEqual([
-      "合成门店",
+      " 合成门店 ",
       "0001",
       "未来平台",
       "000900719925474099312345",
@@ -784,7 +784,7 @@ describe("exportStructuredPartitions", () => {
     const sourcePath = path.join(root, "dishes.csv");
     const outputDirectory = path.join(root, "output");
     const rows = [
-      dishRow({ merchant_id: "000123", store_name: " 门店 A ", product_name: "鱼,香" }),
+      dishRow({ merchant_id: "000123", store_name: "门店 A", product_name: "鱼,香" }),
       dishRow({ merchant_id: "000123", store_name: "门店 A", product_name: "第二道菜" }),
       dishRow({
         merchant_id: "000456",
@@ -853,7 +853,7 @@ describe("exportStructuredPartitions", () => {
     expect(result.profile.partitionFlushCount).toBeLessThan(10);
   });
 
-  test("uses the normalized store-name fallback when merchant ID is absent", async () => {
+  test("keeps the submitted store name and row when merchant ID is absent", async () => {
     const root = await temporaryRoot();
     const sourcePath = path.join(root, "business.csv");
     await writeFile(
@@ -873,9 +873,12 @@ describe("exportStructuredPartitions", () => {
     expect(result.partitions[0]).toMatchObject({
       storeKey: "name:store a",
       merchantId: null,
-      storeName: "Store A"
+      storeName: " Store   A ",
+      sourceRowNumber: 2
     });
-    expect(await readFile(result.partitions[0]!.filePath, "utf8")).toContain("1.23");
+    const canonical = await readFile(result.partitions[0]!.filePath, "utf8");
+    expect(canonical).toContain(", Store   A ,");
+    expect(canonical).toContain("1.23");
   });
 
   test("rejects the whole file and removes candidates when one merchant identity conflicts", async () => {

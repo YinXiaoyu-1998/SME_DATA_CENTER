@@ -431,7 +431,13 @@ if (enabled) {
       )
     });
     await prisma.businessStore.createMany({
-      data: ["Product", "Other"].map((name) => ({ orgId, enterpriseKey: "enterprise", name }))
+      data: ["Product", "Other"].map((name) => ({
+        orgId,
+        enterpriseKey: "enterprise",
+        name,
+        officialName: name,
+        confirmation: "confirmed"
+      }))
     });
     const scope = {
       enterpriseKey: "enterprise",

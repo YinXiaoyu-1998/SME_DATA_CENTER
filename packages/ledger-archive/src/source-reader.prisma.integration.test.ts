@@ -72,6 +72,9 @@ if (enabled) {
         role: "admin"
       }))
     });
+    await prisma.businessAuthorizationState.create({ data: { orgId } });
+    await registerStore(key.storeName);
+    await registerStore("Concurrent Synthetic");
   });
   afterAll(async () => {
     const where = { orgId };
@@ -98,10 +101,23 @@ if (enabled) {
       worker.disconnect?.()
     ]);
   });
-  async function photo(receiptId: string, suffix: string, clearance = 0, actorId = actor.id) {
+  async function registerStore(name: string) {
+    await prisma.$executeRaw`INSERT IGNORE INTO business_stores
+      (org_id, enterprise_key, name, official_name, store_id, confirmation)
+      VALUES (${orgId}, 'synthetic', ${name}, ${name}, UUID(), 'confirmed')`;
+  }
+  async function photo(
+    receiptId: string,
+    suffix: string,
+    clearance = 0,
+    actorId = actor.id,
+    storeName = key.storeName
+  ) {
     return certificates.createCertificate({
       orgId,
       actorUserAccountId: actorId,
+      enterpriseKey: "synthetic",
+      storeName,
       sourceDocumentId: `${orgId}_${suffix}`,
       title: "Synthetic photo",
       receiptId,
@@ -117,7 +133,13 @@ if (enabled) {
       audit
     });
   }
-  async function fact(receiptId: string, storeName = key.storeName, workerPublish = false) {
+  async function fact(
+    receiptId: string,
+    storeName = key.storeName,
+    workerPublish = false,
+    expectedStoreKey = storeName
+  ) {
+    await registerStore(expectedStoreKey);
     const sourceDocumentId = `${orgId}_${receiptId}`;
     await prisma.document.create({
       data: {
@@ -128,6 +150,7 @@ if (enabled) {
         documentType: "raw_material",
         documentKind: "structured",
         fileType: "xlsx",
+        sourceMetadata: { enterpriseKey: "synthetic" },
         status: "pending_processing",
         confidentialityLevel: receiptId === "R2" ? 2 : 0,
         storageObjectKey: `synthetic/${receiptId}`,
@@ -202,8 +225,9 @@ if (enabled) {
       rows,
       audit
     });
-    expect(applied.affectedLedgerPartitions).toEqual([{ ...key, storeName }]);
-    const revision = (await reader.readLedgerSnapshot({ ...key, storeName })).dataRevision;
+    const appliedKey = { ...key, storeName: expectedStoreKey };
+    expect(applied.affectedLedgerPartitions).toEqual([appliedKey]);
+    const revision = (await reader.readLedgerSnapshot(appliedKey)).dataRevision;
     await imports.applyReservedStructuredImport({
       orgId,
       actorUserAccountId: actor.id,
@@ -211,7 +235,7 @@ if (enabled) {
       rows,
       audit
     });
-    expect((await reader.readLedgerSnapshot({ ...key, storeName })).dataRevision).toBe(revision);
+    expect((await reader.readLedgerSnapshot(appliedKey)).dataRevision).toBe(revision);
     return batch;
   }
   it("includes a photo uploaded before receipt import, accumulates same-day receipts, and excludes archived photos", async () => {
@@ -378,7 +402,7 @@ if (enabled) {
     });
     await ready;
     let photoCompleted = false;
-    const upload = photo("RC", "cp").then((result) => {
+    const upload = photo("RC", "cp", 0, actor.id, concurrentKey.storeName).then((result) => {
       photoCompleted = true;
       return result;
     });
@@ -539,8 +563,8 @@ if (enabled) {
             payload: row.payload!
           }
         });
-        await photo(receiptId, "batch-visible");
-        await photo(receiptId, "batch-hidden", 3);
+        await photo(receiptId, "batch-visible", 0, actor.id, storeName);
+        await photo(receiptId, "batch-hidden", 3, actor.id, storeName);
       }
       const snapshot = await reader.readLedgerSnapshot({ ...key, storeName });
       snapshots.push(snapshot);
@@ -624,4 +648,38 @@ if (enabled) {
     );
     await prisma.userAccount.update({ where: { id: actor.id }, data: { disabled: false } });
   }, 15_000);
+  it("keeps receipt, photo and PDF partition identity after a formal rename", async () => {
+    const renamed = "Synthetic Shop Official";
+    const originalPartition = await prisma.ledgerPdfPartition.findUniqueOrThrow({
+      where: {
+        orgId_storeNameHash_purchaseDate: {
+          orgId,
+          storeNameHash: ledgerStoreNameHash(key.storeName),
+          purchaseDate: new Date(`${key.purchaseDate}T00:00:00Z`)
+        }
+      }
+    });
+    await prisma.$executeRaw`UPDATE business_stores SET official_name = ${renamed}
+      WHERE org_id = ${orgId} AND enterprise_key = 'synthetic' AND name = ${key.storeName}`;
+    await expect(photo("R1", "rename_bad")).rejects.toMatchObject({
+      code: "FORMAL_STORE_NAME_INVALID",
+      details: { field: "storeName", storeName: key.storeName }
+    });
+    const linked = await photo("R1", "rename_ok", 0, actor.id, renamed);
+    expect(linked.affectedLedgerPartitions).toEqual([key]);
+    await fact("RR", renamed, false, key.storeName);
+    const snapshot = await reader.readLedgerSnapshot(key);
+    expect(snapshot.rows.map((row) => row.receipt_id)).toContain("RR");
+    expect(snapshot.certificates.map((row) => row.sourceDocumentId)).toContain(
+      linked.sourceDocumentId
+    );
+    expect(
+      await prisma.ledgerPdfPartition.findUniqueOrThrow({ where: { id: originalPartition.id } })
+    ).toMatchObject({ storeName: key.storeName });
+    expect(
+      await prisma.ledgerPdfPartition.count({
+        where: { orgId, storeNameHash: ledgerStoreNameHash(renamed) }
+      })
+    ).toBe(0);
+  });
 });

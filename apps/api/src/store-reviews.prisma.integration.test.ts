@@ -134,7 +134,13 @@ if (run) {
       data: { orgId, enterpriseKey: "合成企业", enterpriseName: "合成企业" }
     });
     await prisma.businessStore.create({
-      data: { orgId, enterpriseKey: "合成企业", name: row.storeName }
+      data: {
+        orgId,
+        enterpriseKey: "合成企业",
+        name: row.storeName,
+        officialName: row.storeName,
+        confirmation: "confirmed"
+      }
     });
     await permissions.configureAccount({
       orgId,
@@ -385,17 +391,26 @@ if (run) {
     ).toBe(0);
   });
   it("rolls back a valid earlier row when a later identity fails and uses current admin state", async () => {
-    const result = await write({
+    const payload = {
       reviews: [
         { ...row, reviewerName: "rollback" },
         { ...row, storeName: "不存在门店", reviewerName: "bad" }
       ]
-    });
+    };
+    const result = await write(payload);
     expect(result.isError).toBe(true);
     expect(body(result).error).toMatchObject({
-      code: "STORE_REVIEW_IDENTITY_NOT_AVAILABLE",
+      code: "FORMAL_STORE_NAME_INVALID",
+      message: expect.stringContaining('reviews[1].storeName "不存在门店"'),
       requestId: expect.any(String)
     });
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/store-reviews/upsert",
+      headers: { authorization: "Bearer synthetic" },
+      payload
+    });
+    expect(response.json().error.details).toMatchObject({ storeName: "不存在门店", index: 1 });
     expect(await prisma.storeReview.count({ where: { orgId, reviewerName: "rollback" } })).toBe(0);
     await prisma.userAccount.update({ where: { id }, data: { role: "employee" } });
     const denied = await write({ reviews: [{ ...row, reviewerName: "demoted" }] });

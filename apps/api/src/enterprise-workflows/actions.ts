@@ -29,6 +29,7 @@ import {
 } from "./repository.js";
 import { requireBinding } from "./runs.js";
 import { getInstallation } from "./installations.js";
+import { workflowStoreKeys } from "./configuration.js";
 // Match business-analysis build_query_plan.py daily_history, including completed
 // calendar months and Feb29 clamping when comparing the previous calendar year.
 function weeklyBusinessHistoryWindow(endDate: string) {
@@ -669,7 +670,11 @@ export async function actionOperation(
         proof.reviewCount !== proof.recordIds.length
       )
         fail("WORKFLOW_ACTION_UNKNOWN");
-      requireRead(auth, workflow, identity.storeNames, ["store_reviews"]);
+      const keys = await workflowStoreKeys(tx, workflow, identity.storeNames);
+      const storeKeys = identity.storeNames.map(
+        (name) => keys.get(name) ?? fail("WORKFLOW_PERMISSION_DENIED")
+      );
+      requireRead(auth, workflow, storeKeys, ["store_reviews"]);
       // Verify the bounded row identities and current permissions. Full field comparison and
       // source-account/POI namespace binding remain authenticated client attestations.
       const rows = await tx.storeReview.findMany({
@@ -677,7 +682,7 @@ export async function actionOperation(
           orgId: actor.orgId,
           enterpriseKey: workflow.enterpriseKey,
           id: { in: proof.recordIds },
-          storeName: { in: identity.storeNames },
+          storeName: { in: storeKeys },
           source: identity.source.channel === "meituan" ? "美团评价" : "点评评价",
           reviewedAt: {
             gte: new Date(identity.window.startDate + "T00:00:00+08:00"),
@@ -693,7 +698,7 @@ export async function actionOperation(
           (row) =>
             !requestedIds.has(row.id) ||
             row.enterpriseKey !== workflow.enterpriseKey ||
-            !identity.storeNames.includes(row.storeName) ||
+            !storeKeys.includes(row.storeName) ||
             row.source !== (identity.source.channel === "meituan" ? "美团评价" : "点评评价")
         )
       )

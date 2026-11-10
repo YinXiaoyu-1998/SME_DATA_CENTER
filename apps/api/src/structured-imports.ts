@@ -15,6 +15,7 @@ import {
 import {
   lockLedgerSourceMutation,
   ledgerPartitionsFromRows,
+  ledgerStoreKeyFromMetadata,
   markLedgerPartitionsChanged,
   type LedgerPartitionKey
 } from "@smedc/ledger-archive";
@@ -321,7 +322,8 @@ export function createPrismaStructuredImportRepository(options: {
       ...record,
       affectedLedgerPartitions: ledgerPartitionsFromRows(
         batch.orgId,
-        rows.map((row) => ({ payload: row.payload as Record<string, unknown> }))
+        rows.map((row) => ({ payload: row.payload as Record<string, unknown> })),
+        ledgerStoreKeyFromMetadata(batch.sourceDocument.sourceMetadata)
       )
     };
   }
@@ -648,7 +650,7 @@ export function createPrismaStructuredImportRepository(options: {
             if (existing.status === ImportBatchStatus.applied)
               return recordWithPartitions(existing, tx);
             await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
-            await persistStructuredSourceReadRequirements(tx, {
+            const ledgerStoreKey = await persistStructuredSourceReadRequirements(tx, {
               orgId: input.orgId,
               sourceDocumentId: existing.sourceDocumentId,
               dataset: existing.dataset,
@@ -806,7 +808,7 @@ export function createPrismaStructuredImportRepository(options: {
             );
             const affectedLedgerPartitions =
               batch.dataset === "delivery_ledger"
-                ? ledgerPartitionsFromRows(input.orgId, input.rows)
+                ? ledgerPartitionsFromRows(input.orgId, input.rows, ledgerStoreKey)
                 : [];
             await markLedgerPartitionsChanged(tx, affectedLedgerPartitions);
             return { ...toImportBatchRecord(batch), affectedLedgerPartitions };

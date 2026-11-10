@@ -1,4 +1,4 @@
-import { ResourceAttributesError } from "@smedc/db";
+import { FormalStoreIntakeError, ResourceAttributesError } from "@smedc/db";
 import { normalizeEnterpriseIdentity } from "@smedc/domain";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -341,6 +341,8 @@ export function registerQuarantineCertificateRoutes(
       return reply.code(201).send(certificateResponse(certificate));
     } catch (error) {
       await dependencies.storage().deleteObject(storedObject.key);
+      if (error instanceof FormalStoreIntakeError)
+        return validationError(reply, error.code, error.message);
       if (error instanceof ResourceAttributesError)
         return validationError(
           reply,
