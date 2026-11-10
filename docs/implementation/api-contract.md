@@ -173,13 +173,16 @@ authorization mode/version, query shape, filters, limit, and retrieval configura
 
 ### Versioned enterprise workflows
 
-Source candidate `0.17.0` publishes seven enterprise workflow tools through MCP. On a matching
+Source candidate `0.17.0` registers seven enterprise workflow tools through MCP. On a matching
 service, call `query_enterprise_workflows` with `query.mode` set to `list` to discover the current
 capability version and authenticated settings entry. List mode accepts the existing optional
 `enterpriseKey`, `cursor` and `limit`. Detail mode requires `enterpriseKey` and
 `workflowType` and returns one workflow's configuration. Use `get_workflow_status` for
 installation, run, action and migration status. The list and detail HTTP operations retain their
-original routes and payloads. The matching `smedc-workflows` companion uses the consolidated MCP query.
+original routes and payloads. The matching `smedc-workflows` companion uses the consolidated MCP
+query. Live MCP workflow calls require launcher `0.17.0`. Existing installation records and
+download receipts produced by launcher `0.16.0` remain eligible under the same readiness and
+evidence checks.
 
 The approved installation pin remains the independently verified `0.16.0` until the candidate
 is published and verified. The 50-tool cutover requires the matching service and companion versions.
