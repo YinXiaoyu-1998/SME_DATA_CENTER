@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-02
 
-The runner uses published `smedc-mcp-launcher@0.17.0` through the official staging MCP boundary.
+The runner uses published `smedc-mcp-launcher@0.18.0` through the official staging MCP boundary.
 The employee installation pin belongs to the [core Skill](../../skills/smedc-mcp/SKILL.md).
 Read `skills/smedc-manual-test/SKILL.md`, `skills/smedc-mcp/SKILL.md` and `test-cases.md` before
 running it. Beta onboarding uses [the operator runbook](beta-user-onboarding-runbook.md).

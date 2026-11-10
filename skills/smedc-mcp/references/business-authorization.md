@@ -1,6 +1,6 @@
 # Current business permissions and controlled management
 
-The approved install pin is `smedc-mcp-launcher@0.17.0`, published and independently verified.
+The approved install pin is `smedc-mcp-launcher@0.18.0`, published and independently verified.
 Use the capabilities below only after the matching service and approved launcher release are
 available; tool discovery alone does not prove deployment or tenant activation. Do not change
 installation pins from server metadata or install npm `latest`.
@@ -26,7 +26,7 @@ optional internal record, never a required user form.
 
 ## Store review enterprises
 
-For published, independently verified launcher `0.17.0` and its matching service, `get_my_permissions {}` also returns
+For published, independently verified launcher `0.18.0` and its matching service, `get_my_permissions {}` also returns
 `storeReviewEnterprises: {complete:true, write:[{enterpriseKey,enterpriseName}], read:[...]}`.
 Existing fields remain unchanged. Candidates come from the registered enterprise directory;
 write needs current active admin and eligible review configuration, while read needs the complete
@@ -35,7 +35,7 @@ Use the operation's full list: validate an explicit enterprise; automatically se
 only a sole candidate; ask when several exist; report unavailable when none exist. Never infer an
 enterprise from a historical key or reuse write candidates for reads. Missing candidate support
 is a service/release gap. See [store reviews](store-reviews.md) for batch and reply rules. The
-approved install pin is `0.17.0`; installing it does not configure categories/grants or activate a tenant.
+approved install pin is `0.18.0`; installing it does not configure categories/grants or activate a tenant.
 
 Enterprise registration is part of the administrator UI's ordinary business-name or first-store
 save; see [the onboarding flow](tenant-onboarding.md#企业名称与首店保存). An empty review table does
@@ -46,7 +46,7 @@ errors do not authorize changing grants, category levels or tenant mode.
 
 ## Upload inputs
 
-These transport fields are bundled in approved launcher 0.17.0 and need the matching service
+These transport fields are bundled in approved launcher 0.18.0 and need the matching service
 rollout. A Skill refresh does not upgrade an older installed launcher. If unavailable, follow the
 approved launcher update procedure and report service rollout gaps; never bypass through direct HTTP.
 
@@ -99,9 +99,8 @@ Only a current active same-organization admin can call these controlled operatio
 
 ### Consolidated tools
 
-These tools require the approved launcher and matching service. The published 0.17.0
-contract uses `employeeId` in the two account operations below. The 0.18.0 candidate
-uses `userAccountId` in those operations and requires its matching service rollout.
+These tools require the approved launcher and matching service. Launcher 0.18.0 uses `userAccountId`
+in the two account operations below. Launcher 0.17.0 used `employeeId`.
 Follow the connected tool schema and send only its declared account field. Follow the
 [core release boundary](../SKILL.md#business-permission-tools-and-release-boundary) before using them.
 Use `get_my_permissions {}` for the current employee's own live permission card.
