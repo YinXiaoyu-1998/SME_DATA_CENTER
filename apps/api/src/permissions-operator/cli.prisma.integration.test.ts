@@ -205,7 +205,7 @@ suite("internal permissions operator with Prisma", () => {
     expect(snapshot).toMatchObject({
       authorizationVersion: "7",
       mode: "legacy",
-      stores: [{ name: "A " }],
+      stores: [{ name: "A ", officialName: "A ", version: "0" }],
       accounts: expect.arrayContaining([
         expect.objectContaining({ id: userAccountId, clearance: 2 })
       ]),

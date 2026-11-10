@@ -827,6 +827,23 @@ suite("authoritative publication and original lineage", () => {
     await prisma.businessAuthorizationState.create({
       data: { orgId: publicationOrg, mode: "enabled" }
     });
+    await prisma.businessStore.createMany({
+      data: [
+        "A",
+        "B",
+        "Rollback store",
+        "Exact A ",
+        "Photo A",
+        "Ledger B",
+        "Historical exact store"
+      ].map((name) => ({
+        orgId: publicationOrg,
+        enterpriseKey: "enterprise",
+        name,
+        officialName: name,
+        confirmation: "confirmed"
+      }))
+    });
     for (const [key, group] of [
       ["business", false],
       ["vip", true],
@@ -1007,7 +1024,7 @@ suite("authoritative publication and original lineage", () => {
     ).toBe(0);
     expect(
       await prisma.businessStore.count({ where: { orgId: publicationOrg, name: "Rollback store" } })
-    ).toBe(0);
+    ).toBe(1);
     expect(await prisma.document.findUnique({ where: { id: failedSource } })).toBeNull();
   });
 
@@ -1334,9 +1351,9 @@ suite("authoritative publication and original lineage", () => {
     const snapshot = await permissions.loadAuthorizationSnapshot(admin, publicationOrg);
     expect(canReadResource(snapshot, requirement!).allowed).toBe(true);
     const rejectedJob = await reserve();
-    await expect(publish(rejectedJob, candidate(nextId()))).rejects.toThrow(
-      "RESOURCE_DIRECTORY_RETIRED"
-    );
+    await expect(publish(rejectedJob, candidate(nextId()))).rejects.toMatchObject({
+      code: "RESOURCE_DIRECTORY_RETIRED"
+    });
     expect(
       await prisma.structuredPartition.findUniqueOrThrow({ where: { id: original.id } })
     ).toMatchObject({ objectKey: original.objectKey, checksumSha256: original.checksumSha256 });

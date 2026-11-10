@@ -123,7 +123,11 @@ export async function openPermissionsOperatorRuntime(
         const readers = {
           accounts: () => repository.listAccounts(actor.orgId, actor.userAccountId),
           categories: () => repository.listCategories(actor.orgId),
-          stores: () => repository.listStores(actor.orgId),
+          stores: async () =>
+            (await repository.listStores(actor.orgId)).map((store) => ({
+              ...store,
+              version: store.version.toString()
+            })),
           dimensions: () => repository.listDimensions(actor.orgId),
           enterprises: () => metadata.listEnterprises(actor.orgId),
           documents: () => metadata.listDocuments(actor.orgId, query),
