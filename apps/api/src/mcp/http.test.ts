@@ -987,7 +987,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       const toolNames = (
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
-      expect(new Set(toolNames).size).toBe(47);
+      expect(new Set(toolNames).size).toBe(49);
       expect(toolNames).toEqual(
         expect.arrayContaining([
           "query_account_permissions",
@@ -995,7 +995,9 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           "configure_business_category",
           "configure_business_dimension",
           "configure_business_dimension_value",
-          "query_enterprise_workflows"
+          "query_enterprise_workflows",
+          "query_employee_directory",
+          "manage_employee_directory"
         ])
       );
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());

@@ -6,7 +6,6 @@ import { directoryInputSchemas } from "../../../../packages/mcp-contract/src/emp
 
 export type DirectoryAction = keyof typeof directoryInputSchemas;
 type Actor = { id: string; orgId: string };
-type Tx = Prisma.TransactionClient;
 function fail(code: string): never {
   throw new Error(code);
 }

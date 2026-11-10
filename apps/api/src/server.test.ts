@@ -193,7 +193,7 @@ describe("api auth shell", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      employee: adminEmployee
+      userAccount: adminEmployee
     });
   });
 
@@ -314,7 +314,7 @@ describe("api auth shell", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      employee: {
+      userAccount: {
         id: adminEmployee.id,
         orgId: "default-org"
       }
