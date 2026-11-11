@@ -81,8 +81,8 @@ export interface StructuredDatasetRegistry {
   accessMode: "partition_extract" | "row_query" | "catalog_query";
   rowTable?: StructuredRowTableName;
   sheetPolicy: "strict_all_nonempty" | "import_matching_visible" | "cost_card_candidates" | "none";
-  metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none" | "current";
-  datePolicy?: "row_business_date" | "snapshot_metadata";
+  metadataPolicy: "window" | "derived_receipt" | "none" | "current";
+  datePolicy?: "row_business_date";
   joins?: readonly StructuredJoinRegistry[];
   defaultSort?: { field: string; direction: "asc" | "desc" };
   fields: StructuredFieldRegistryEntry[];
@@ -95,15 +95,8 @@ export interface StructuredPresentationProfile {
   columns: Array<{ canonicalName: string; displayName: string }>;
 }
 
-export const FILE_IMPORT_UNSUPPORTED_CODE = "DATASET_FILE_IMPORT_UNSUPPORTED" as const;
-
 export interface HeaderValidationError {
-  code:
-    | "UNKNOWN_COLUMN"
-    | "MISSING_REQUIRED_COLUMN"
-    | "AMBIGUOUS_COLUMN"
-    | "DUPLICATE_COLUMN"
-    | typeof FILE_IMPORT_UNSUPPORTED_CODE;
+  code: "UNKNOWN_COLUMN" | "MISSING_REQUIRED_COLUMN" | "AMBIGUOUS_COLUMN" | "DUPLICATE_COLUMN";
   column: string;
   canonicalNames?: string[];
 }
@@ -1364,12 +1357,6 @@ export function resolveStructuredHeaders(
   | { ok: true; fields: Array<{ canonicalName: string; sourceColumnIndex: number }> }
   | { ok: false; errors: HeaderValidationError[] } {
   const registry = getStructuredRegistry(dataset);
-  if (registry.sheetPolicy === "none" || registry.metadataPolicy === "current") {
-    return {
-      ok: false,
-      errors: [{ code: FILE_IMPORT_UNSUPPORTED_CODE, column: "" }]
-    };
-  }
   const fileFields = registry.fields.filter((field) => field.inputSource === "file");
   const lookup = buildStructuredHeaderLookup(fileFields);
   const errors: HeaderValidationError[] = [];

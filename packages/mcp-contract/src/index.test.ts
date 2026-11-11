@@ -377,7 +377,6 @@ const invalidInputCases = [
   {
     tool: "upsert_dish_catalog",
     cases: [
-      { label: "empty batch", input: { enterpriseName: "企业" } },
       {
         label: "unknown row field",
         input: {
@@ -394,21 +393,6 @@ const invalidInputCases = [
               costPrice: "2"
             }
           ]
-        }
-      },
-      {
-        label: "duplicate sku",
-        input: {
-          enterpriseName: "企业",
-          rows: [validInputs.upsert_dish_catalog.rows[0], validInputs.upsert_dish_catalog.rows[0]]
-        }
-      },
-      {
-        label: "sku written and removed",
-        input: {
-          enterpriseName: "企业",
-          rows: validInputs.upsert_dish_catalog.rows,
-          removeSkuIds: [validInputs.upsert_dish_catalog.rows[0]!.skuId]
         }
       },
       {
@@ -862,6 +846,17 @@ describe("SMEDC MCP contract", () => {
     expect(
       schema.safeParse({ enterpriseName: "企业", rows: [row], orgId: "foreign" }).success
     ).toBe(false);
+    // Structural/length/price checks stay in the contract; semantic batch errors must reach
+    // the domain so HTTP/MCP can return DISH_CATALOG_* codes with bounded row indexes.
+    expect(schema.safeParse({ enterpriseName: "企业", rows: [row, row] }).success).toBe(true);
+    expect(
+      schema.safeParse({
+        enterpriseName: "企业",
+        rows: [row],
+        removeSkuIds: [row.skuId]
+      }).success
+    ).toBe(true);
+    expect(schema.safeParse({ enterpriseName: "企业" }).success).toBe(true);
   });
 
   it("exports the stable business tool names without local-session tools", () => {
@@ -1119,10 +1114,13 @@ describe("SMEDC MCP contract", () => {
       { name: "storeNameContains", required: false }
     ]);
     expect(coverage?.description).toContain("applied source windows");
+    expect(coverage?.description).toContain("current-state row count");
+    expect(coverage?.description).not.toContain("snapshots");
     expect(coverage?.resultShape).toEqual([
       "dataset",
       "metadataPolicy",
-      "sources[]: readable applied source windows or snapshots",
+      "window datasets: sources[]: readable applied source windows",
+      "dish_catalog: metadataPolicy: current, rowCount, lastUpdatedAt",
       "cost_cards: accessMode: catalog_query, cardCount, totalItemRowCount, sources[]: { sourceDocumentId, importBatchId, cardCount, totalItemRowCount }"
     ]);
   });
@@ -1540,6 +1538,33 @@ describe("SMEDC MCP contract", () => {
         requestId: "req_1"
       }
     });
+
+    // Dish catalog validation details are bounded public field names and row indexes.
+    expect(
+      parseErrorResult(
+        apiErrorToolResult({
+          error: {
+            code: "DISH_CATALOG_DUPLICATE_SKU",
+            message: "SKU IDs must be unique.",
+            details: { field: "skuId", rowIndexes: [0, 1, 1, 2] }
+          }
+        })
+      ).error.details
+    ).toEqual({ field: "skuId", rowIndexes: [0, 1, 2] });
+    // Any other detail shape stays opaque, including unknown keys and unbounded values.
+    for (const [details, expected] of [
+      [{ sql: "select secret from private_table" }, undefined],
+      [{ field: "skuId", rowIndexes: [0], extra: true }, undefined],
+      // A non-field-shaped name is dropped; bounded indexes remain.
+      [{ field: "skuId; DROP TABLE users", rowIndexes: [0] }, { rowIndexes: [0] }]
+    ] as const)
+      expect(
+        parseErrorResult(
+          apiErrorToolResult({
+            error: { code: "DISH_CATALOG_INVALID_INPUT", message: "Invalid.", details }
+          })
+        ).error.details
+      ).toEqual(expected);
 
     expect(parseErrorResult(apiErrorToolResult({ nope: true }))).toEqual({
       error: {

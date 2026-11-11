@@ -1,6 +1,6 @@
 # 菜品目录改为当前状态，由批量 MCP 接口维护
 
-2026-11-11 已确认设计，尚未实现。取代 [ADR 0023](0023-dish-catalog-append-only-snapshots.md) 的追加式快照模型；完整规格为 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，实施边界见[菜品目录当前状态实施计划](../implementation/dish-catalog-current-state.md)。
+2026-11-11 已实现（源码），未部署。取代 [ADR 0023](0023-dish-catalog-append-only-snapshots.md) 的追加式快照模型；完整规格为 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，实施边界见[菜品目录当前状态实施计划](../implementation/dish-catalog-current-state.md)。
 
 ## 决定
 

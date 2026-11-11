@@ -112,7 +112,6 @@ export {
 export {
   COST_CARD_UPLOAD_REGISTRY,
   type CostCardUploadRegistry,
-  FILE_IMPORT_UNSUPPORTED_CODE,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_DATASETS,
   buildStructuredHeaderLookup,

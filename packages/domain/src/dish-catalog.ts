@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 
 export const DISH_CATALOG_LIMITS = Object.freeze({
@@ -84,14 +85,37 @@ const ROW_KEYS = new Set([
   "dishAlias",
   "departmentName"
 ]);
-const SALE_PRICE_PATTERN = /^(\d{1,14})(?:\.(\d{1,6}))?$/;
+/** Shared decimal-text rule; the service canonicalizes the value and never rounds. */
+export const DISH_CATALOG_SALE_PRICE_PATTERN = /^(\d{1,14})(?:\.(\d{1,6}))?$/;
+
+/** Shared code-point length rule for MCP schemas; no trimming, normalization or lone surrogates. */
+export function dishCatalogTextFits(value: string, max: number): boolean {
+  const characters = Array.from(value);
+  return (
+    characters.length <= max &&
+    characters.every((character) => character.length !== 1 || !/[\uD800-\uDFFF]/u.test(character))
+  );
+}
+
+/** Shared Zod text schema so MCP contracts and domain parsing apply one length rule. */
+export function dishCatalogTextSchema(max: number, options: { required?: boolean } = {}) {
+  const base = options.required ? z.string().min(1, "Required.") : z.string();
+  return base.refine((value) => dishCatalogTextFits(value, max), `At most ${max} characters.`);
+}
+
+/** Shared bounded public row-index list used by HTTP and MCP error details. */
+export function boundedDishCatalogRowIndexes(indexes: number[]): number[] {
+  return [...new Set(indexes.filter((index) => Number.isInteger(index) && index >= 0))]
+    .sort((left, right) => left - right)
+    .slice(0, DISH_CATALOG_LIMITS.maxRowIndexes);
+}
 
 export function normalizeDishCatalogSalePrice(value: unknown): string {
   if (typeof value !== "string") {
     throw invalid("salePrice", "Sale price must be a decimal string.");
   }
 
-  const match = SALE_PRICE_PATTERN.exec(value);
+  const match = DISH_CATALOG_SALE_PRICE_PATTERN.exec(value);
   if (!match) {
     throw invalid("salePrice", "Sale price must be a decimal string.");
   }
@@ -156,7 +180,7 @@ export function parseDishCatalogBatch(value: unknown): ParsedDishCatalogBatch {
     throw new DishCatalogValidationError(
       DISH_CATALOG_ERROR_CODES.invalidInput,
       "Dish catalog rows are invalid.",
-      { field: firstInvalidField, rowIndexes: boundedIndexes(invalidRowIndexes) }
+      { field: firstInvalidField, rowIndexes: boundedDishCatalogRowIndexes(invalidRowIndexes) }
     );
   }
 
@@ -172,7 +196,7 @@ export function parseDishCatalogBatch(value: unknown): ParsedDishCatalogBatch {
     throw new DishCatalogValidationError(
       DISH_CATALOG_ERROR_CODES.duplicateSku,
       "SKU IDs must be unique within a dish catalog batch.",
-      { field: "skuId", rowIndexes: boundedIndexes(duplicateIndexes) }
+      { field: "skuId", rowIndexes: boundedDishCatalogRowIndexes(duplicateIndexes) }
     );
   }
 
@@ -184,7 +208,7 @@ export function parseDishCatalogBatch(value: unknown): ParsedDishCatalogBatch {
     throw new DishCatalogValidationError(
       DISH_CATALOG_ERROR_CODES.skuConflict,
       "A SKU cannot be written and removed in the same dish catalog batch.",
-      { field: "skuId", rowIndexes: boundedIndexes(conflictIndexes) }
+      { field: "skuId", rowIndexes: boundedDishCatalogRowIndexes(conflictIndexes) }
     );
   }
 
@@ -222,7 +246,7 @@ function parseRemoveSkuIds(values: unknown[]): string[] {
     throw new DishCatalogValidationError(
       DISH_CATALOG_ERROR_CODES.invalidInput,
       "Remove SKU IDs must be unique within a dish catalog batch.",
-      { field: "removeSkuIds", rowIndexes: boundedIndexes(duplicateIndexes) }
+      { field: "removeSkuIds", rowIndexes: boundedDishCatalogRowIndexes(duplicateIndexes) }
     );
   }
 
@@ -293,7 +317,11 @@ function requireObject(value: unknown, allowedKeys: Set<string>): Record<string,
 }
 
 function requireText(value: unknown, field: string, max: number, allowEmpty: boolean): string {
-  if (typeof value !== "string" || (!allowEmpty && value.length === 0) || !textFits(value, max)) {
+  if (
+    typeof value !== "string" ||
+    (!allowEmpty && value.length === 0) ||
+    !dishCatalogTextFits(value, max)
+  ) {
     throw invalid(field, "Invalid string field.");
   }
 
@@ -303,21 +331,6 @@ function requireText(value: unknown, field: string, max: number, allowEmpty: boo
 function optionalText(value: unknown, field: string, max: number): string | null {
   if (value === undefined || value === null) return null;
   return requireText(value, field, max, true);
-}
-
-/** Count Unicode characters without normalizing or trimming the business value. */
-function textFits(value: string, max: number): boolean {
-  const characters = Array.from(value);
-  return (
-    characters.length <= max &&
-    characters.every((character) => character.length !== 1 || !/[\uD800-\uDFFF]/u.test(character))
-  );
-}
-
-function boundedIndexes(indexes: number[]): number[] {
-  return [...new Set(indexes)]
-    .sort((left, right) => left - right)
-    .slice(0, DISH_CATALOG_LIMITS.maxRowIndexes);
 }
 
 function invalid(field: string, message: string): DishCatalogValidationError {

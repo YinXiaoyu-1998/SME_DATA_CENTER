@@ -1,6 +1,6 @@
 import {
-  DISH_CATALOG_LIMITS,
   DishCatalogValidationError,
+  boundedDishCatalogRowIndexes,
   parseDishCatalogBatch
 } from "@smedc/domain";
 import {
@@ -62,19 +62,11 @@ export class DishCatalogRequestError extends Error {
   }
 }
 
-function boundedRowIndexes(indexes: number[] | undefined): number[] {
-  if (!indexes?.length) return [];
-  return [...new Set(indexes)]
-    .filter((index) => Number.isInteger(index) && index >= 0)
-    .sort((left, right) => left - right)
-    .slice(0, DISH_CATALOG_LIMITS.maxRowIndexes);
-}
-
 function publicDetails(details: {
   field?: string;
   rowIndexes?: number[];
 }): DishCatalogPublicDetails {
-  const rowIndexes = boundedRowIndexes(details.rowIndexes);
+  const rowIndexes = boundedDishCatalogRowIndexes(details.rowIndexes ?? []);
   return {
     ...(details.field !== undefined && DISH_CATALOG_FIELDS.has(details.field)
       ? { field: details.field }

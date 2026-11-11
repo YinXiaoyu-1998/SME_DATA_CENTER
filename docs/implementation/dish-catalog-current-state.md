@@ -206,6 +206,8 @@ HAVING duplicates > 1;
 
 ## 11. 任务拆分、subagent 分工与规模
 
+状态：A–C 批次已于 2026-11-11 执行并合并（#338–#344），本节保留用于追溯；D1（双仓 Skill 与 pin）仍需在 launcher 发布并核验后完成。
+
 ### 11.1 分工原则
 
 - 每个批次只有一个写权限 owner；同一时间同一 package 只有一个写者。
@@ -234,7 +236,7 @@ HAVING duplicates > 1;
 | C7   | 只读 review                                          | PR-C 合并 review（授权、事务、SQL、错误码）                           | C1–C6                 | —                     |
 | D1   | `smedc-mcp-skill` + 本仓 pin                         | 双仓 Skill 重写、launcher 核验后更新 pin                              | C 合并、launcher 发布 | +120～180 / 同步测试  |
 
-A 组合计约 +130～180 / +190～240；C 组合计约 +1000～1400 / +800～1100；B、D 单独统计。`package-lock.json` 不变。
+A 组合计约 +130～180 / +190～240；C 组合计约 +1000～1400 / +800～1100；B、D 单独统计。launcher `0.19.0` bump 同时更新了 `package-lock.json`；服务端与查询实现未新增运行时依赖。
 
 ### 11.3 依赖与并行
 
@@ -256,7 +258,7 @@ C1 ── C2 ─┼── C3 ─┐
 - 通过该批次的最小聚焦测试，并在交接里写明命令与结果。
 - 契约变化同步到 MCP 描述、错误码和文档；不留 TODO、占位符或“稍后补测试”。
 - 自审 diff：只改本批 owner 范围；跨范围改动先交接。
-- C7 之后只做合并、发布和 Skill pin，不再改代码。
+- C7 已完成合并 review；之后只做部署核验、launcher 发布与 D1 Skill pin，不再改 C 组代码。
 
 ## 12. 测试面
 

@@ -30,7 +30,8 @@ import {
   parseStoreReviewBatch,
   parseStoreReviewQuery,
   DISH_CATALOG_LIMITS,
-  parseDishCatalogBatch
+  DISH_CATALOG_SALE_PRICE_PATTERN,
+  dishCatalogTextSchema
 } from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -547,7 +548,6 @@ const uploadStructuredDatasetInputSchema = z
           }
         }
         return;
-      case "snapshot":
       case "current":
         context.addIssue({
           code: "custom",
@@ -852,43 +852,30 @@ export const queryStoreReviewsInputSchema = z
     }
   });
 
-// Mirrors DISH_CATALOG_LIMITS without importing runtime builders: the contract keeps the
-// same code-point length rule as parseDishCatalogBatch (never trimming or rewriting).
-function dishCatalogTextFits(value: string, max: number): boolean {
-  let count = 0;
-  for (const character of value) {
-    if (character.length === 1 && /[\uD800-\uDFFF]/u.test(character)) return false;
-    count += 1;
-  }
-  return count <= max;
-}
-function dishCatalogText(max: number) {
-  return z
-    .string()
-    .refine((value) => dishCatalogTextFits(value, max), `At most ${max} characters.`);
-}
-function dishCatalogRequiredText(max: number) {
-  return z
-    .string()
-    .refine((value) => value.length > 0, "Required.")
-    .refine((value) => dishCatalogTextFits(value, max), `At most ${max} characters.`);
-}
-function dishCatalogOptionalText(max: number) {
-  return dishCatalogText(max).nullable().optional();
-}
-const DISH_CATALOG_SALE_PRICE_PATTERN = /^\d{1,14}(?:\.\d{1,6})?$/;
+// The shared domain builders own the code-point length and decimal-text rules; the MCP
+// contract only keeps strict structure and field descriptions.
 const dishCatalogRowSchema = z
   .object({
-    spuId: dishCatalogRequiredText(DISH_CATALOG_LIMITS.spuIdChars).describe("SPU identifier."),
-    skuId: dishCatalogRequiredText(DISH_CATALOG_LIMITS.skuIdChars).describe(
+    spuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.spuIdChars, { required: true }).describe(
+      "SPU identifier."
+    ),
+    skuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }).describe(
       "SKU identifier, unique within one batch."
     ),
-    dishName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.dishNameChars),
-    brandName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.brandNameChars),
-    baseCategoryName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.baseCategoryNameChars),
-    level1CategoryCode: dishCatalogRequiredText(DISH_CATALOG_LIMITS.level1CategoryCodeChars),
-    level2CategoryCode: dishCatalogOptionalText(DISH_CATALOG_LIMITS.level2CategoryCodeChars),
-    specificationName: dishCatalogOptionalText(DISH_CATALOG_LIMITS.specificationNameChars),
+    dishName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.dishNameChars, { required: true }),
+    brandName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.brandNameChars, { required: true }),
+    baseCategoryName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.baseCategoryNameChars, {
+      required: true
+    }),
+    level1CategoryCode: dishCatalogTextSchema(DISH_CATALOG_LIMITS.level1CategoryCodeChars, {
+      required: true
+    }),
+    level2CategoryCode: dishCatalogTextSchema(DISH_CATALOG_LIMITS.level2CategoryCodeChars)
+      .nullable()
+      .optional(),
+    specificationName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.specificationNameChars)
+      .nullable()
+      .optional(),
     salePrice: z
       .string()
       .regex(
@@ -896,17 +883,20 @@ const dishCatalogRowSchema = z
         "Sale price must be a plain decimal string with at most 14 integer and 6 fractional digits."
       )
       .describe("Decimal text; the service canonicalizes it and never rounds."),
-    dishAlias: dishCatalogOptionalText(DISH_CATALOG_LIMITS.dishAliasChars),
-    departmentName: dishCatalogOptionalText(DISH_CATALOG_LIMITS.departmentNameChars).describe(
-      "Exact active department name of the same enterprise; the service resolves it to a stable ID and never creates departments."
-    )
+    dishAlias: dishCatalogTextSchema(DISH_CATALOG_LIMITS.dishAliasChars).nullable().optional(),
+    departmentName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.departmentNameChars)
+      .nullable()
+      .optional()
+      .describe(
+        "Exact active department name of the same enterprise; the service resolves it to a stable ID and never creates departments."
+      )
   })
   .strict();
 export const upsertDishCatalogInputSchema = z
   .object({
-    enterpriseName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.enterpriseNameChars).describe(
-      "Exact registered enterprise name of the current organization."
-    ),
+    enterpriseName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.enterpriseNameChars, {
+      required: true
+    }).describe("Exact registered enterprise name of the current organization."),
     rows: z
       .array(dishCatalogRowSchema)
       .max(DISH_CATALOG_LIMITS.maxBatchEntries)
@@ -915,22 +905,15 @@ export const upsertDishCatalogInputSchema = z
         "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries per batch."
       ),
     removeSkuIds: z
-      .array(dishCatalogRequiredText(DISH_CATALOG_LIMITS.skuIdChars))
+      .array(dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }))
       .max(DISH_CATALOG_LIMITS.maxBatchEntries)
       .optional()
       .describe("SKUs to permanently delete; removing an absent SKU is a no-op."),
-    sourceFileName: dishCatalogText(DISH_CATALOG_LIMITS.sourceFileNameChars)
+    sourceFileName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.sourceFileNameChars)
       .optional()
       .describe("Optional source file name for the audit record only; the server reads no file.")
   })
-  .strict()
-  .superRefine((value, context) => {
-    try {
-      parseDishCatalogBatch(value);
-    } catch {
-      context.addIssue({ code: "custom", message: "Invalid dish catalog batch." });
-    }
-  });
+  .strict();
 
 const businessDirectoryFields = { name: exactBusinessName, retired: z.boolean().optional() };
 const evidenceCategoryFields = {
@@ -1367,7 +1350,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "describe_structured_dataset_coverage",
     title: "Describe SMEDC structured dataset coverage",
     description:
-      "Inspect applied source windows or snapshots you can read for a structured dataset. Use this to check source coverage before analysis. For cost cards it returns catalog counts and source IDs.",
+      "Inspect the currently readable coverage of one structured dataset before analysis. Window datasets return applied source windows; dish_catalog returns its current-state row count and last update; cost cards return catalog counts and source IDs.",
     inputSchema: describeStructuredDatasetCoverageInputSchema,
     inputFields: [
       {
@@ -1392,7 +1375,8 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     resultShape: [
       "dataset",
       "metadataPolicy",
-      "sources[]: readable applied source windows or snapshots",
+      "window datasets: sources[]: readable applied source windows",
+      "dish_catalog: metadataPolicy: current, rowCount, lastUpdatedAt",
       "cost_cards: accessMode: catalog_query, cardCount, totalItemRowCount, sources[]: { sourceDocumentId, importBatchId, cardCount, totalItemRowCount }"
     ]
   }),
@@ -1895,18 +1879,61 @@ export function apiErrorToolResult(body: unknown): McpJsonToolResult {
   if (isApiErrorBody(body)) {
     const defaultRetryable = defaultApiErrorRetryable(body.error.code);
 
-    return errorToolResult(body.error.code, body.error.message, undefined, {
-      retryable:
-        defaultRetryable && typeof body.error.retryable === "boolean"
-          ? body.error.retryable
-          : defaultRetryable,
-      requestId: safeRequestId(body.error.requestId)
-    });
+    return errorToolResult(
+      body.error.code,
+      body.error.message,
+      safeApiErrorDetails(body.error.details),
+      {
+        retryable:
+          defaultRetryable && typeof body.error.retryable === "boolean"
+            ? body.error.retryable
+            : defaultRetryable,
+        requestId: safeRequestId(body.error.requestId)
+      }
+    );
   }
 
   return errorToolResult("SMEDC_API_ERROR", "SMEDC API request failed.", undefined, {
     retryable: true
   });
+}
+
+const SAFE_API_ERROR_DETAIL_KEYS = new Set(["field", "rowIndexes"]);
+
+/**
+ * API errors stay opaque by default. Dish catalog validation returns only bounded public row
+ * indexes and fixed field names, so preserve exactly those keys and drop anything else.
+ */
+function safeApiErrorDetails(
+  value: unknown
+): { field?: string; rowIndexes?: number[] } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+
+  if (keys.length === 0 || keys.some((key) => !SAFE_API_ERROR_DETAIL_KEYS.has(key)))
+    return undefined;
+
+  const details: { field?: string; rowIndexes?: number[] } = {};
+
+  if (typeof record["field"] === "string" && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(record["field"]))
+    details.field = record["field"];
+
+  if (Array.isArray(record["rowIndexes"])) {
+    const rowIndexes = [
+      ...new Set(
+        record["rowIndexes"].filter(
+          (index): index is number => Number.isInteger(index) && index >= 0
+        )
+      )
+    ]
+      .sort((left, right) => left - right)
+      .slice(0, DISH_CATALOG_LIMITS.maxRowIndexes);
+    if (rowIndexes.length) details.rowIndexes = rowIndexes;
+  }
+
+  return Object.keys(details).length ? details : undefined;
 }
 
 export function validationErrorToolResult(details: unknown): McpJsonToolResult {
@@ -1939,6 +1966,7 @@ interface ApiErrorBody {
     message: string;
     retryable?: unknown;
     requestId?: unknown;
+    details?: unknown;
   };
 }
 

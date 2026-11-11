@@ -80,15 +80,6 @@ export function createPrismaStructuredCoverageRepository(
         };
       }
 
-      if (compiled.metadataPolicy === "snapshot") {
-        // The snapshot policy is retired; report no sources instead of inventing coverage.
-        return {
-          dataset: compiled.dataset,
-          metadataPolicy: "none",
-          sources: []
-        };
-      }
-
       if (!compiled.sql) {
         return {
           dataset: compiled.dataset,

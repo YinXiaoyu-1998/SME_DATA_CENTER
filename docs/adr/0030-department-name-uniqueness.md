@@ -1,6 +1,6 @@
 # 部门名称在同一业务企业内唯一
 
-2026-11-11 已确认设计，尚未实现。完整规格为 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，实施边界见[菜品目录当前状态实施计划](../implementation/dish-catalog-current-state.md)。
+2026-11-11 已实现（源码），未部署。完整规格为 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，实施边界见[菜品目录当前状态实施计划](../implementation/dish-catalog-current-state.md)。
 
 ## 决定
 

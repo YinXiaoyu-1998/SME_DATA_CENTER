@@ -248,6 +248,7 @@ integrationRun: try {
                         "apps/api/src/store-reviews.prisma.integration.test.ts",
                         "packages/db/src/dish-catalog.prisma.integration.test.ts",
                         "packages/db/src/department-name-migration.prisma.integration.test.ts",
+                        "apps/api/src/dish-catalog.prisma.integration.test.ts",
                         "scripts/test-integration-support.test.ts"
                       ]),
       ...(!inStoreOrdersOnly &&
@@ -276,7 +277,8 @@ integrationRun: try {
         RUN_COST_CARD_PRISMA_INTEGRATION: "1",
         RUN_STORE_REVIEW_PRISMA_INTEGRATION: "1",
         RUN_DISH_CATALOG_PRISMA_INTEGRATION: "1",
-        RUN_DEPARTMENT_PRECHECK_INTEGRATION: "1"
+        RUN_DEPARTMENT_PRECHECK_INTEGRATION: "1",
+        RUN_DISH_CATALOG_HTTP_INTEGRATION: "1"
       }
     }
   );

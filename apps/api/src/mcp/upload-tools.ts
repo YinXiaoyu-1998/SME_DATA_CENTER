@@ -255,7 +255,6 @@ function appendStructuredMetadataParts(
       return;
     case "derived_receipt":
     case "none":
-    case "snapshot":
     case "current":
       return;
   }

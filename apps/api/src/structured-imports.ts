@@ -395,7 +395,7 @@ export function createPrismaStructuredImportRepository(options: {
     }
 
     const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
-    if (metadataPolicy !== "window" && metadataPolicy !== "snapshot") return null;
+    if (metadataPolicy !== "window") return null;
 
     const existingClaim = await prisma.importWindowClaim.findUnique({
       where: {
@@ -584,10 +584,7 @@ export function createPrismaStructuredImportRepository(options: {
                 }
               });
 
-              if (
-                getStructuredRegistry(input.dataset).metadataPolicy === "window" ||
-                getStructuredRegistry(input.dataset).metadataPolicy === "snapshot"
-              ) {
+              if (getStructuredRegistry(input.dataset).metadataPolicy === "window") {
                 await tx.importWindowClaim.create({
                   data: {
                     orgId: input.orgId,

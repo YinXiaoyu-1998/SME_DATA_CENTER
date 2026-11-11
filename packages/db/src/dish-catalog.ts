@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
-  DISH_CATALOG_LIMITS,
+  boundedDishCatalogRowIndexes,
   isBusinessClearance,
   normalizeEnterpriseIdentity,
   parseDishCatalogBatch,
@@ -46,10 +46,9 @@ export class DishCatalogRepositoryError extends Error {
   }
 }
 
-function boundedIndexes(indexes: number[]): number[] {
-  return [...new Set(indexes)]
-    .sort((left, right) => left - right)
-    .slice(0, DISH_CATALOG_LIMITS.maxRowIndexes);
+/** One concurrent insert can win the unique SKU key after our FOR UPDATE found nothing. */
+function isUniqueSkuConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 /** Canonical snake_case payload; omitted optional fields are stored as explicit nulls. */
@@ -173,6 +172,9 @@ export function createPrismaDishCatalogRepository({
           const enterpriseKey = identity.enterpriseKey;
 
           // Resolve every department name once, exactly and only among current departments.
+          // Comparisons use the column collation (utf8mb4_unicode_ci) so case/accent variants
+          // resolve to the same department ID, and each row reports the submitted name so the
+          // mapping back to the request never depends on a stored or JS-normalized string.
           const departmentNames = [
             ...new Set(
               parsed.rows
@@ -182,18 +184,22 @@ export function createPrismaDishCatalogRepository({
           ];
           const departmentIdsByName = new Map<string, string[]>();
           if (departmentNames.length) {
-            const departments = await tx.$queryRawUnsafe<
-              Array<{ name: string; department_id: string }>
-            >(
-              `SELECT name, department_id FROM business_departments WHERE org_id = ? AND enterprise_key = ? AND retired = FALSE AND (${departmentNames.map(() => "CAST(name AS BINARY) = CAST(? AS BINARY)").join(" OR ")})`,
-              actor.orgId,
-              enterpriseKey,
-              ...departmentNames
+            const lookups = departmentNames.map(
+              (name) =>
+                Prisma.sql`SELECT ${name} AS requested_name, department_id
+                            FROM business_departments
+                           WHERE org_id = ${actor.orgId}
+                             AND enterprise_key = ${enterpriseKey}
+                             AND retired = FALSE
+                             AND name = ${name}`
             );
+            const departments = await tx.$queryRaw<
+              Array<{ requested_name: string; department_id: string }>
+            >(Prisma.sql`${Prisma.join(lookups, " UNION ALL ")}`);
             for (const department of departments) {
-              const ids = departmentIdsByName.get(department.name) ?? [];
+              const ids = departmentIdsByName.get(department.requested_name) ?? [];
               ids.push(department.department_id);
-              departmentIdsByName.set(department.name, ids);
+              departmentIdsByName.set(department.requested_name, ids);
             }
           }
           const missing: number[] = [];
@@ -207,41 +213,51 @@ export function createPrismaDishCatalogRepository({
           });
           if (missing.length)
             throw new DishCatalogRepositoryError("DISH_CATALOG_DEPARTMENT_NOT_FOUND", {
-              rowIndexes: boundedIndexes(missing)
+              rowIndexes: boundedDishCatalogRowIndexes(missing)
             });
           if (ambiguous.length)
             throw new DishCatalogRepositoryError("DISH_CATALOG_DEPARTMENT_AMBIGUOUS", {
-              rowIndexes: boundedIndexes(ambiguous)
+              rowIndexes: boundedDishCatalogRowIndexes(ambiguous)
             });
 
           await persistCatalogResource(tx, actor.orgId, enterpriseKey, category.id);
 
+          // Read existing rows through the column collation, keyed by the submitted SKU so a
+          // case/accent variant maps to the stored row instead of a second insert.
           const skuIds = parsed.rows.map((row) => row.skuId);
           const existingRows = skuIds.length
-            ? await tx.$queryRawUnsafe<
+            ? await tx.$queryRaw<
                 Array<{
+                  requested_sku_id: string;
                   id: string;
                   sku_id: string;
                   department_id: string | null;
                   payload: string | null;
                 }>
               >(
-                `SELECT id, sku_id, department_id, CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload FROM dish_catalog_entries WHERE org_id = ? AND enterprise_key = ? AND CAST(sku_id AS BINARY) IN (${skuIds.map(() => "CAST(? AS BINARY)").join(", ")}) FOR UPDATE`,
-                actor.orgId,
-                enterpriseKey,
-                ...skuIds
+                Prisma.sql`${Prisma.join(
+                  skuIds.map(
+                    (skuId) =>
+                      Prisma.sql`SELECT ${skuId} AS requested_sku_id, id, sku_id, department_id,
+                                        CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload
+                                   FROM dish_catalog_entries
+                                  WHERE org_id = ${actor.orgId}
+                                    AND enterprise_key = ${enterpriseKey}
+                                    AND sku_id = ${skuId}`
+                  ),
+                  " UNION ALL "
+                )} FOR UPDATE`
               )
             : [];
-          const existingBySku = new Map(
-            existingRows.map((row) => [
-              row.sku_id,
-              {
-                id: row.id,
-                departmentId: row.department_id,
-                payload: row.payload === null ? null : JSON.parse(row.payload)
-              }
-            ])
-          );
+          const existingBySku = new Map<string, string>();
+          const stateById = new Map<string, { departmentId: string | null; payload: unknown }>();
+          for (const row of existingRows) {
+            existingBySku.set(row.requested_sku_id, row.id);
+            stateById.set(row.id, {
+              departmentId: row.department_id,
+              payload: row.payload === null ? null : JSON.parse(row.payload)
+            });
+          }
 
           const result: DishCatalogWriteResult = {
             received: parsed.rows.length + parsed.removeSkuIds.length,
@@ -254,7 +270,10 @@ export function createPrismaDishCatalogRepository({
           for (const [index, row] of parsed.rows.entries()) {
             const desired = catalogPayload(row);
             const departmentId = departmentIds[index] ?? null;
-            const existing = existingBySku.get(row.skuId);
+            // Two rows whose SKUs differ only by case/accent map to the same stored row; read
+            // the latest in-batch state so the final row matches the final request semantics.
+            const existingId = existingBySku.get(row.skuId);
+            const existing = existingId ? stateById.get(existingId) : undefined;
             if (
               existing &&
               existing.departmentId === departmentId &&
@@ -263,27 +282,64 @@ export function createPrismaDishCatalogRepository({
               result.unchanged++;
               continue;
             }
-            if (existing) {
+            if (existingId) {
               await tx.dishCatalogEntry.update({
-                where: { id: existing.id },
-                data: { departmentId, payload: desired, updatedAt: now }
+                where: { id: existingId },
+                // The submitted spelling is authoritative, including a case/accent variant
+                // that already matched this row through the column collation.
+                data: { skuId: row.skuId, departmentId, payload: desired, updatedAt: now }
               });
+              existingBySku.set(row.skuId, existingId);
+              stateById.set(existingId, { departmentId, payload: desired });
               result.updated++;
               continue;
             }
-            await tx.dishCatalogEntry.create({
-              data: {
-                id: randomUUID().replaceAll("-", ""),
-                orgId: actor.orgId,
-                enterpriseKey,
-                skuId: row.skuId,
-                departmentId,
-                payload: desired,
-                createdAt: now,
-                updatedAt: now
+            const id = randomUUID().replaceAll("-", "");
+            try {
+              await tx.dishCatalogEntry.create({
+                data: {
+                  id,
+                  orgId: actor.orgId,
+                  enterpriseKey,
+                  skuId: row.skuId,
+                  departmentId,
+                  payload: desired,
+                  createdAt: now,
+                  updatedAt: now
+                }
+              });
+              result.created++;
+              existingBySku.set(row.skuId, id);
+              stateById.set(id, { departmentId, payload: desired });
+            } catch (error) {
+              if (!isUniqueSkuConflict(error)) throw error;
+              // FOR UPDATE cannot lock a row that does not exist yet: a concurrent batch can
+              // insert the same SKU between our read and this create. Its insert has committed
+              // by the time InnoDB reports the duplicate, so converge to the update path
+              // (last write wins) instead of surfacing a 500.
+              const conflicted = await tx.dishCatalogEntry.findFirst({
+                where: { orgId: actor.orgId, enterpriseKey, skuId: row.skuId }
+              });
+              if (!conflicted) throw error;
+              existingBySku.set(row.skuId, conflicted.id);
+              if (
+                conflicted.departmentId === departmentId &&
+                isDeepStrictEqual(conflicted.payload, desired)
+              ) {
+                stateById.set(conflicted.id, {
+                  departmentId: conflicted.departmentId,
+                  payload: conflicted.payload
+                });
+                result.unchanged++;
+                continue;
               }
-            });
-            result.created++;
+              await tx.dishCatalogEntry.update({
+                where: { id: conflicted.id },
+                data: { skuId: row.skuId, departmentId, payload: desired, updatedAt: now }
+              });
+              stateById.set(conflicted.id, { departmentId, payload: desired });
+              result.updated++;
+            }
           }
 
           if (parsed.removeSkuIds.length) {

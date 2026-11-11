@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  FILE_IMPORT_UNSUPPORTED_CODE,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_DATASETS,
   buildStructuredHeaderLookup,
@@ -690,32 +689,6 @@ describe("structured field registries", () => {
         { canonicalName: "matched_product_name", sourceColumnIndex: quantityIndex }
       ])
     });
-  });
-
-  test("rejects file import for current datasets with a stable error", () => {
-    const legacyCatalogHeaders = [
-      "菜品编码（SPUID）",
-      "菜品编码（SKUID）",
-      "菜品名称",
-      "品牌",
-      "基础分类",
-      "一级分类编码",
-      "二级分类编码",
-      "规格名称",
-      "售卖价",
-      "菜品别名"
-    ];
-
-    for (const headers of [[], ["任意列"], legacyCatalogHeaders, ["", "售卖价"]]) {
-      expect(validateStructuredHeaders("dish_catalog", headers)).toEqual({
-        ok: false,
-        errors: [{ code: FILE_IMPORT_UNSUPPORTED_CODE, column: "" }]
-      });
-      expect(resolveStructuredHeaders("dish_catalog", headers)).toEqual({
-        ok: false,
-        errors: [{ code: FILE_IMPORT_UNSUPPORTED_CODE, column: "" }]
-      });
-    }
   });
 
   test("accepts the reviewed vip member export header and rejects missing columns", () => {

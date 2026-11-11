@@ -32,6 +32,7 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
   let employeeId: string;
   let kitchenId: string;
   let bbqId: string;
+  let cafeId: string;
   let retiredDepartmentId: string;
 
   const actor = (id = adminId) => ({ orgId, id, requestId: "req-dish-catalog" });
@@ -65,6 +66,7 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
     employeeId = `${orgId}_employee`;
     kitchenId = `${orgId}-kitchen`;
     bbqId = `${orgId}-bbq`;
+    cafeId = `${orgId}-cafe`;
     retiredDepartmentId = `${orgId}-retired`;
     await prisma.organization.create({ data: { id: orgId, name: "Synthetic dish catalog" } });
     await prisma.userAccount.createMany({
@@ -116,6 +118,7 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
       data: [
         { orgId, enterpriseKey, departmentId: kitchenId, name: "厨房" },
         { orgId, enterpriseKey, departmentId: bbqId, name: "烧烤部" },
+        { orgId, enterpriseKey, departmentId: cafeId, name: "Café" },
         { orgId, enterpriseKey, departmentId: retiredDepartmentId, name: "已停用部", retired: true }
       ]
     });
@@ -376,6 +379,167 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
         data: { ...base, id: randomUUID().replaceAll("-", ""), skuId: "SKU-UNIQUE" }
       })
     ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("treats case and accent variants as the same SKU and the same department", async () => {
+    await repository.upsert(actor(), {
+      enterpriseName,
+      rows: [row("SKU-CASE", { dishName: "原始", departmentName: "Café" })]
+    });
+
+    // The submitted SKU and department differ only by case (and department accent).
+    await expect(
+      repository.upsert(actor(), {
+        enterpriseName,
+        rows: [row("sku-case", { dishName: "更新", departmentName: "CAFE" })]
+      })
+    ).resolves.toEqual({
+      received: 1,
+      created: 0,
+      updated: 1,
+      unchanged: 0,
+      removed: 0
+    });
+
+    const stored = await prisma.dishCatalogEntry.findMany({ where: { orgId, enterpriseKey } });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ skuId: "sku-case", departmentId: cafeId });
+    expect(stored[0]!.payload).toMatchObject({ dish_name: "更新", sku_id: "sku-case" });
+
+    // Replaying the same variant is a no-op: no duplicate row and no timestamp refresh.
+    const beforeReplay = stored[0]!.updatedAt;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await expect(
+      repository.upsert(actor(), {
+        enterpriseName,
+        rows: [row("sku-case", { dishName: "更新", departmentName: "CAFE" })]
+      })
+    ).resolves.toEqual({
+      received: 1,
+      created: 0,
+      updated: 0,
+      unchanged: 1,
+      removed: 0
+    });
+    expect(
+      (await prisma.dishCatalogEntry.findFirstOrThrow({ where: { orgId, enterpriseKey } }))
+        .updatedAt
+    ).toEqual(beforeReplay);
+
+    // A batch containing both variants ends on the last row's payload even when that payload
+    // equals the pre-batch state; the in-batch update must not be treated as unchanged.
+    await expect(
+      repository.upsert(actor(), {
+        enterpriseName,
+        rows: [
+          row("SKU-CASE", { dishName: "先", departmentName: "Café" }),
+          row("sku-case", { dishName: "更新", departmentName: "CAFE" })
+        ]
+      })
+    ).resolves.toEqual({
+      received: 2,
+      created: 0,
+      updated: 2,
+      unchanged: 0,
+      removed: 0
+    });
+    const replay = await prisma.dishCatalogEntry.findMany({ where: { orgId, enterpriseKey } });
+    expect(replay).toHaveLength(1);
+    expect(replay[0]!.payload).toMatchObject({ dish_name: "更新" });
+  });
+
+  it("converges two collation-equivalent new SKUs in one batch to one row", async () => {
+    // The second insert hits the same unique key inside the same transaction; the repository
+    // must catch P2002 and update the first row instead of failing the whole batch.
+    await expect(
+      repository.upsert(actor(), {
+        enterpriseName,
+        rows: [row("SKU-NEW", { dishName: "先" }), row("sku-new", { dishName: "后" })]
+      })
+    ).resolves.toEqual({
+      received: 2,
+      created: 1,
+      updated: 1,
+      unchanged: 0,
+      removed: 0
+    });
+    const rows = await prisma.dishCatalogEntry.findMany({ where: { orgId, enterpriseKey } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.payload).toMatchObject({ dish_name: "后" });
+  });
+
+  it("converges a concurrent create of one SKU to last-write-wins without a duplicate-key failure", async () => {
+    const skuId = "SKU-RACE";
+    let releaseCompetitor!: () => void;
+    const competitorMayCommit = new Promise<void>((resolve) => {
+      releaseCompetitor = resolve;
+    });
+    let competitorInserted!: () => void;
+    const inserted = new Promise<void>((resolve) => {
+      competitorInserted = resolve;
+    });
+
+    // Hold an uncommitted insert of the same SKU so the repository's create races into the
+    // unique index after its FOR UPDATE found no row.
+    const competitor = prisma.$transaction(async (tx) => {
+      await tx.dishCatalogEntry.create({
+        data: {
+          id: randomUUID().replaceAll("-", ""),
+          orgId,
+          enterpriseKey,
+          skuId,
+          payload: { dish_name: "并发先写" }
+        }
+      });
+      competitorInserted();
+      await competitorMayCommit;
+    });
+
+    await inserted;
+    const attempt = repository.upsert(actor(), {
+      enterpriseName,
+      rows: [row(skuId, { dishName: "并发后写" })]
+    });
+    // Let the repository reach the unique-index wait before the competitor commits.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    releaseCompetitor();
+    await competitor;
+
+    await expect(attempt).resolves.toEqual({
+      received: 1,
+      created: 0,
+      updated: 1,
+      unchanged: 0,
+      removed: 0
+    });
+    const rows = await prisma.dishCatalogEntry.findMany({
+      where: { orgId, enterpriseKey, skuId }
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.payload).toMatchObject({ dish_name: "并发后写", sale_price: "12.5" });
+  });
+
+  it("handles two concurrent batches for the same new SKU without a 500", async () => {
+    const skuId = "SKU-PARALLEL";
+    const [left, right] = await Promise.all([
+      repository.upsert(actor(), {
+        enterpriseName,
+        rows: [row(skuId, { dishName: "并发甲" })]
+      }),
+      repository.upsert(actor(), {
+        enterpriseName,
+        rows: [row(skuId, { dishName: "并发乙" })]
+      })
+    ]);
+
+    expect([left.created, right.created].sort()).toEqual([0, 1]);
+    const rows = await prisma.dishCatalogEntry.findMany({
+      where: { orgId, enterpriseKey, skuId }
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.payload).toEqual(
+      expect.objectContaining({ dish_name: expect.stringMatching(/^并发[甲乙]$/) })
+    );
   });
 
   it("authorizes catalog rows and coverage only through the granted enterprise resource", async () => {

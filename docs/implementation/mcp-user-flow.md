@@ -122,9 +122,10 @@ action.
 - For supported row-query datasets, discover the dataset registry first, send only `canonicalName` field
   values, and use source columns or aliases only to understand the user's wording or label result
   columns.
-- `describe_structured_dataset_coverage` reports currently readable applied source windows or
-  snapshots/current partitions for one dataset. It is source coverage, not a completeness guarantee or automatic
-  answer-quality verdict; the agent decides whether to query, narrow, or ask a clarification.
+- `describe_structured_dataset_coverage` reports currently readable coverage for one dataset:
+  applied source windows, current-state `{rowCount, lastUpdatedAt}`, or current partitions. It is
+  coverage, not a completeness guarantee or automatic answer-quality verdict; the agent decides
+  whether to query, narrow, or ask a clarification.
 - Treat evidence cursors as opaque same-query continuations. On `INVALID_CURSOR`, restart without
   it. On `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more.
 - `smedc_list_skills` returns directory metadata only. Do not execute an entry, generate a
