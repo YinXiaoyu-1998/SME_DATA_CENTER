@@ -70,6 +70,9 @@ function context(): ApiServerContext {
     storeReviews: () => {
       throw new Error("not used");
     },
+    dishCatalog: () => {
+      throw new Error("not used");
+    },
     costCards: () => {
       throw new Error("not used");
     },
