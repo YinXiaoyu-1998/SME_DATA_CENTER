@@ -61,7 +61,7 @@ export function registerEmployeeDirectoryRoutes(
   }
 }
 
-import { getWebApiRoute, webApiErrorBody } from "@smedc/web-api-contract";
+import { directoryWebInputSchemas, getWebApiRoute, webApiErrorBody } from "@smedc/web-api-contract";
 import {
   BROWSER_SESSION_COOKIE,
   type BrowserPrincipal,
@@ -76,8 +76,8 @@ export function registerEmployeeDirectoryWebRoutes(
 ) {
   const secret = (request: import("fastify").FastifyRequest) =>
     cookieValue(request.headers.cookie, BROWSER_SESSION_COOKIE);
-  for (const action of Object.keys(directoryInputSchemas) as Array<
-    keyof typeof directoryInputSchemas
+  for (const action of Object.keys(directoryWebInputSchemas) as Array<
+    keyof typeof directoryWebInputSchemas
   >) {
     const id = `directory.${action.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
     registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute(id), {

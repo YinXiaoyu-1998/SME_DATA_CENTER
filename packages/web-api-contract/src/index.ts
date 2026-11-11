@@ -65,3 +65,5 @@ export type {
 
 export * from "./schemas/permissions.js";
 export * from "./schemas/workflows.js";
+
+export { directoryWebInputSchemas } from "./schemas/employee-directory.js";

@@ -1,11 +1,16 @@
 import { z } from "zod";
-import { directoryInputSchemas } from "@smedc/mcp-contract";
+import { departmentNameSchema, directoryInputSchemas } from "@smedc/mcp-contract";
 
 export const directoryOrgParams = z
   .object({ orgId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) })
   .strict();
-export { directoryInputSchemas };
 const uuid = z.string().uuid();
+export const directoryWebInputSchemas = {
+  ...directoryInputSchemas,
+  check_department_name: directoryInputSchemas.manage_department
+    .pick({ enterpriseKey: true })
+    .extend({ name: departmentNameSchema, excludeDepartmentId: uuid.optional() })
+} as const;
 const version = z.string().regex(/^(0|[1-9]\d*)$/);
 const store = z
   .object({
@@ -34,6 +39,7 @@ const employee = z
   })
   .strict();
 export const directoryResponses = {
+  check_department_name: z.object({ duplicate: z.boolean() }).strict(),
   list_directory: z
     .object({
       enterpriseKey: z.string(),

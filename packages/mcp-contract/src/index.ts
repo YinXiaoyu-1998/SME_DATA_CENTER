@@ -2285,6 +2285,7 @@ function isZodType(value: unknown): value is z.ZodType {
 }
 
 export {
+  departmentNameSchema,
   directoryInputSchemas,
   queryEmployeeDirectoryInput,
   manageEmployeeDirectoryInput

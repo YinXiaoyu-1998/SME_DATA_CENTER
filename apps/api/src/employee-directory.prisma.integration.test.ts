@@ -245,6 +245,78 @@ describe.skipIf(process.env["RUN_DIRECTORY_INTEGRATION"] !== "1")(
       });
     });
 
+    it("prechecks department names with the same database comparison as writes", async () => {
+      const created = await call("manage_department", {
+        operation: { kind: "create", name: "Ａ组" }
+      });
+      expect(created.statusCode, created.body).toBe(200);
+      const departmentId = created.json().departmentId;
+      expect(
+        (
+          await call("manage_department", {
+            operation: { kind: "retire", departmentId, expectedVersion: "0" }
+          })
+        ).statusCode
+      ).toBe(200);
+
+      const web = Fastify();
+      const employeeId = `employee_${suffix}`;
+      await prisma.userAccount.create({
+        data: {
+          orgId,
+          id: employeeId,
+          email: `employee-${actor.email}`,
+          displayName: "Synthetic employee",
+          role: "employee",
+          clearance: 3
+        }
+      });
+      let principal: typeof actor | null = actor;
+      registerEmployeeDirectoryWebRoutes(web, {
+        browserSessions: {
+          authenticate: async () => principal
+        } as unknown as BrowserSessions,
+        webOrigin: "https://app.example.invalid",
+        directory: () => createEmployeeDirectoryService(prisma)
+      });
+      const check = (payload: object, requestOrgId = orgId) =>
+        web.inject({
+          method: "POST",
+          url: `/api/web/v1/orgs/${requestOrgId}/directory/check_department_name`,
+          headers: {
+            origin: "https://app.example.invalid",
+            cookie: `${BROWSER_SESSION_COOKIE}=synthetic-browser-secret`,
+            "x-csrf-token": csrfTokenForSecret("synthetic-browser-secret")
+          },
+          payload
+        });
+      try {
+        const duplicate = await check({ enterpriseKey, name: "A组" });
+        expect(duplicate.statusCode, duplicate.body).toBe(200);
+        expect(duplicate.json()).toEqual({ duplicate: true });
+        expect(
+          (await check({ enterpriseKey, name: "A组", excludeDepartmentId: departmentId })).json()
+        ).toEqual({ duplicate: false });
+        expect((await check({ enterpriseKey: otherEnterpriseKey, name: "A组" })).json()).toEqual({
+          duplicate: false
+        });
+        expect((await check({ enterpriseKey, name: "A组 " })).statusCode).toBe(400);
+        expect((await check({ enterpriseKey, name: "A组" }, "unrelated")).statusCode).toBe(403);
+        principal = { ...actor, id: employeeId };
+        expect((await check({ enterpriseKey, name: "A组" })).statusCode).toBe(403);
+        principal = null;
+        expect((await check({ enterpriseKey, name: "A组" })).statusCode).toBe(401);
+
+        const conflictingWrite = await call("manage_department", {
+          operation: { kind: "create", name: "A组" }
+        });
+        expect(conflictingWrite.statusCode).toBe(409);
+        expect(conflictingWrite.json().error.code).toBe("DIRECTORY_DUPLICATE_NAME");
+      } finally {
+        await web.close();
+      }
+    });
+
     it("rejects creating a department whose name already exists in the enterprise", async () => {
       const created = await call("manage_department", {
         operation: { kind: "create", name: "烧烤部" }
