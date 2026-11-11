@@ -23,7 +23,7 @@
 - 退出、移除单宿主集成和完全卸载分别处理，不删除服务账号、业务数据、Node/npm 或其他 MCP 配置。
 - Skill 目录只发现元数据，不在 SMEDC 服务内执行 Skill 或生成答案。
 
-订单上传/范围下载/可选 ZIP、完整快照及支付 JSON 由[店内订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)维护。`in_store_orders` 与 `takeaway_orders` 自已发布并独立核验的 `0.15.0` 起受支持，店内订单要求声明范围内的完整门店日；日常工作流使用 `settled_only`，明确完整的全部状态来源才使用 `all_statuses`，历史 `legacy_unknown` 不作为新上传声明；历史 `0.14.0` 使用旧名 `settled_orders`。当前批准安装 pin、源码推荐与正式验收运行器为已发布并独立核验的 `0.18.0`，OAuth 最低保持 `0.12.0`。版本化企业工作流和显式订单来源范围使用 `0.17.0` 契约，仍须实时能力检查和当前授权；安装或保存暂停配置不会启用任务或迁移旧任务。服务推荐元数据与匹配迁移部署单独在 staging 状态取证，不能从源码或 Skill 同步推断上线。
+订单上传/范围下载/可选 ZIP、完整快照及支付 JSON 由[店内订单 reference](../../skills/smedc-mcp/references/in-store-orders.md)维护。`in_store_orders` 与 `takeaway_orders` 自已发布并独立核验的 `0.15.0` 起受支持，店内订单要求声明范围内的完整门店日；日常工作流使用 `settled_only`，明确完整的全部状态来源才使用 `all_statuses`，历史 `legacy_unknown` 不作为新上传声明；历史 `0.14.0` 使用旧名 `settled_orders`。当前批准安装 pin、源码推荐与正式验收运行器为已发布并独立核验的 `0.19.0`，OAuth 最低保持 `0.12.0`。版本化企业工作流和显式订单来源范围使用 `0.17.0` 契约，仍须实时能力检查和当前授权；安装或保存暂停配置不会启用任务或迁移旧任务。服务推荐元数据与匹配迁移部署单独在 staging 状态取证，不能从源码或 Skill 同步推断上线。
 
 ## 变更和验证
 
