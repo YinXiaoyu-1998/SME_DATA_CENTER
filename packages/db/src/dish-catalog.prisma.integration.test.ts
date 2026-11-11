@@ -278,11 +278,11 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
     // The unique department-name index (#338) prevents real duplicates; drop it only in this
     // runner-owned schema to exercise the defensive ambiguity guard.
     const [existingIndex] = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
-      "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'business_departments' AND index_name = 'business_departments_name_uq'"
+      "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'business_departments' AND index_name = 'business_departments_org_enterprise_name_uq'"
     );
     if (Number(existingIndex?.n ?? 0) > 0)
       await prisma.$executeRawUnsafe(
-        "ALTER TABLE business_departments DROP INDEX business_departments_name_uq"
+        "ALTER TABLE business_departments DROP INDEX business_departments_org_enterprise_name_uq"
       );
     try {
       await prisma.businessDepartment.createMany({
@@ -305,7 +305,7 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
       await prisma.businessDepartment.deleteMany({ where: { orgId, name: "重复部" } });
       if (Number(existingIndex?.n ?? 0) > 0)
         await prisma.$executeRawUnsafe(
-          "ALTER TABLE business_departments ADD UNIQUE INDEX business_departments_name_uq (org_id, enterprise_key, name_key)"
+          "ALTER TABLE business_departments ADD UNIQUE INDEX business_departments_org_enterprise_name_uq (org_id, enterprise_key, name)"
         );
     }
   });
