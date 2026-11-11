@@ -1,6 +1,6 @@
 import { defineWebApiRoute, type WebApiRoute } from "../route-types.js";
 import {
-  directoryInputSchemas,
+  directoryWebInputSchemas,
   directoryOrgParams,
   directoryResponses
 } from "../schemas/employee-directory.js";
@@ -25,7 +25,8 @@ const summaries = {
   create_employee: "创建员工档案",
   update_employee: "维护员工档案与归属",
   manage_store: "维护正式门店目录",
-  manage_department: "维护部门目录"
+  manage_department: "维护部门目录",
+  check_department_name: "按数据库规则检查部门名称是否重复"
 } as const;
 export const employeeDirectoryWebApiRoutes: readonly WebApiRoute[] = Object.freeze(
   (Object.keys(summaries) as Array<keyof typeof summaries>).map((operation) =>
@@ -35,7 +36,7 @@ export const employeeDirectoryWebApiRoutes: readonly WebApiRoute[] = Object.free
       path: `${base}/${operation}`,
       auth: "session-write",
       params: directoryOrgParams,
-      body: directoryInputSchemas[operation],
+      body: directoryWebInputSchemas[operation],
       response: directoryResponses[operation],
       errors: operation === "manage_department" ? departmentErrors : errors,
       summary: summaries[operation]

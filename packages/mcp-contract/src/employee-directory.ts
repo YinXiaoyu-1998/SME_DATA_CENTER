@@ -10,7 +10,7 @@ const name = z
 const version = z.string().regex(/^(0|[1-9]\d*)$/);
 // Department names keep exact bytes: surrounding whitespace is rejected, never trimmed.
 // Store and employee names use the shared schema above and are intentionally unchanged.
-const departmentName = name.refine((value) => value === value.trim(), {
+export const departmentNameSchema = name.refine((value) => value === value.trim(), {
   message: "Department name must not have leading or trailing whitespace."
 });
 const scope = z.discriminatedUnion("ownership", [
@@ -63,13 +63,13 @@ export const directoryInputSchemas = {
     .object({
       enterpriseKey,
       operation: z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("create"), name: departmentName }).strict(),
+        z.object({ kind: z.literal("create"), name: departmentNameSchema }).strict(),
         z
           .object({
             kind: z.literal("rename"),
             departmentId: id,
             expectedVersion: version,
-            name: departmentName
+            name: departmentNameSchema
           })
           .strict(),
         z

@@ -3,6 +3,76 @@
   "prefix": "/api/web/v1",
   "routes": [
     {
+      "id": "directory.checkDepartmentName",
+      "method": "POST",
+      "path": "/api/web/v1/orgs/:orgId/directory/check_department_name",
+      "auth": "session-write",
+      "summary": "按数据库规则检查部门名称是否重复",
+      "request": {
+        "params": {
+          "type": "object",
+          "properties": {
+            "orgId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          "required": [
+            "orgId"
+          ],
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "object",
+          "properties": {
+            "enterpriseKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "excludeDepartmentId": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "required": [
+            "enterpriseKey",
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "duplicate": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "duplicate"
+        ],
+        "additionalProperties": false
+      },
+      "errors": [
+        "BROWSER_ACCESS_DENIED",
+        "BROWSER_SECURITY_CHECK_FAILED",
+        "BROWSER_SIGN_IN_REQUIRED",
+        "DIRECTORY_ACCESS_DENIED",
+        "DIRECTORY_CONFLICT",
+        "DIRECTORY_IN_USE",
+        "DIRECTORY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "WEB_API_INVALID_REQUEST"
+      ]
+    },
+    {
       "id": "directory.createEmployee",
       "method": "POST",
       "path": "/api/web/v1/orgs/:orgId/directory/create_employee",

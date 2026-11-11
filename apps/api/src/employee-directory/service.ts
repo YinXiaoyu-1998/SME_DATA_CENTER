@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { createBusinessAuthorizationRepository } from "@smedc/db";
 import { canReadResource, type AuthorizationSnapshot } from "@smedc/domain";
-import { directoryInputSchemas } from "../../../../packages/mcp-contract/src/employee-directory.js";
+import { directoryInputSchemas } from "@smedc/mcp-contract";
+import { directoryWebInputSchemas } from "@smedc/web-api-contract";
 
-export type DirectoryAction = keyof typeof directoryInputSchemas;
+export type DirectoryAction = keyof typeof directoryWebInputSchemas;
 type Actor = { id: string; orgId: string };
 function fail(code: string): never {
   throw new Error(code);
@@ -15,7 +16,7 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
   const authorization = createBusinessAuthorizationRepository({ prisma });
   return {
     async execute(action: DirectoryAction, raw: unknown, actor: Actor): Promise<unknown> {
-      const input = directoryInputSchemas[action].parse(raw);
+      const input = directoryWebInputSchemas[action].parse(raw);
       return prisma.$transaction(
         async (tx) => {
           // Shared ordering with permission mutations; serialize all directory writes per enterprise.
@@ -30,7 +31,9 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
             "manage_department"
           ].includes(action);
           if (
-            (write || (action === "list_directory" && "management" in input && input.management)) &&
+            (write ||
+              action === "check_department_name" ||
+              (action === "list_directory" && "management" in input && input.management)) &&
             snapshot.role !== "admin"
           )
             fail("DIRECTORY_ACCESS_DENIED");
@@ -42,6 +45,21 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
           );
           if (!enterprises[0]) fail("DIRECTORY_NOT_FOUND");
           const where = { orgId: actor.orgId, enterpriseKey: input.enterpriseKey };
+          // The name column comparison matches the MySQL unique index.
+          const hasDepartmentName = async (name: string, excludeDepartmentId?: string) =>
+            (await tx.businessDepartment.findFirst({
+              where: {
+                ...where,
+                name,
+                ...(excludeDepartmentId ? { departmentId: { not: excludeDepartmentId } } : {})
+              },
+              select: { departmentId: true }
+            })) !== null;
+          if (action === "check_department_name") {
+            const { name, excludeDepartmentId } =
+              directoryWebInputSchemas.check_department_name.parse(input);
+            return { duplicate: await hasDepartmentName(name, excludeDepartmentId) };
+          }
           const audit = async (targetId: string) => {
             await tx.auditLog.create({
               data: {
@@ -233,8 +251,7 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
               const departmentId = randomUUID();
               // The enterprise identity row is locked above, so this check and the insert are serial
               // per enterprise; the database unique index remains the final guard.
-              if (await tx.businessDepartment.findFirst({ where: { ...where, name: op.name } }))
-                fail("DIRECTORY_DUPLICATE_NAME");
+              if (await hasDepartmentName(op.name)) fail("DIRECTORY_DUPLICATE_NAME");
               try {
                 await tx.businessDepartment.create({
                   data: { ...where, departmentId, name: op.name }
@@ -251,12 +268,7 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
             });
             if (!row) fail("DIRECTORY_NOT_FOUND");
             if (version(row.version) !== op.expectedVersion) fail("DIRECTORY_CONFLICT");
-            if (
-              op.kind === "rename" &&
-              (await tx.businessDepartment.findFirst({
-                where: { ...where, name: op.name, departmentId: { not: row.departmentId } }
-              }))
-            )
+            if (op.kind === "rename" && (await hasDepartmentName(op.name, row.departmentId)))
               fail("DIRECTORY_DUPLICATE_NAME");
             if (
               op.kind === "retire" &&
