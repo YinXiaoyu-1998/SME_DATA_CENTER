@@ -231,9 +231,18 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
             const op = directoryInputSchemas.manage_department.parse(input).operation;
             if (op.kind === "create") {
               const departmentId = randomUUID();
-              await tx.businessDepartment.create({
-                data: { ...where, departmentId, name: op.name }
-              });
+              // The enterprise identity row is locked above, so this check and the insert are serial
+              // per enterprise; the database unique index remains the final guard.
+              if (await tx.businessDepartment.findFirst({ where: { ...where, name: op.name } }))
+                fail("DIRECTORY_DUPLICATE_NAME");
+              try {
+                await tx.businessDepartment.create({
+                  data: { ...where, departmentId, name: op.name }
+                });
+              } catch (error) {
+                if (isUniqueConstraintViolation(error)) fail("DIRECTORY_DUPLICATE_NAME");
+                throw error;
+              }
               await audit(departmentId);
               return { departmentId, version: "0" };
             }
@@ -243,19 +252,33 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
             if (!row) fail("DIRECTORY_NOT_FOUND");
             if (version(row.version) !== op.expectedVersion) fail("DIRECTORY_CONFLICT");
             if (
+              op.kind === "rename" &&
+              (await tx.businessDepartment.findFirst({
+                where: { ...where, name: op.name, departmentId: { not: row.departmentId } }
+              }))
+            )
+              fail("DIRECTORY_DUPLICATE_NAME");
+            if (
               op.kind === "retire" &&
               (await tx.employee.count({
                 where: { ...where, departmentId: row.departmentId, status: "active" }
               }))
             )
               fail("DIRECTORY_IN_USE");
-            const changed = await tx.businessDepartment.update({
-              where: { departmentId: row.departmentId },
-              data: {
-                ...(op.kind === "rename" ? { name: op.name } : { retired: op.kind === "retire" }),
-                version: { increment: 1 }
-              }
-            });
+            let changed;
+            try {
+              changed = await tx.businessDepartment.update({
+                where: { departmentId: row.departmentId },
+                data: {
+                  ...(op.kind === "rename" ? { name: op.name } : { retired: op.kind === "retire" }),
+                  version: { increment: 1 }
+                }
+              });
+            } catch (error) {
+              if (op.kind === "rename" && isUniqueConstraintViolation(error))
+                fail("DIRECTORY_DUPLICATE_NAME");
+              throw error;
+            }
             await audit(row.departmentId);
             return { departmentId: row.departmentId, version: version(changed.version) };
           }
@@ -315,6 +338,12 @@ export function createEmployeeDirectoryService(prisma: PrismaClient) {
     }
   };
 }
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && "code" in error && String(error.code) === "P2002"
+  );
+}
+
 function canReadProfile(
   snapshot: AuthorizationSnapshot,
   orgId: string,

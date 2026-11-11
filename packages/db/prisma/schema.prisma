@@ -1200,6 +1200,7 @@ model BusinessDepartment {
   retired Boolean @default(false)
   version BigInt @default(0) @db.UnsignedBigInt
   @@unique([orgId, enterpriseKey, departmentId], map: "business_departments_org_enterprise_id_uq")
+  @@unique([orgId, enterpriseKey, name], map: "business_departments_org_enterprise_name_uq")
   @@map("business_departments")
 }
 model Employee {
