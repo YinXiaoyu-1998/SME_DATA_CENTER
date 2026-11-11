@@ -1119,7 +1119,9 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       name,
       title: name.replaceAll("_", " "),
       description:
-        "Access the current organization employee and formal directory using a controlled operation. Requires launcher 0.18.0 or later.",
+        name === "manage_employee_directory"
+          ? "Access the current organization employee and formal directory using a controlled operation. Department names are unique within the enterprise, including retired departments: creating or renaming to an existing name fails with DIRECTORY_DUPLICATE_NAME, and names with leading or trailing whitespace are rejected. Requires launcher 0.18.0 or later."
+          : "Access the current organization employee and formal directory using a controlled operation. Requires launcher 0.18.0 or later.",
       inputSchema: DIRECTORY_MCP_INPUT_SCHEMAS[name],
       inputFields: [
         {

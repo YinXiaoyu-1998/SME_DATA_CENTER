@@ -38,6 +38,12 @@ export function registerEmployeeDirectoryRoutes(
           return reply.code(404).send(errorResponse(code, "Directory item not found."));
         if (code === "DIRECTORY_ACCESS_DENIED")
           return reply.code(403).send(errorResponse(code, "Directory access denied."));
+        if (code === "DIRECTORY_DUPLICATE_NAME")
+          return reply
+            .code(409)
+            .send(
+              errorResponse(code, "A department with this name already exists in the enterprise.")
+            );
         if (code === "DIRECTORY_CONFLICT" || code === "DIRECTORY_IN_USE")
           return reply
             .code(409)
@@ -123,7 +129,9 @@ export function registerEmployeeDirectoryWebRoutes(
                   code,
                   code === "DIRECTORY_IN_USE"
                     ? "请先调整在职员工归属，再停用该目录项。"
-                    : "请求无法完成，请刷新后重试。"
+                    : code === "DIRECTORY_DUPLICATE_NAME"
+                      ? "同一企业已存在同名部门，请修改名称后重试。"
+                      : "请求无法完成，请刷新后重试。"
                 )
               );
             return null;
