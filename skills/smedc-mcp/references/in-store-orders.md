@@ -11,7 +11,7 @@ static tools/list or successful login alone does not establish service or tenant
 
 After the core Skill's active-admin preflight, upload the unchanged original XLSX or UTF-8 CSV
 using the absolute path transport. Declare the exact enterprise and inclusive business-date
-window in `YYYYMMDD`; omit `snapshotDate`. The enterprise's configured fixed-category level is
+window in `YYYYMMDD`. The enterprise's configured fixed-category level is
 authoritative; upload metadata cannot override it. File bytes and internal storage links stay
 inside the launcher. The default source limit is 2 GiB. Do not split or repair the source locally.
 

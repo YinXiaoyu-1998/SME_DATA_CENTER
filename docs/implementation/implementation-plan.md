@@ -13,7 +13,7 @@
 | 身份与客户端 | 第一方密码设置/登录、Device Authorization、不透明 token、轮换 durable session、官方 stdio launcher | [安装登录](official-user-install-and-login.md) |
 | 普通文档 | MD/TXT/DOCX 解析、版本化混合检索、重排/相关性裁剪、按页原件链接 | [处理管线](data-pipelines.md) |
 | 经营、菜品销售、店内订单与平台外卖订单 | launcher multipart 原件传输、worker 原子发布 OSS 当前门店日分区、授权清单及本地校验下载 | [分区契约](structured-partitions.md) |
-| 其他结构化资料 | 会员、菜品目录、供应商目录的受控查询和原件关联；配送台账仅内部输入 | [API 契约](api-contract.md) |
+| 其他结构化资料 | 会员、供应商目录的受控查询和原件关联；菜品目录的批量写入与受控查询；配送台账仅内部输入 | [API 契约](api-contract.md) |
 | 检疫证明与台账 | 单门店照片、独立 PDF 权限、计划生成/修复、覆盖与 ZIP 下载 | [PDF 运维](ledger-pdf-operations.md) |
 | 成本卡 | 原件校验、逐卡 CSV 与 MySQL 目录、受权本地下载、归档/恢复 | [成本卡设计](cost-card-design.md) |
 | 门店评价 | 平台评价事实批量同步、replyStatus 与可选 feedbackId、受权查询 | [API 契约](api-contract.md#store-reviews-launcher-0110) |

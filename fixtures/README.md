@@ -22,7 +22,7 @@ queries; `.DS_Store` and temporary `.~*.docx` lock files are explicitly excluded
 | `管氏 开店手册 （1月27日）(1).docx` | `16373699d393be2c97c793394745961299450c42c0842809ca94442ddd3c36ed` |
 | `肉夹馍SOP.docx`                    | `1084ea94515b8e2ebaf5fcb8e0336e1256ef25bc89663c4183d23456c60baef5` |
 
-## Typical (accepted) files
+## Typical source files
 
 - `structured/synthetic_dishes_20260706_20260712_first1000.xlsx` — first 1,000
   rows of a real Synthetic 菜品 export (title rows + header + data).
@@ -31,10 +31,11 @@ queries; `.DS_Store` and temporary `.~*.docx` lock files are explicitly excluded
 - `structured/synthetic_vip_20260809_20260809_first1000.xlsx` — first 1,000 rows
   of a real Synthetic 会员主题 export (rows 1–2 title/config, row 3 header, 997
   data rows). Parses as dataset `vip` with 0 validation errors.
-- `structured/synthetic_dish_catalog_20260819.xlsx` — real Synthetic 菜品目录 snapshot
-  fixture. Import as `dish_catalog` with `snapshotDate=20260819`: the visible
-  `总部菜品` sheet imports 1,123 rows, while the nonmatching `总部套餐` sheet is
-  ignored with the safe `SCHEMA_NOT_MATCHED` summary. This fixture verifies that
+- `structured/synthetic_dish_catalog_20260819.xlsx` — real Synthetic 菜品目录 source
+  workbook retained for local parsing examples. The service no longer accepts a `dish_catalog`
+  file upload; an agent reads this file locally and submits parsed rows through
+  `upsert_dish_catalog`. The visible `总部菜品` sheet parses as 1,123 rows, while the nonmatching
+  `总部套餐` sheet is ignored with the safe `SCHEMA_NOT_MATCHED` summary. The fixture verifies that
   catalog sheets are selected by the exact ten-column schema rather than by name.
 - `structured/dishes-valid.csv`, `structured/xlsx/typed-cells.xlsx` — small
   deterministic valid cases used by unit tests.
@@ -43,12 +44,12 @@ queries; `.DS_Store` and temporary `.~*.docx` lock files are explicitly excluded
   acceptance flow uses the original bytes and validates service metadata and
   download-link issuance; it does not visually inspect the downloaded image.
 
-`dish_catalog` fixtures represent a complete snapshot, not a partial delta. The
-catalog import requires `snapshotDate` and no business date-window metadata; it
-adds `snapshot_date` to each imported row. Its exact controlled headers are
+`dish_catalog` is a current-state catalog, not a snapshot: the fixture is only local parsing
+input. The service receives `rows`/`removeSkuIds`, adds no `snapshot_date`, and keeps no dated
+history. Its exact controlled headers are
 `菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`, `品牌`, `基础分类`, `一级分类编码`,
 `二级分类编码`, `规格名称`, `售卖价`, and `菜品别名` (column order may vary). SKUID is
-unique within the snapshot; SPUID may repeat; the nullable fields are
+unique within the current catalog and within one submitted batch; SPUID may repeat; the nullable fields are
 `二级分类编码`, `规格名称`, and `菜品别名`; a sale price of `0` is valid.
 
 ## External local acceptance inputs

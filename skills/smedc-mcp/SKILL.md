@@ -177,6 +177,9 @@ discover them by hand.
   `delivery_ledger` remains an upload dataset even though its raw reads are disabled and it is absent
   from `list_structured_datasets`. The backend still validates role, enterprise, file and metadata;
   do not bypass a returned denial or missing upload contract.
+- `dish_catalog` is not an upload dataset. Read the local file yourself and use
+  `upsert_dish_catalog`; an old file upload request returns `DATASET_UPLOAD_RETIRED`. Do not submit
+  the catalog through `upload_structured_dataset` or construct the retired metadata fields.
 - In structured dataset discovery, `canonicalName` is the queryable field name. `sourceColumn` and
   `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
   wording or source-table headers to `canonicalName`, and to choose friendly table headers when
@@ -207,6 +210,8 @@ discover them by hand.
 Only active accounts with role `admin` may upload evidence documents, structured datasets
 (including Delivery Ledger / `delivery_ledger`), and quarantine certificates. The three upload
 tools remain visible and are marked admin-only. Do not dynamically hide or remove upload tools.
+The same role is required by `upsert_dish_catalog`, which writes structured catalog rows without
+uploading a file; it is not one of the three upload tools.
 
 Before handling an upload, resolve an unknown role with `smedc_get_current_user`. For a known
 `employee` role, do not read or transform the local file, encode bytes, or call an upload tool.
@@ -262,15 +267,17 @@ Keep tool input within the public service contract:
   at most 32,767 characters.
 - a structured query returns at most 200 rows or aggregate groups per page, with up to 50 selected
   fields, 2 sort fields, 4 group-by fields, 12 explicit aggregates, 20 filter conditions, 100 `in`
-  values, and boolean nesting depth 3.
+  values, and boolean nesting depth 3;
+- a `dish_catalog` batch has at most 1000 rows plus removals and at most 16 MiB of UTF-8 JSON;
+  required row fields are nonempty, and nullable fields accept omission, null, or a preserved string.
 
 If a tool rejects an input at one of these boundaries, report the validation error and ask the
 employee to shorten the text, reduce filters, or provide a corrected source. Never manually split
-`business` or `dishes`; the service validates and partitions the original file atomically. Never
-split `dish_catalog`: keep one complete snapshot and ask the employee to remove unrelated
-sheets/columns outside the catalog schema, use a service-supported larger limit, or seek operator
-help. Never silently truncate a title, key,
-query, cursor, filter value, or file.
+`business` or `dishes`; the service validates and partitions the original file atomically. A
+`dish_catalog` batch accepts rows plus removals totaling at most 1000 entries; split a larger change
+into ordered batches of at most 1000 entries, keep each SKU's final state in one batch, and say that
+each batch commits independently. Never silently truncate a title, key, query, cursor, filter value,
+row, or file.
 
 Prefer `file.encoding:"path"` uploads with the file's absolute local path so the launcher reads the
 file locally and the model never emits payload bytes. Inline `file.encoding:"base64"` remains
@@ -298,6 +305,10 @@ row-query structured upload also keep `importBatchId`. Poll `get_evidence_docume
 - Do not re-upload instead of polling. Upload retries must follow idempotency rules: reuse a
   structured idempotency key only for the exact same file bytes and metadata; use a new key only
   after the employee intentionally corrects or changes the upload.
+
+`upsert_dish_catalog` is a synchronous write: it returns the batch counters directly and never
+creates a document or import batch, so do not poll `get_import_status` for it. Treat a transport
+timeout or dropped connection as an unknown result and re-read the current rows before replaying.
 
 For `business`, `dishes`, `in_store_orders` and release-gated `takeaway_orders`, keep `partitionImportJobId` and poll
 `get_partition_import_status`. For a source file larger than 50 MiB, check first after 2 minutes,
@@ -448,36 +459,135 @@ releases them through its shared index; never directly delete another consumer's
 Service data cleanup is operator-only and is not an employee MCP tool, including for admins.
 Do not run operator cleanup commands or dataset repair from this base skill.
 
-## Dish Catalog Snapshot Uploads
+## Dish Catalog Batch Writes
 
-Use the admin upload contract for `dish_catalog`; readable discovery is not an upload prerequisite.
-It is a complete, append-only menu snapshot rather than a sales/business date-window dataset.
+`dish_catalog` is one current catalog per business enterprise, one row per SKU. It has no
+`snapshotDate`, `snapshot_date`, date-ordered history, archive step, or cross-snapshot diff. Maintain
+it with `upsert_dish_catalog`; the service never receives a catalog file. Read the employee's local
+file yourself and submit structured rows. The write contract is in source launcher `0.19.0`; the
+approved install pin remains an earlier release until that version is published and verified. If the
+connected launcher does not expose the tool, report the version gap instead of calling HTTP directly.
 
-- Call `upload_structured_dataset` with `dataset: "dish_catalog"`, `snapshotDate: "YYYYMMDD"`,
-  `enterpriseName`, a stable `idempotencyKey`, and the CSV/XLSX file. Optionally include an
-  legacy `confidentialityLevel`; enabled category configuration is authoritative. Do not include `startDate` or `endDate`.
-- Treat the uploaded file as the full directory for that date. Do not split it into CSV parts,
-  upload only changed rows, use the service to merge it with another file, or describe a partial
-  file as a complete catalog.
-- The service validates catalog headers, sheets, and row values after upload. If validation rejects
-  the upload, summarize the safe returned errors and ask for a corrected source file or explicit
-  local-conversion instruction; do not pre-normalize or regenerate the catalog file from registry
-  metadata.
-- The organization can upload historical snapshots out of date order, but only one non-archived
-  snapshot may occupy a date. For a same-date correction with different content, the existing
-  snapshot must be archived through the authorized maintenance path before a new upload. Uploading
-  a newer snapshot does not archive or replace older history.
-- After `importBatch.status=applied`, query catalog rows through the discovery-reported
-  `snapshot_date` field. Do not infer a current/latest menu, a diff, or added, removed,
-  discontinued, or other cross-snapshot status.
+Writing requires the current active `admin` role plus the enterprise's enabled `dish_catalog`
+category configuration. Writing does not grant read access: reads still need the `dish_catalog`
+category grant and that enterprise's group scope, and admins have no read bypass.
+
+Inputs:
+
+- `enterpriseName`: exact registered enterprise of the current organization.
+- `rows`: rows to create or replace. Every row is authoritative; omitting a nullable field stores
+  null. Required fields are `spuId`, `skuId`, `dishName`, `brandName`, `baseCategoryName`,
+  `level1CategoryCode`, `salePrice`; nullable fields are `level2CategoryCode`,
+  `specificationName`, `dishAlias`, `departmentName`.
+- `removeSkuIds`: SKUs to permanently delete. Removing an absent SKU is a no-op.
+- `sourceFileName`: optional audit-only name; the server reads no file.
+
+Rows plus removals total 1–1000 entries; the whole request is at most 16 MiB UTF-8 JSON. A batch is
+atomic. Duplicate `skuId` values, one SKU in both `rows` and `removeSkuIds`, or more than 1000
+entries are rejected before any side effect. Preserve source text verbatim: do not trim, change
+case/full-width forms, or rewrite values. Omit or send null to clear a nullable field; an empty
+string is preserved as empty text. `salePrice` must be a plain decimal string with at most 14
+integer and 6 fractional digits; zero is valid, and the service canonicalizes it without rounding
+(for example `018.50` becomes `18.5`).
+
+Length limits: `spuId` and `skuId` 128; `dishName` 512; `brandName`, `baseCategoryName` and
+`specificationName` 255; `level1CategoryCode` and `level2CategoryCode` 128; `dishAlias` 512;
+`departmentName`, `sourceFileName` and `enterpriseName` 255. Lengths count Unicode code points.
+
+Department ownership:
+
+1. Read the enterprise's directory with
+   `query_employee_directory { request: { action: "list_directory", enterpriseKey } }` before
+   assigning departments.
+2. Use only the exact `name` of an item whose `status` is `active`. Do not guess, trim, translate,
+   create, or restore a department; a missing or retired name fails the whole batch.
+3. The service resolves the name to the stable department ID. Reads show the current name, so a
+   rename needs no catalog rewrite. A retired department stays readable on existing rows, but that
+   row cannot be written again until the department is changed or cleared.
+
+Workflow:
+
+1. Confirm the employee is an admin and identify the exact registered enterprise.
+2. Read the local CSV/XLSX yourself with the file tools. Do not upload it through
+   `upload_structured_dataset`; that path is retired for `dish_catalog`.
+3. Map columns to the row fields and submit only the rows that should change. For a targeted edit,
+   first query the current rows (`sku_id`, required fields and `department_name`) and compare
+   locally; a submitted row replaces the full stored row, so include every required field and every
+   retained nullable value.
+4. Resolve department names from the active directory as above; pass null or omit when unknown or
+   unassigned.
+5. Call `upsert_dish_catalog` with at most 1000 entries per batch. Do not silently drop rows to fit;
+   split into ordered batches and tell the employee that each batch commits independently.
+6. Report `{received, created, updated, unchanged, removed}`. `unchanged` means the content and
+   department already matched, and `updated_at` did not change.
+
+Example:
+
+```json
+{
+  "enterpriseName": "示例餐饮",
+  "rows": [
+    {
+      "spuId": "SPU-1001",
+      "skuId": "SKU-1001",
+      "dishName": "招牌肉夹馍",
+      "brandName": "示例品牌",
+      "baseCategoryName": "主食",
+      "level1CategoryCode": "L1-01",
+      "level2CategoryCode": "L2-0103",
+      "specificationName": "标准份",
+      "salePrice": "18.50",
+      "dishAlias": "肉夹馍",
+      "departmentName": "烧烤部"
+    }
+  ],
+  "removeSkuIds": ["SKU-0999"],
+  "sourceFileName": "菜单_20261111.xlsx"
+}
+```
+
+`removeSkuIds` is a permanent hard delete: deleted rows cannot be restored, the audit record keeps
+counts only, and there is no historical snapshot to recover. Keep a local copy before destructive
+changes when the employee may need rollback. Replaying identical content is safe and does not
+refresh `updated_at`; concurrent writes are last-write-wins, so re-read when an outcome is unknown.
+
+Read current state through `query_structured_dataset` with `dataset: "dish_catalog"`. Use
+`department_name` for department filters and groups, and `updated_at` for freshness;
+`department_id` and `created_at` are selectable but hidden by default. Default order is
+`sku_id` ascending. There is no `snapshot_date`; never look for dated versions, latest-snapshot
+selection, diffs, or added/removed/discontinued status across snapshots.
+`describe_structured_dataset_coverage` returns `{rowCount, lastUpdatedAt}` for `dish_catalog`, not a
+source or snapshot list; zero rows with an authorized catalog resource means the current catalog is
+empty.
+
+Errors carry safe messages and bounded details. `rowIndexes` are zero-based indexes into `rows`,
+deduplicated and capped at 50; map them back to your own parsed source rows and never claim a file
+line number the service did not return.
+
+| Error                                   | HTTP | Meaning                                                         |
+| --------------------------------------- | ---- | --------------------------------------------------------------- |
+| `DISH_CATALOG_INVALID_INPUT`            | 400  | Field, length, decimal, shape or duplicate remove ID is invalid |
+| `DISH_CATALOG_DUPLICATE_SKU`            | 400  | A `skuId` appears more than once in `rows`                      |
+| `DISH_CATALOG_SKU_CONFLICT`             | 400  | A `skuId` appears in both `rows` and `removeSkuIds`             |
+| `DISH_CATALOG_DEPARTMENT_NOT_FOUND`     | 400  | Department name is missing or retired                           |
+| `DISH_CATALOG_DEPARTMENT_AMBIGUOUS`     | 400  | Duplicate active names; fix the department directory first      |
+| `DISH_CATALOG_ENTERPRISE_NOT_AVAILABLE` | 400  | Enterprise name is not registered in this organization          |
+| `DISH_CATALOG_BATCH_TOO_LARGE`          | 400  | Rows plus removals exceed 1000 entries                          |
+| `UPLOAD_ADMIN_REQUIRED`                 | 403  | Caller is not a current active admin                            |
+| `AUTHORIZATION_NOT_ENABLED`             | 403  | Business authorization is not enabled                           |
+| `RESOURCE_CATEGORY_NOT_CONFIGURED`      | 403  | The fixed `dish_catalog` category is not validly configured     |
+| `PAYLOAD_TOO_LARGE`                     | 413  | Request body exceeds 16 MiB                                     |
+| `DATASET_UPLOAD_RETIRED`                | 400  | The legacy catalog file upload path was used                    |
+
+Do not retry a validation or authorization error unchanged. Fix the named rows or configuration
+first. After a timeout or unknown outcome, re-read the current rows before replaying.
 
 ## Delivery Ledgers And Supplier Catalogs
 
 For an authorized admin upload, select `delivery_ledger` or `supplier_catalog` from the connected
 upload tool contract, independently of readable discovery. Call `upload_structured_dataset` with `file`,
 `enterpriseName` and `idempotencyKey`. Optionally include an explicit `confidentialityLevel`.
-Do not send `startDate`, `endDate`,
-or `snapshotDate`.
+Do not send `startDate` or `endDate`.
 
 - `delivery_ledger` accepts one complete CSV/XLSX delivery receipt per file. The receipt ID
   and date are extracted by the service, and each item row becomes one ledger row. Upload the
@@ -902,10 +1012,10 @@ When the employee asks about资料、SOP、上传过的文件、公司数据、S
 reading a local attachment, local CSV/XLSX, previous chat text, cache, or filesystem copy unless
 the employee explicitly asks you to inspect a local file outside SMEDC.
 
-Local files are upload inputs only. After uploading a file, keep the returned service metadata
-needed for follow-up questions: document id, import batch id, dataset id, declared confidentiality
-level, declared business
-date window or `snapshotDate`, enterprise/store name, and status. In a later task, rediscover
+Local files are upload inputs, or local parsing inputs for `dish_catalog`, only. After uploading a
+file, keep the returned service metadata needed for follow-up questions: document id, import batch
+id, dataset id, declared confidentiality level, declared business-date window (only for datasets
+that use one), enterprise/store name, and status. In a later task, rediscover
 available datasets through MCP; if the intended uploaded table/document cannot be
 identified safely, ask one short natural clarification instead of querying all visible history.
 
@@ -934,17 +1044,22 @@ For structured-table questions:
   `get_source_document_download_url`. This field is
   not returned by default and is not for filters, sorting, grouping, or aggregates.
 - Call `describe_structured_dataset_coverage` before answering whether SMEDC has enough
-  readable applied data for a dataset, time window, snapshot, or source-file scope. Coverage shares
-  structured-query authorization and returns readable source windows or snapshots; decide and state
-  any sufficiency assumptions yourself.
+  readable applied data for a dataset, date window, or source-file scope. Coverage shares
+  structured-query authorization and returns readable source windows; for a current-state dataset
+  such as `dish_catalog`, it returns the current row count and last update time instead. Decide and
+  state any sufficiency assumptions yourself.
 - Scope follow-up questions about a recent upload to that upload's returned import metadata,
   declared business-date window, enterprise/store name, or other explicit service-returned
   metadata. Avoid broad unbounded queries for phrases like “这份表”, “刚才那张表”, or “我刚传的”.
-- For `dish_catalog`, scope queries with the discovery-reported `snapshot_date` field. Do not
-  infer latest/current catalog state, diffs, or row status across snapshots.
-- If a local spreadsheet has not been uploaded, explain that an admin must upload it first;
-  proceed only when the current account is an admin. Do not compute final SMEDC answers directly from the local spreadsheet unless the
-  employee explicitly says they want a local-file-only inspection.
+- For `dish_catalog`, read the current state with `dataset: "dish_catalog"`; use
+  `department_name` for department filters/groups and `updated_at` for freshness. There is no
+  `snapshot_date` and no snapshot history: do not search for dated versions, a latest snapshot,
+  diffs, or added/removed status. Change rows only through `upsert_dish_catalog`.
+- If a local spreadsheet belongs to an upload dataset and has not been uploaded, explain that an
+  admin must upload it first; proceed only when the current account is an admin. For
+  `dish_catalog`, an admin can submit parsed rows directly; the service still does not accept the
+  file. Do not compute final SMEDC answers directly from the local spreadsheet unless the employee
+  explicitly says they want a local-file-only inspection.
 - If a query result contains historical rows outside the intended upload/window, narrow the query
   or ask for clarification before presenting totals as “这份表”的 totals.
 
@@ -995,8 +1110,9 @@ Example employee-facing reply (Chinese):
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file
 location or re-attach the file. For `MCP_LOCAL_FILE_TOO_LARGE`, do not split `business`, `dishes`,
-`in_store_orders`, `takeaway_orders` or `dish_catalog`; ask the employee for a smaller complete export, a service-supported larger
-limit, or operator help.
+`in_store_orders` or `takeaway_orders`; ask the employee for a smaller complete export, a
+service-supported larger limit, or operator help. A `dish_catalog` batch is not a file upload; if
+it exceeds 1000 entries, split it into ordered batches as described above.
 
 ## Typed Recovery
 
@@ -1005,7 +1121,9 @@ limit, or operator help.
 | `authentication_required`                     | Call `smedc_login`, wait for browser completion, then retry the original business operation once.                                                           |
 | Browser cancelled, timed out, or login failed | Report the safe outcome. Do not reopen the browser automatically or retry the business operation.                                                           |
 | `service_unavailable`                         | Report that the official service cannot be reached. Do not start, repair, or diagnose service infrastructure.                                               |
-| `UPLOAD_ADMIN_REQUIRED`                       | Explain that upload requires admin; nonretryable. Do not re-login, retry, read the file, or change clearance.                                               |
+| `UPLOAD_ADMIN_REQUIRED`                       | Explain that the operation requires admin; nonretryable. Do not re-login, retry, read the file, or change clearance.                                        |
+| `DATASET_UPLOAD_RETIRED`                      | Dish-catalog file uploads are retired; do not retry the upload. For an authorized admin catalog change, read the local file and use `upsert_dish_catalog`.  |
+| `DISH_CATALOG_*` validation error             | Report the returned field and zero-based `rowIndexes`; correct the local rows or department names before resubmitting. Never drop rows silently.            |
 | `forbidden` or not-found                      | Treat the resource as unavailable to this employee; do not infer hidden data.                                                                               |
 | `launcher_upgrade_required`                   | Install the skill-approved exact launcher version through the upgrade and cleanup procedure; retry the original operation once after verified reconnection. |
 | Local configuration/self-check failure        | Restore the backup only when the agent can do so safely; otherwise report the focused configuration failure. Never delete unrelated entries.                |

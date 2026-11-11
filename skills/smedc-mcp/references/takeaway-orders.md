@@ -34,7 +34,7 @@ later status/refund changes. The uploader guarantees completeness; source filter
 }
 ```
 
-Dates declare the inclusive source business-date window (`YYYYMMDD`); omit `snapshotDate`.
+Dates declare the inclusive source business-date window (`YYYYMMDD`).
 The configured category level is authoritative. File bytes, credentials and internal links remain
 inside the launcher. Do not split by platform/hour/order, repair rows or fill missing values locally.
 

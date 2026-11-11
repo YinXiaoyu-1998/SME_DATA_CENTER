@@ -160,42 +160,60 @@ MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登�
 批准安装 pin/源码推荐为 `0.15.0`，历史 `0.14.0` 使用旧名 `settled_orders`。新名称仍需匹配的协调服务迁移，保留当前 CSV 与授权，旧 ZIP 重新准备。
 详见[店内订单用法](skills/smedc-mcp/references/in-store-orders.md)与[命名迁移](docs/implementation/in-store-order-design.md)。
 
-## 菜品目录快照
+## 菜品目录（当前状态）
 
-`dish_catalog` 是一份完整、只追加的菜品目录快照，不是营业日期窗口导入。上传时只提供
-`snapshotDate`（`YYYYMMDD`），不得提供 `startDate` 或 `endDate`；服务内部把该日期同时作为
-批次起止日期。每个组织只有一条按日期排列的目录时间线：可乱序补录历史快照，但同一日期只能有
-一份未归档快照。同日内容纠错应先归档错误快照，再上传新文件；新快照不会自动归档旧快照。
+`dish_catalog` 是每个业务企业一份当前菜品清单，每个 SKU 一行，通过 `upsert_dish_catalog` /
+`POST /v1/dish-catalog/upsert` 维护。它不是按日期的快照：没有 `snapshotDate`、`snapshot_date`、
+按日期排列的历史、归档步骤或跨快照对比。服务不接收目录文件；由调用的 agent 解析员工本地文件，
+提交结构化行。
 
-CSV 与 XLSX 都必须使用以下十个受控表头（列顺序可变）：`菜品编码（SPUID）`、
-`菜品编码（SKUID）`、`菜品名称`、`品牌`、`基础分类`、`一级分类编码`、`二级分类编码`、
-`规格名称`、`售卖价`、`菜品别名`。`二级分类编码`、`规格名称`、`菜品别名` 可空，其余七列必填；
-售卖价为 decimal，`0` 合法。同一完整快照中的 SKUID 必须唯一，SPUID 可以因多规格重复。
+只有当前有效管理员可以写入，写入不因此获得普通读取权。一批包含 `enterpriseName`、可选的
+`rows` 与 `removeSkuIds`，以及仅用于审计的可选 `sourceFileName`；行与删除合计 1–1000 条，
+整个请求不超过 16 MiB UTF-8 JSON。行必填字段为 `spuId`、`skuId`、`dishName`、`brandName`、
+`baseCategoryName`、`level1CategoryCode` 和 `salePrice`；`level2CategoryCode`、
+`specificationName`、`dishAlias`、`departmentName` 可空。`salePrice` 是十进制字符串，最多
+14 位整数和 6 位小数，`0` 合法。行是权威值：省略可空字段即存为 null，文本按原样保存（不 trim、
+不改大小写或全半角），只有 `salePrice` 会被规范化为十进制文本且不四舍五入。整批原子生效；
+任一行非法都会拒绝整个请求并返回有界的零基 `rowIndexes`（最多 50 个），批内 SKU 重复或同一 SKU
+同时写入和删除会在产生副作用前拒绝。
 
-XLSX 会合并所有表头完全匹配的可见 sheet，sheet 名称不参与识别；不匹配的 sheet（包括总部套餐
-sheet）会被忽略并在状态中留下安全摘要。隐藏且匹配的 sheet 会使导入失败。通过 schema discovery
-和受控查询中的 `snapshot_date` 查询历史；服务不会选择当前/最新目录、生成 diff，或推断新增、删除、
-下架等跨快照状态。
+`departmentName` 必须精确匹配同一企业的一个未停用部门。服务保存稳定的部门标识，读取时返回
+当前名称，且不会自动创建部门。部门改名不影响已写入的目录行；部门停用后已有行仍可读取，但不能
+再用于新的写入。`removeSkuIds` 会永久删除对应 SKU，删除不存在的 SKU 是无操作。完全相同的内容
+重放不写库、不刷新 `updated_at`。没有逐行版本前置条件：并发写入按行级最后写入生效；删除全部行
+不会删除企业的目录资源。
+
+通过 `query_structured_dataset`（`dataset: "dish_catalog"`）读取当前状态。十个目录字段加上
+`department_name`、`updated_at` 默认返回；`department_id`、`created_at` 可显式选择但默认不返回。
+默认按 `sku_id` 升序。coverage 返回
+`{dataset:"dish_catalog", metadataPolicy:"current", rowCount, lastUpdatedAt}`，与查询使用相同的
+企业范围授权，不再有按快照的来源列表。读取需要当前 `dish_catalog` 类别配置和该企业的集团级
+授权，管理员没有读取旁路。
+
+旧的文件上传已停用。`upload_structured_dataset` 与 `POST /v1/structured/imports` 会在创建文档、
+导入批次、范围声明、存储对象或审计记录之前，以 `DATASET_UPLOAD_RETIRED` 拒绝 `dish_catalog`。
+源码 launcher `0.19.0` 增加写入工具；发布与批准的 Skill pin 是独立的发布步骤。
 
 ## 常用 MCP Tools
 
 完整工具与管理能力见 [API/MCP 契约](docs/implementation/api-contract.md)。
 
-| Tool                             | 用途                                            |
-| -------------------------------- | ----------------------------------------------- |
-| `smedc_login`                    | 打开浏览器完成正式登录                          |
-| `smedc_logout`                   | 撤销并清除本机共享 session                      |
-| `smedc_auth_status`              | 返回不含凭证的认证状态                          |
-| `smedc_list_skills`              | 读取已批准 Skill Directory 元数据               |
-| `upload_evidence_document`       | 上传 MD/TXT/DOCX evidence 文档                  |
-| `get_evidence_document_status`   | 查询 evidence 文档和索引状态                    |
-| `search_document_evidence`       | 检索可见 evidence chunks                        |
-| `upload_structured_dataset`      | 上传结构化 CSV/XLSX；business/dishes 走分区导入 |
-| `get_import_status`              | 查询结构化导入状态                              |
-| `list_structured_datasets`       | 查询可用结构化 dataset/字段/operator schema     |
-| `get_partition_import_status`    | 查询 business/dishes 分区导入状态               |
-| `download_structured_partitions` | 下载授权 business/dishes 分区到本地目录         |
-| `query_structured_dataset`       | 查询 row-query 数据集；拒绝 business/dishes     |
+| Tool                             | 用途                                                            |
+| -------------------------------- | --------------------------------------------------------------- |
+| `smedc_login`                    | 打开浏览器完成正式登录                                          |
+| `smedc_logout`                   | 撤销并清除本机共享 session                                      |
+| `smedc_auth_status`              | 返回不含凭证的认证状态                                          |
+| `smedc_list_skills`              | 读取已批准 Skill Directory 元数据                               |
+| `upload_evidence_document`       | 上传 MD/TXT/DOCX evidence 文档                                  |
+| `get_evidence_document_status`   | 查询 evidence 文档和索引状态                                    |
+| `search_document_evidence`       | 检索可见 evidence chunks                                        |
+| `upload_structured_dataset`      | 上传结构化 CSV/XLSX；business/dishes 走分区导入，菜品目录已停用 |
+| `upsert_dish_catalog`            | 管理员批量维护菜品目录当前状态（rows/removeSkuIds）             |
+| `get_import_status`              | 查询结构化导入状态                                              |
+| `list_structured_datasets`       | 查询可用结构化 dataset/字段/operator schema                     |
+| `get_partition_import_status`    | 查询 business/dishes 分区导入状态                               |
+| `download_structured_partitions` | 下载授权 business/dishes 分区到本地目录                         |
+| `query_structured_dataset`       | 查询 row-query 数据集；拒绝 business/dishes                     |
 
 ## MCP 验证
 

@@ -210,7 +210,7 @@ secure store; access tokens stay in memory. Local API/worker development is exer
 repository's unit and integration harnesses, which create official short-lived sessions internally
 and do not weaken the launcher's HTTPS requirement.
 
-MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch. For structured tables, discover `canonicalName` fields before querying and use `describe_structured_dataset_coverage` only to inspect readable applied source windows or snapshots; the client decides whether that coverage is enough for the user's question.
+MCP callers never provide an organization ID; the service derives organization scope from the logged-in employee. Evidence search cursors are opaque, short-lived continuation tokens: pass `page.nextCursor` back unchanged with the same query/filter/limit to fetch the next page. Restart without a cursor on `INVALID_CURSOR`; on `CURSOR_EXPIRED`, explain the expiry and restart only if the user still wants more results. Structured import retries should reuse an `idempotencyKey` only for the exact same file and metadata; exact replay returns the original persisted IDs/storage key, while inaccessible import status returns the same non-enumerating 404 as a missing batch. For structured tables, discover `canonicalName` fields before querying and use `describe_structured_dataset_coverage` only to inspect readable applied source windows, or the current row count and last update time for a current-state dataset such as `dish_catalog`; the client decides whether that coverage is enough for the user's question.
 
 `business` and `dishes` are not MySQL row-query datasets. The official launcher streams one
 original CSV/XLSX (up to the configured 2 GiB source limit) through multipart upload, the worker
@@ -227,27 +227,46 @@ recommendation are `0.18.0`; historical `0.14.0` used `settled_orders`. Matching
 and current category authorization remain required. See [in-store usage](skills/smedc-mcp/references/in-store-orders.md)
 and [migration prerequisites](docs/implementation/in-store-order-design.md).
 
-## Dish catalog snapshots
+## Dish catalog (current state)
 
-`dish_catalog` is a complete, append-only menu snapshot, not a business-date-window import. Upload
-it with `snapshotDate` (`YYYYMMDD`) and without `startDate` or `endDate`; the service internally
-uses the same date for both. The organization has one date-ordered timeline: historical snapshots
-may be uploaded out of order, but only one non-archived snapshot may occupy a date. Archive an
-incorrect same-date snapshot before uploading a corrected one. New snapshots do not auto-archive
-older ones.
+`dish_catalog` is one current menu catalog per business enterprise, one row per SKU, maintained
+through `upsert_dish_catalog` / `POST /v1/dish-catalog/upsert`. It is not a dated snapshot: there
+is no `snapshotDate`, `snapshot_date`, date-ordered history, archive step, or cross-snapshot diff.
+The service never receives a catalog file; the calling agent parses the employee's local file and
+submits structured rows.
 
-Both CSV and XLSX use exactly these ten controlled headers, in any column order:
-`菜品编码（SPUID）`, `菜品编码（SKUID）`, `菜品名称`, `品牌`, `基础分类`, `一级分类编码`,
-`二级分类编码`, `规格名称`, `售卖价`, and `菜品别名`. The latter three nullable fields are
-`二级分类编码`, `规格名称`, and `菜品别名`; the other seven are required. Sale price is decimal and
-may be zero. A complete snapshot must contain unique SKUID values; SPUID can repeat for different
-specifications.
+Only a current active admin may write, and writing does not grant ordinary read access. A batch
+contains `enterpriseName`, optional `rows` and `removeSkuIds`, and optional audit-only
+`sourceFileName`; rows plus removals total 1–1000 entries and the whole request is at most 16 MiB
+UTF-8 JSON. Required row fields are `spuId`, `skuId`, `dishName`, `brandName`,
+`baseCategoryName`, `level1CategoryCode` and `salePrice`; `level2CategoryCode`,
+`specificationName`, `dishAlias` and `departmentName` are nullable. `salePrice` is a plain decimal
+string with at most 14 integer and 6 fractional digits; zero is valid. The row is authoritative:
+omitted nullable fields are stored as null, text is kept verbatim (no trim, case or width
+conversion), and only `salePrice` is canonicalized as decimal text without rounding. The batch is
+atomic; any invalid row rejects the whole request with bounded zero-based `rowIndexes` (at most 50),
+and duplicate SKUs or a SKU written and removed in one batch are rejected before side effects.
 
-For XLSX, all visible sheets with the exact schema are merged; sheet names are irrelevant.
-Nonmatching sheets (including a headquarters-combo sheet) are ignored with a safe summary, while a
-matching hidden sheet rejects the import. Query catalog history through `snapshot_date` returned by
-dataset discovery. The service does not choose a current/latest menu, calculate diffs, or infer
-added, removed, discontinued, or other cross-snapshot state.
+`departmentName` must exactly match one active department of the same enterprise. The service
+stores the stable department ID, returns the current name on read, and never creates departments.
+Renaming a department leaves catalog rows unchanged; a retired department remains readable but
+cannot be used for a new write. `removeSkuIds` permanently deletes those SKUs, and removing an
+absent SKU is a no-op. Replaying identical content changes nothing and does not refresh
+`updated_at`. There is no per-row expected version: concurrent writes are last-write-wins, and
+removing all rows does not delete the enterprise's catalog resource.
+
+Read the current state with `query_structured_dataset` (`dataset: "dish_catalog"`). The ten catalog
+fields plus `department_name` and `updated_at` return by default; `department_id` and
+`created_at` are selectable but hidden by default. Default order is `sku_id` ascending.
+Coverage returns `{dataset:"dish_catalog", metadataPolicy:"current", rowCount, lastUpdatedAt}` and
+shares the same enterprise-scope authorization; there is no snapshot or source list. Reads require
+the current `dish_catalog` category configuration and a group-level grant for that enterprise;
+admins have no read bypass.
+
+The legacy file upload is retired. `upload_structured_dataset` and `POST /v1/structured/imports`
+reject `dish_catalog` with `DATASET_UPLOAD_RETIRED` before creating a document, import batch, claim,
+storage object or audit record. Source launcher `0.19.0` adds the write tool; publication and the
+approved Skill pin are separate release steps.
 
 To run the launcher manually when the API is already running:
 

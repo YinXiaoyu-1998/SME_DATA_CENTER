@@ -46,11 +46,13 @@ V2 重排后的 `relevance.v1` 默认最低分 0.30、最低分差 0.30、低分
 | ----------------- | ------------------------------------------------------------------------ |
 | business / dishes | OSS 当前门店日分区，授权 manifest、本地分析；不开放通用行查询/服务端聚合 |
 | vip               | 受控行查询，集团级会员类别；门店字段仅供业务筛选                         |
-| dish_catalog      | 以 snapshotDate 导入完整目录快照，集团级独立类别                         |
+| dish_catalog      | 每业务企业一份当前目录，管理员经批量接口按行增删改；集团级独立类别       |
 | supplier_catalog  | 受控供应商目录、集团级独立类别；作为注册的 PDF 来源                      |
 | delivery_ledger   | 保留内部收货单输入和来源关联；员工只通过台账 PDF 交付路径读取成品        |
 
 字段、别名、类型、允许查询运算和文件元数据由 `packages/domain/src/structured-registry.ts`、`structured-query.ts` 统一定义。使用 canonicalName 构造查询，sourceColumn/别名用于识别或展示，不允许任意 SQL。
+
+`dish_catalog` 没有保留原件、文件解析、导入批次或按日期的快照。写入路径为 `upsert_dish_catalog` / `POST /v1/dish-catalog/upsert`：调用方在本地读取文件后提交 `rows` 与 `removeSkuIds`，一批合计最多 1000 条、整批事务生效；行是权威值，可空字段省略即清空，`salePrice` 规范化为十进制文本，其余文本原样保存。`departmentName` 按同一企业未停用部门名称精确解析为稳定部门标识，读取时关联当前名称；写入不创建部门。读取使用既有 `business_resources`/scope/grant 谓词，但锚点为每业务企业一份的目录资源而非源文档；管理员写入不获得普通读取权。旧上传入口在产生任何副作用前返回 `DATASET_UPLOAD_RETIRED`，旧数据不迁移。
 
 CSV/XLSX 校验有文件、ZIP 条目/解压/压缩比、sheet、行、列、单元格等限制。拒绝未知或重名列、无效类型/日期和不满足数据集 schema 的输入，按注册的数据集规则处理标题、表头、汇总行和适用工作表。Excel 数据从原始单元格确定性读取；不让 agent 改写原件来绕过校验。
 
