@@ -1027,8 +1027,7 @@ describe("SMEDC MCP contract", () => {
           },
           dataset,
           startDate: undefined,
-          endDate: undefined,
-          snapshotDate: undefined
+          endDate: undefined
         };
 
         expect(parseTool("upload_structured_dataset", input)).toEqual(input);
@@ -1052,7 +1051,7 @@ describe("SMEDC MCP contract", () => {
     }
   );
 
-  it("lists all structured datasets in query and upload field descriptions", () => {
+  it("lists all queryable datasets including dish_catalog in query descriptions", () => {
     const expectedDatasets = [
       "dishes",
       "business",
@@ -1062,15 +1061,41 @@ describe("SMEDC MCP contract", () => {
       "supplier_catalog"
     ];
 
-    for (const toolName of ["query_structured_dataset", "upload_structured_dataset"] as const) {
-      const field = contractsByName
-        .get(toolName)
-        ?.inputFields.find((inputField) => inputField.name === "dataset");
+    const field = contractsByName
+      .get("query_structured_dataset")
+      ?.inputFields.find((inputField) => inputField.name === "dataset");
 
-      for (const dataset of expectedDatasets) {
-        expect(field?.description).toContain(dataset);
-      }
+    for (const dataset of expectedDatasets) {
+      expect(field?.description).toContain(dataset);
     }
+  });
+
+  it("keeps retired dish_catalog out of the upload dataset enum and description", () => {
+    const contract = contractsByName.get("upload_structured_dataset");
+    const field = contract?.inputFields.find((inputField) => inputField.name === "dataset");
+
+    expect(field?.description).not.toContain("dish_catalog");
+    for (const dataset of [
+      "dishes",
+      "business",
+      "vip",
+      "delivery_ledger",
+      "supplier_catalog",
+      "cost_cards"
+    ])
+      expect(field?.description).toContain(dataset);
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        dataset: "dish_catalog"
+      }).success
+    ).toBe(false);
+    expect(
+      parseTool("query_structured_dataset", {
+        ...validInputs.query_structured_dataset,
+        dataset: "dish_catalog"
+      })
+    ).toMatchObject({ dataset: "dish_catalog" });
   });
 
   it("defines strict coverage input with optional partition scope", () => {
@@ -1118,40 +1143,29 @@ describe("SMEDC MCP contract", () => {
     ).toBe(false);
   });
 
-  it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {
+  it("keeps the structured upload schema object-shaped without retired snapshot dates", () => {
     const contract = contractsByName.get("upload_structured_dataset");
-    const catalogInput = {
+    const windowInput = {
       ...validInputs.upload_structured_dataset,
-      dataset: "dish_catalog",
-      snapshotDate: "20260819",
-      startDate: undefined,
-      endDate: undefined
+      dataset: "vip",
+      startDate: "20260819",
+      endDate: "20260819"
     };
 
     expect(contract?.inputSchema).toBeInstanceOf(z.ZodObject);
     expect(Object.keys(contract?.inputSchema.shape ?? {})).toEqual(
-      expect.arrayContaining(["startDate", "endDate", "snapshotDate"])
+      expect.arrayContaining(["startDate", "endDate"])
     );
-    expect(parseTool("upload_structured_dataset", catalogInput)).toMatchObject({
-      dataset: "dish_catalog",
-      snapshotDate: "20260819"
+    expect(Object.keys(contract?.inputSchema.shape ?? {})).not.toContain("snapshotDate");
+    expect(parseTool("upload_structured_dataset", windowInput)).toMatchObject({
+      dataset: "vip",
+      startDate: "20260819",
+      endDate: "20260819"
     });
     expect(
-      parseTool("query_structured_dataset", {
-        ...validInputs.query_structured_dataset,
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
         dataset: "dish_catalog"
-      })
-    ).toMatchObject({ dataset: "dish_catalog" });
-    expect(
-      safeParseTool("upload_structured_dataset", {
-        ...catalogInput,
-        snapshotDate: undefined
-      }).success
-    ).toBe(false);
-    expect(
-      safeParseTool("upload_structured_dataset", {
-        ...catalogInput,
-        startDate: "20260819"
       }).success
     ).toBe(false);
     expect(

@@ -7,7 +7,7 @@ import { createLauncherToolDependencies, registerLauncherTools } from "./launche
 import { cleanupDefaultStaleExtractDirectories } from "./partition-transfer.js";
 
 export const MCP_LAUNCHER_SERVER_NAME = "smedc-mcp-launcher";
-export const MCP_LAUNCHER_SERVER_VERSION = "0.18.0";
+export const MCP_LAUNCHER_SERVER_VERSION = "0.19.0";
 
 export function createSmedcMcpLauncherServer(config: LauncherRuntimeConfig): McpServer {
   const server = new McpServer({

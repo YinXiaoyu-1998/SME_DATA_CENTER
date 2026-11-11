@@ -44,16 +44,12 @@ import {
 function importDocumentTitle(input: {
   enterpriseName: string;
   dataset: string;
-  metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
+  metadataPolicy: "window" | "derived_receipt" | "none";
   startDate: string | null;
   endDate: string | null;
-  snapshotDate?: string;
   naturalKey?: string;
   contentDigest: string;
 }): string {
-  if (input.metadataPolicy === "snapshot") {
-    return `${input.enterpriseName}_${input.dataset}_${input.snapshotDate}`;
-  }
   if (input.metadataPolicy === "derived_receipt") {
     return `${input.enterpriseName}_${input.dataset}_${input.naturalKey}_${input.startDate}`;
   }
@@ -252,9 +248,19 @@ export function registerStructuredImportRoutes(
           )
         );
     }
+    const metadataPolicy = registry.metadataPolicy;
+    if (
+      metadataPolicy !== "window" &&
+      metadataPolicy !== "derived_receipt" &&
+      metadataPolicy !== "none"
+    ) {
+      return validationError(
+        reply,
+        PHASE3_ERROR_CODES.datasetUploadRetired,
+        "dish_catalog uploads are retired; use upsert_dish_catalog."
+      );
+    }
     let { startDate, endDate } = metadataValidation;
-    const snapshotDate =
-      registry.metadataPolicy === "snapshot" ? metadataValidation.snapshotDate : undefined;
     const uploadedFile = upload.file;
     const enterpriseName = upload.enterpriseName;
     const idempotencyKey = upload.idempotencyKey;
@@ -384,7 +390,6 @@ export function registerStructuredImportRoutes(
       dataset,
       startDate,
       endDate,
-      snapshotDate,
       receiptId: naturalKey,
       contentDigest: fileHash,
       fileType
@@ -393,11 +398,9 @@ export function registerStructuredImportRoutes(
       historicalSupplementReason: upload.historicalSupplementReason,
       dataset,
       enterpriseName,
-      ...(registry.metadataPolicy === "snapshot"
-        ? { snapshotDate }
-        : registry.metadataPolicy === "window" || registry.metadataPolicy === "derived_receipt"
-          ? { startDate, endDate }
-          : {}),
+      ...(registry.metadataPolicy === "window" || registry.metadataPolicy === "derived_receipt"
+        ? { startDate, endDate }
+        : {}),
       ...(naturalKey ? { naturalKey } : {}),
       confidentialityLevel,
       fileHash
@@ -432,10 +435,9 @@ export function registerStructuredImportRoutes(
               title: importDocumentTitle({
                 enterpriseName,
                 dataset,
-                metadataPolicy: registry.metadataPolicy,
+                metadataPolicy,
                 startDate,
                 endDate,
-                snapshotDate,
                 naturalKey,
                 contentDigest: fileHash
               }),

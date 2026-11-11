@@ -144,16 +144,8 @@ export async function parseStructuredFile(
 
   try {
     assertFileType(input);
-    if (registry.metadataPolicy === "window" || registry.metadataPolicy === "snapshot") {
+    if (registry.metadataPolicy === "window") {
       window = dateWindow(input.startDate, input.endDate);
-      if (
-        registry.metadataPolicy === "snapshot" &&
-        window.start.getTime() !== window.end.getTime()
-      ) {
-        throw validation(
-          "dish_catalog requires startDate and endDate to be the same snapshot date."
-        );
-      }
     }
     sheets = await readStructuredSheets(input);
   } catch (error) {
@@ -177,7 +169,6 @@ export async function parseStructuredFile(
   let matchedSheetCount = 0;
   let matchingSheetFound = false;
   let matchingDataRowCount = 0;
-  const catalogSkuRows = new Map<string, StructuredImportRow>();
 
   for (const sheet of sheets) {
     if (isEmpty(sheet.rows)) continue;
@@ -248,7 +239,7 @@ export async function parseStructuredFile(
       continue;
     }
     matchedSheetCount += 1;
-    const data = dataRowsFor(input.dataset, sheet, candidate);
+    const data = dataRowsFor(sheet, candidate);
     matchingDataRowCount += data.length;
     sheetSummary.push({
       sheetIndex: sheet.sheetIndex,
@@ -307,8 +298,6 @@ export async function parseStructuredFile(
           });
           continue;
         }
-      } else if (registry.datePolicy === "snapshot_metadata") {
-        payload.snapshot_date = dateString(window!.start);
       }
       if (rows.length >= input.limits.maxStructuredImportRows) {
         if (!rowLimitReported) {
@@ -325,30 +314,12 @@ export async function parseStructuredFile(
         }
         continue;
       }
-      const parsedRow = {
+      rows.push({
         sourceSheetIndex: sheet.sheetIndex,
         sourceSheetName: sheet.name,
         sourceRowNumber: item.sourceRowNumber,
         payload
-      };
-      if (registry.dataset === "dish_catalog") {
-        const skuId = String(payload.sku_id);
-        const existing = catalogSkuRows.get(skuId);
-        if (existing) {
-          issues.add({
-            code: "DUPLICATE_KEY",
-            message: "sku_id must be unique within a catalog snapshot.",
-            sheetName: sheet.name,
-            sheetIndex: sheet.sheetIndex,
-            rowNumber: item.sourceRowNumber,
-            column: "sku_id",
-            legacyMessage: `Duplicate sku_id ${skuId} in catalog snapshot.`
-          });
-          continue;
-        }
-        catalogSkuRows.set(skuId, parsedRow);
-      }
-      rows.push(parsedRow);
+      });
     }
   }
   if (registry.sheetPolicy === "import_matching_visible" && !matchingSheetFound) {
@@ -444,7 +415,7 @@ export async function profileStructuredFile(
       throw validation(
         `VALIDATION_FAILED: ${sheet.name} has no recognized ${input.dataset} header`
       );
-    const data = dataRowsFor(input.dataset, sheet, candidate);
+    const data = dataRowsFor(sheet, candidate);
     matchedSheetCount += 1;
     assertWithinHeaderWidth(data, candidate);
     dataRowCount += data.length;
@@ -763,16 +734,12 @@ function deliveryPayloadFor(
   return { payload, errors };
 }
 
-function dataRowsFor(
-  dataset: StructuredDatasetName,
-  sheet: { rows: string[][] },
-  candidate: { index: number; width: number }
-) {
+function dataRowsFor(sheet: { rows: string[][] }, candidate: { index: number; width: number }) {
   return sheet.rows
     .slice(candidate.index + 1)
     .map((row, index) => ({ row, sourceRowNumber: candidate.index + index + 2 }))
     .filter(({ row }) => row.some((cell) => cell.trim()))
-    .filter(({ row }) => dataset === "dish_catalog" || !isSummary(row));
+    .filter(({ row }) => !isSummary(row));
 }
 
 function assertWithinHeaderWidth(

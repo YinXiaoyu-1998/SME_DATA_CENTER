@@ -8,41 +8,22 @@ import {
 } from "./workflow.js";
 
 describe("structured import workflow metadata", () => {
-  it("uses one normalized snapshotDate in the catalog fingerprint and canonical filename", () => {
-    const input = {
-      dataset: "dish_catalog" as const,
-      enterpriseName: "Synthetic",
-      snapshotDate: "20260819",
-      confidentialityLevel: 0,
-      fileHash: "file-hash"
-    };
-    const expectedFingerprint = createHash("sha256")
-      .update(
-        JSON.stringify({
-          dataset: "dish_catalog",
-          enterpriseName: "Synthetic",
-          snapshotDate: "20260819",
-          confidentialityLevel: 0,
-          fileHash: "file-hash"
-        })
-      )
-      .digest("hex");
-
-    expect(structuredImportFingerprint(input)).toBe(expectedFingerprint);
+  it("rejects the retired catalog upload with snapshot metadata before any date parsing", () => {
     expect(
-      structuredImportFingerprint({
-        ...input,
-        historicalSupplementReason: "Historical catalog correction"
-      })
-    ).not.toBe(expectedFingerprint);
-    expect(
-      canonicalStructuredImportFileName({
+      validateStructuredImportMetadata({
         dataset: "dish_catalog",
         enterpriseName: "Synthetic",
+        idempotencyKey: "stable-key",
+        confidentialityLevel: "0",
+        confidentialityLevelFieldCount: 1,
         snapshotDate: "20260819",
-        fileType: "xlsx"
+        file: { fileName: "catalog.csv", body: Buffer.from("synthetic") }
       })
-    ).toBe("s_y_n_t_h_e_t_i_c_dish_catalog_20260819.xlsx");
+    ).toEqual({
+      ok: false,
+      code: "DATASET_UPLOAD_RETIRED",
+      message: "dish_catalog uploads are retired; use upsert_dish_catalog."
+    });
   });
 
   it.each(["delivery_ledger", "supplier_catalog"] as const)(

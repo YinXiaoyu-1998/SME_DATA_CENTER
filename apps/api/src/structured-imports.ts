@@ -46,7 +46,12 @@ import type {
   CostCardPublication,
   StructuredDatasetName
 } from "@smedc/domain";
-import { AUDIT_ACTIONS, getStructuredRegistry, normalizeEnterpriseIdentity } from "@smedc/domain";
+import {
+  AUDIT_ACTIONS,
+  PHASE3_ERROR_CODES,
+  getStructuredRegistry,
+  normalizeEnterpriseIdentity
+} from "@smedc/domain";
 import type { RequestAuditContext } from "./request-audit-context.js";
 
 export interface StructuredImportRowInput {
@@ -260,6 +265,12 @@ async function insertStructuredRows(
   const registry = getStructuredRegistry(input.dataset);
   if (registry.accessMode !== "row_query") {
     throw new StructuredImportError("DATASET_REQUIRES_PARTITION_EXTRACT");
+  }
+  if (registry.metadataPolicy === "current") {
+    throw new StructuredImportError(
+      PHASE3_ERROR_CODES.datasetUploadRetired,
+      "dish_catalog uploads are retired; use upsert_dish_catalog."
+    );
   }
   if (!registry.rowTable) {
     throw new Error(`Row-query dataset ${input.dataset} has no row table.`);
@@ -647,6 +658,11 @@ export function createPrismaStructuredImportRepository(options: {
               })
             );
             if (!existing) throw new Error("Reserved import batch was not found.");
+            if (existing.dataset === ImportDataset.dish_catalog)
+              throw new StructuredImportError(
+                PHASE3_ERROR_CODES.datasetUploadRetired,
+                "dish_catalog uploads are retired; use upsert_dish_catalog."
+              );
             if (existing.status === ImportBatchStatus.applied)
               return recordWithPartitions(existing, tx);
             await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
@@ -693,11 +709,6 @@ export function createPrismaStructuredImportRepository(options: {
               () => {
                 if (existing.dataset === ImportDataset.vip) {
                   return tx.vipRow.deleteMany({ where: { importBatchId: input.importBatchId } });
-                }
-                if (existing.dataset === ImportDataset.dish_catalog) {
-                  return tx.dishCatalogRow.deleteMany({
-                    where: { importBatchId: input.importBatchId }
-                  });
                 }
                 if (existing.dataset === ImportDataset.delivery_ledger) {
                   return tx.deliveryLedgerRow.deleteMany({

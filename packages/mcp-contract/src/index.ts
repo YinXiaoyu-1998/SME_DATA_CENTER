@@ -48,6 +48,21 @@ const structuredDataset = z
   .describe(
     "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
   );
+const uploadableStructuredDatasets = [
+  "dishes",
+  "business",
+  "vip",
+  "delivery_ledger",
+  "supplier_catalog",
+  "cost_cards",
+  "in_store_orders",
+  "takeaway_orders"
+] as const;
+const uploadStructuredDataset = z
+  .enum(uploadableStructuredDatasets)
+  .describe(
+    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+  );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
   z.number(),
@@ -448,7 +463,7 @@ const queryStructuredDatasetInputSchema = z
 const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
-    dataset: structuredDataset,
+    dataset: uploadStructuredDataset,
     orderScopeTransition: orderScopeTransitionConfirmationSchema
       .optional()
       .describe(
@@ -478,11 +493,6 @@ const uploadStructuredDatasetInputSchema = z
       .describe(
         "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, or vip."
       ),
-    snapshotDate: z
-      .string()
-      .regex(/^\d{8}$/)
-      .optional()
-      .describe("YYYYMMDD complete snapshot date for dish_catalog."),
     idempotencyKey: z
       .string()
       .min(1)
@@ -514,32 +524,7 @@ const uploadStructuredDatasetInputSchema = z
     const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
 
     switch (metadataPolicy) {
-      case "snapshot":
-        if (!input.snapshotDate) {
-          context.addIssue({
-            code: "custom",
-            message: `${input.dataset} requires snapshotDate.`,
-            path: ["snapshotDate"]
-          });
-        }
-        for (const field of ["startDate", "endDate"] as const) {
-          if (input[field] !== undefined) {
-            context.addIssue({
-              code: "custom",
-              message: `${input.dataset} does not accept ${field}.`,
-              path: [field]
-            });
-          }
-        }
-        return;
       case "window":
-        if (input.snapshotDate !== undefined) {
-          context.addIssue({
-            code: "custom",
-            message: "Window datasets do not accept snapshotDate.",
-            path: ["snapshotDate"]
-          });
-        }
         for (const field of ["startDate", "endDate"] as const) {
           if (!input[field]) {
             context.addIssue({
@@ -552,7 +537,7 @@ const uploadStructuredDatasetInputSchema = z
         return;
       case "derived_receipt":
       case "none":
-        for (const field of ["startDate", "endDate", "snapshotDate"] as const) {
+        for (const field of ["startDate", "endDate"] as const) {
           if (input[field] !== undefined) {
             context.addIssue({
               code: "custom",
@@ -561,6 +546,14 @@ const uploadStructuredDatasetInputSchema = z
             });
           }
         }
+        return;
+      case "snapshot":
+      case "current":
+        context.addIssue({
+          code: "custom",
+          message: `${input.dataset} does not accept structured file uploads.`,
+          path: ["dataset"]
+        });
         return;
     }
   });
