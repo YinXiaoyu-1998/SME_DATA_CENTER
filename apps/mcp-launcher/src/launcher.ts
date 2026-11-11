@@ -16,6 +16,7 @@ import {
   PERMISSION_MCP_TOOL_NAMES,
   WORKFLOW_MCP_TOOL_NAMES,
   DIRECTORY_MCP_TOOL_NAMES,
+  dishCatalogValidationErrorToolResult,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -68,6 +69,7 @@ export type LauncherBusinessToolName =
   | "download_cost_cards"
   | "archive_cost_card"
   | "upsert_store_reviews"
+  | "upsert_dish_catalog"
   | "query_store_reviews"
   | "prepare_structured_partition_download"
   | "get_structured_partition_download_status"
@@ -273,6 +275,7 @@ export function registerLauncherTools(
                 "download_cost_cards",
                 "archive_cost_card",
                 "upsert_store_reviews",
+                "upsert_dish_catalog",
                 "query_store_reviews",
                 "query_structured_dataset",
                 "describe_structured_dataset_coverage"
@@ -294,6 +297,10 @@ export function registerLauncherTools(
       if (isUpload) {
         const denial = await uploadAuthorizationError(dependencies);
         if (denial) return denial;
+      }
+      if (params.name === "upsert_dish_catalog") {
+        const invalid = dishCatalogValidationErrorToolResult(params.arguments);
+        if (invalid) return invalid;
       }
       const parsed = await tool.inputSchema.safeParseAsync(params.arguments);
       if (!parsed.success) {

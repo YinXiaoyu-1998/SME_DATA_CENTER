@@ -116,7 +116,8 @@ track their returned IDs instead. Never clean all uploads or ZIP requests owned 
 Before testing a current supplier snapshot in a shared organization, preserve its identity and
 content. Prefer an identical complete snapshot, then remove only the test import and verify the
 prior snapshot is current again. Do not replace shared supplier data with a small synthetic subset.
-Use unoccupied snapshot dates for dish catalogs and unique enterprise/date/store scopes for
+Use a dedicated synthetic enterprise for dish-catalog batch writes and remove its rows explicitly
+after the run; the catalog has no snapshot dates. Use unique enterprise/date/store scopes for
 business/dishes. Do not leave sample data in staging after the run.
 
 ## Business suite and expected evidence
@@ -135,7 +136,7 @@ contract before assessing a query; source-column labels are not canonical query 
 | Business partitions              | Original CSV/XLSX reaches `published`; coverage and downloaded partitions support the requested totals                                                      |
 | Dishes partitions                | Original fixture reaches `published`; three fixture rows total 91, with 合成凉皮 and 合成肉夹馍 as the top two                                              |
 | Invalid atomic source            | Safe terminal `rejected`; no partial publication; previously published partitions remain unchanged                                                          |
-| Dish catalog                     | Complete snapshot reaches `applied`; query is bounded by `snapshot_date`                                                                                    |
+| Dish catalog                     | Admin batch upsert returns row counts; query returns current rows and department names; `removeSkuIds` deletes permanently                                  |
 | Supplier catalog                 | Complete snapshot reaches `applied`; query uses the current successfully applied source; cleanup restores the prior state                                   |
 | Delivery XLSX and CSV            | Two distinct original receipt files reach `applied`; safe owner status confirms ingestion; employee aggregate reads are rejected                            |
 | Ledger detail boundary           | Detail, aggregate, raw coverage and original receipt reads are unavailable even for admins, independently of the PDF switch                                 |
@@ -160,7 +161,7 @@ pending until it runs. Downloads of existing ready PDFs must not mutate their so
 A queued/202 response is acceptance for processing, not success. Keep the returned IDs and poll
 status after 2 seconds, then 5, then 10, then every 15 seconds for up to 10 minutes. Terminal success
 is `active/ready` for evidence, `applied` for row imports, and `published` for business/dishes.
-Quarantine upload is synchronous. For business/dishes sources over 50 MiB, use the skill's 2-minute
+Quarantine upload and dish-catalog batch writes are synchronous. For business/dishes sources over 50 MiB, use the skill's 2-minute
 cadence and 20-minute bound. Do not re-upload instead of polling.
 
 Record terminal safe validation errors. `still processing` is not success or failure. Explicit

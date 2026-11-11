@@ -17,11 +17,13 @@ import type { FastifyRequest } from "fastify";
 import {
   createDatabaseAdapter,
   createPrismaCostCardDirectoryRepository,
+  createPrismaDishCatalogRepository,
   createPrismaStoreReviewRepository,
   createPrismaPartitionDownloadRepository,
   type PartitionDownloadRepository
 } from "@smedc/db";
 import { createStoreReviewService, type StoreReviewService } from "./store-reviews.js";
+import { createDishCatalogService, type DishCatalogService } from "./dish-catalog.js";
 import { createCostCardService, type CostCardService } from "./cost-cards.js";
 import {
   createPrismaPartitionDownloadAuditRepository,
@@ -88,6 +90,7 @@ import {
 export interface ApiServerOptions {
   enterpriseWorkflowService?: EnterpriseWorkflowService;
   storeReviewService?: StoreReviewService;
+  dishCatalogService?: DishCatalogService;
   costCardService?: CostCardService;
   businessAuthorizationService?: BusinessAuthorizationService & { disconnect?(): Promise<void> };
   ledgerPdfDelivery?: LedgerPdfDelivery;
@@ -125,6 +128,7 @@ export interface ApiServerContext {
   directory: () => ReturnType<typeof createEmployeeDirectoryService>;
   workflows: () => EnterpriseWorkflowService;
   storeReviews: () => StoreReviewService;
+  dishCatalog: () => DishCatalogService;
   costCards: () => CostCardService;
   permissions: () => BusinessAuthorizationService;
   environment: NodeJS.ProcessEnv;
@@ -226,6 +230,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let costCardService = options.costCardService;
   let storeReviewService = options.storeReviewService;
   let storeReviewPrisma: PrismaClient | undefined;
+  let dishCatalogService = options.dishCatalogService;
+  let dishCatalogPrisma: PrismaClient | undefined;
   let uploadAuthorizationAuditRepository = options.uploadAuthorizationAuditRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
@@ -362,6 +368,18 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     return storeReviewService;
   }
 
+  function dishCatalog(): DishCatalogService {
+    if (!dishCatalogService) {
+      const databaseUrl = environment["DATABASE_URL"];
+      if (!databaseUrl) throw new Error("DATABASE_URL is required for dish catalog writes.");
+      dishCatalogPrisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
+      dishCatalogService = createDishCatalogService({
+        repository: createPrismaDishCatalogRepository({ prisma: dishCatalogPrisma })
+      });
+    }
+    return dishCatalogService;
+  }
+
   function costCards(): CostCardService {
     costCardService ??= createCostCardService({
       repository: createPrismaCostCardDirectoryRepository(undefined, environment["DATABASE_URL"]),
@@ -421,6 +439,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     await directoryPrisma?.$disconnect();
     await ledgerPrisma?.$disconnect();
     await storeReviewPrisma?.$disconnect();
+    await dishCatalogPrisma?.$disconnect();
     await documentRepository?.disconnect?.();
     await structuredImportRepository?.disconnect?.();
     await structuredPartitionRepository?.disconnect?.();
@@ -464,6 +483,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     structuredCoverage,
     costCards,
     storeReviews,
+    dishCatalog,
     quarantineCertificates,
     sourceDocuments,
     sourceDocumentDownloads,

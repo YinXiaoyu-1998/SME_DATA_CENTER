@@ -30,7 +30,6 @@ const prisma = vi.hoisted(() => ({
   storageGarbage: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   partitionImportJob: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   vipRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
-  dishCatalogRow: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   importWindowClaim: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   importBatch: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   businessResourceScope: { count: vi.fn(async () => 0) },
@@ -168,12 +167,7 @@ describe("purge-data database target resolution", () => {
       env: { DATABASE_URL: "mysql://user:password@localhost:3307/smedc" }
     });
 
-    for (const rows of [
-      prisma.vipRow,
-      prisma.dishCatalogRow,
-      prisma.deliveryLedgerRow,
-      prisma.supplierCatalogRow
-    ]) {
+    for (const rows of [prisma.vipRow, prisma.deliveryLedgerRow, prisma.supplierCatalogRow]) {
       expect(rows.deleteMany).toHaveBeenCalledWith({});
       expect(rows.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.importBatch.deleteMany.mock.invocationCallOrder[0]!

@@ -70,26 +70,38 @@ describe("structured coverage compiler", () => {
     ]);
   });
 
-  it("compiles snapshot coverage and projects the registry metadata policy", () => {
+  it("compiles current catalog coverage as a row count and last update", () => {
+    const compiled = compileStructuredCoverageQuery({
+      orgId: "org_1",
+      employee: { id: "emp_1", clearance: 3 },
+      dataset: "dish_catalog",
+      businessAuthorization: {
+        sql: "EXISTS (SELECT 1 WHERE ? = ?)",
+        params: ["ent_a", "ent_a"]
+      }
+    });
+
+    expect(compiled.metadataPolicy).toBe("current");
+    expect(compact(compiled.sql)).toBe(
+      "SELECT COUNT(*) AS row_count, MAX(r.updated_at) AS last_updated_at FROM dish_catalog_entries r WHERE r.org_id = ? AND (EXISTS (SELECT 1 WHERE ? = ?))"
+    );
+    expect(compact(compiled.sql)).not.toContain("import_batches");
+    expect(compiled.params).toEqual(["org_1", "ent_a", "ent_a"]);
+  });
+
+  it("fails closed for current catalog coverage without business authorization", () => {
     const compiled = compileStructuredCoverageQuery({
       orgId: "org_1",
       employee: { clearance: 3 },
       dataset: "dish_catalog"
     });
 
-    expect(compiled.metadataPolicy).toBe("snapshot");
-    expect(compact(compiled.sql)).toContain(
-      "ib.start_date, ib.end_date FROM import_batches ib JOIN documents d"
+    expect(compiled.metadataPolicy).toBe("current");
+    expect(compact(compiled.sql)).toBe(
+      "SELECT COUNT(*) AS row_count, MAX(r.updated_at) AS last_updated_at FROM dish_catalog_entries r WHERE r.org_id = ? AND 0 = 1"
     );
-    expect(compiled.params).toEqual([
-      "org_1",
-      "org_1",
-      "dish_catalog",
-      "applied",
-      "structured",
-      "active",
-      3
-    ]);
+    expect(compact(compiled.sql)).not.toContain("confidentiality_level");
+    expect(compiled.params).toEqual(["org_1"]);
   });
 
   it.each([

@@ -28,7 +28,13 @@ import {
   STORE_REVIEW_SOURCES,
   STORE_REVIEW_REPLY_STATUSES,
   parseStoreReviewBatch,
-  parseStoreReviewQuery
+  parseStoreReviewQuery,
+  DISH_CATALOG_LIMITS,
+  DISH_CATALOG_SALE_PRICE_PATTERN,
+  dishCatalogTextSchema,
+  DishCatalogValidationError,
+  isDishCatalogInputField,
+  parseDishCatalogBatch
 } from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -45,6 +51,21 @@ const structuredDataset = z
   .enum(STRUCTURED_DATASETS)
   .describe(
     "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+  );
+const uploadableStructuredDatasets = [
+  "dishes",
+  "business",
+  "vip",
+  "delivery_ledger",
+  "supplier_catalog",
+  "cost_cards",
+  "in_store_orders",
+  "takeaway_orders"
+] as const;
+const uploadStructuredDataset = z
+  .enum(uploadableStructuredDatasets)
+  .describe(
+    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
   );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -446,7 +467,7 @@ const queryStructuredDatasetInputSchema = z
 const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
-    dataset: structuredDataset,
+    dataset: uploadStructuredDataset,
     orderScopeTransition: orderScopeTransitionConfirmationSchema
       .optional()
       .describe(
@@ -476,11 +497,6 @@ const uploadStructuredDatasetInputSchema = z
       .describe(
         "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, or vip."
       ),
-    snapshotDate: z
-      .string()
-      .regex(/^\d{8}$/)
-      .optional()
-      .describe("YYYYMMDD complete snapshot date for dish_catalog."),
     idempotencyKey: z
       .string()
       .min(1)
@@ -512,32 +528,7 @@ const uploadStructuredDatasetInputSchema = z
     const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
 
     switch (metadataPolicy) {
-      case "snapshot":
-        if (!input.snapshotDate) {
-          context.addIssue({
-            code: "custom",
-            message: `${input.dataset} requires snapshotDate.`,
-            path: ["snapshotDate"]
-          });
-        }
-        for (const field of ["startDate", "endDate"] as const) {
-          if (input[field] !== undefined) {
-            context.addIssue({
-              code: "custom",
-              message: `${input.dataset} does not accept ${field}.`,
-              path: [field]
-            });
-          }
-        }
-        return;
       case "window":
-        if (input.snapshotDate !== undefined) {
-          context.addIssue({
-            code: "custom",
-            message: "Window datasets do not accept snapshotDate.",
-            path: ["snapshotDate"]
-          });
-        }
         for (const field of ["startDate", "endDate"] as const) {
           if (!input[field]) {
             context.addIssue({
@@ -550,7 +541,7 @@ const uploadStructuredDatasetInputSchema = z
         return;
       case "derived_receipt":
       case "none":
-        for (const field of ["startDate", "endDate", "snapshotDate"] as const) {
+        for (const field of ["startDate", "endDate"] as const) {
           if (input[field] !== undefined) {
             context.addIssue({
               code: "custom",
@@ -559,6 +550,13 @@ const uploadStructuredDatasetInputSchema = z
             });
           }
         }
+        return;
+      case "current":
+        context.addIssue({
+          code: "custom",
+          message: `${input.dataset} does not accept structured file uploads.`,
+          path: ["dataset"]
+        });
         return;
     }
   });
@@ -857,6 +855,69 @@ export const queryStoreReviewsInputSchema = z
     }
   });
 
+// The shared domain builders own the code-point length and decimal-text rules; the MCP
+// contract only keeps strict structure and field descriptions.
+const dishCatalogRowSchema = z
+  .object({
+    spuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.spuIdChars, { required: true }).describe(
+      "SPU identifier."
+    ),
+    skuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }).describe(
+      "SKU identifier, unique within one batch."
+    ),
+    dishName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.dishNameChars, { required: true }),
+    brandName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.brandNameChars, { required: true }),
+    baseCategoryName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.baseCategoryNameChars, {
+      required: true
+    }),
+    level1CategoryCode: dishCatalogTextSchema(DISH_CATALOG_LIMITS.level1CategoryCodeChars, {
+      required: true
+    }),
+    level2CategoryCode: dishCatalogTextSchema(DISH_CATALOG_LIMITS.level2CategoryCodeChars)
+      .nullable()
+      .optional(),
+    specificationName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.specificationNameChars)
+      .nullable()
+      .optional(),
+    salePrice: z
+      .string()
+      .regex(
+        DISH_CATALOG_SALE_PRICE_PATTERN,
+        "Sale price must be a plain decimal string with at most 14 integer and 6 fractional digits."
+      )
+      .describe("Decimal text; the service canonicalizes it and never rounds."),
+    dishAlias: dishCatalogTextSchema(DISH_CATALOG_LIMITS.dishAliasChars).nullable().optional(),
+    departmentName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.departmentNameChars)
+      .nullable()
+      .optional()
+      .describe(
+        "Exact active department name of the same enterprise; the service resolves it to a stable ID and never creates departments."
+      )
+  })
+  .strict();
+export const upsertDishCatalogInputSchema = z
+  .object({
+    enterpriseName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.enterpriseNameChars, {
+      required: true
+    }).describe("Exact registered enterprise name of the current organization."),
+    rows: z
+      .array(dishCatalogRowSchema)
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe(
+        "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries per batch."
+      ),
+    removeSkuIds: z
+      .array(dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }))
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe("SKUs to permanently delete; removing an absent SKU is a no-op."),
+    sourceFileName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.sourceFileNameChars)
+      .optional()
+      .describe("Optional source file name for the audit record only; the server reads no file.")
+  })
+  .strict();
+
 const businessDirectoryFields = { name: exactBusinessName, retired: z.boolean().optional() };
 const evidenceCategoryFields = {
   ownerships: z
@@ -984,6 +1045,7 @@ const permissionReadNames = new Set<keyof PermissionMcpInputs>([
 export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_order_scope_transition",
   "upsert_store_reviews",
+  "upsert_dish_catalog",
   "query_store_reviews",
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -1119,7 +1181,9 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       name,
       title: name.replaceAll("_", " "),
       description:
-        "Access the current organization employee and formal directory using a controlled operation. Requires launcher 0.18.0 or later.",
+        name === "manage_employee_directory"
+          ? "Access the current organization employee and formal directory using a controlled operation. Department names are unique within the enterprise, including retired departments: creating or renaming to an existing name fails with DIRECTORY_DUPLICATE_NAME, and names with leading or trailing whitespace are rejected. Requires launcher 0.18.0 or later."
+          : "Access the current organization employee and formal directory using a controlled operation. Requires launcher 0.18.0 or later.",
       inputSchema: DIRECTORY_MCP_INPUT_SCHEMAS[name],
       inputFields: [
         {
@@ -1289,7 +1353,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "describe_structured_dataset_coverage",
     title: "Describe SMEDC structured dataset coverage",
     description:
-      "Inspect applied source windows or snapshots you can read for a structured dataset. Use this to check source coverage before analysis. For cost cards it returns catalog counts and source IDs.",
+      "Inspect the currently readable coverage of one structured dataset before analysis. Window datasets return applied source windows; dish_catalog returns its current-state row count and last update; cost cards return catalog counts and source IDs.",
     inputSchema: describeStructuredDatasetCoverageInputSchema,
     inputFields: [
       {
@@ -1314,7 +1378,8 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     resultShape: [
       "dataset",
       "metadataPolicy",
-      "sources[]: readable applied source windows or snapshots",
+      "window datasets: sources[]: readable applied source windows",
+      "dish_catalog: metadataPolicy: current, rowCount, lastUpdatedAt",
       "cost_cards: accessMode: catalog_query, cardCount, totalItemRowCount, sources[]: { sourceDocumentId, importBatchId, cardCount, totalItemRowCount }"
     ]
   }),
@@ -1642,6 +1707,37 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }
   }),
   defineToolContract({
+    name: "upsert_dish_catalog",
+    title: "Upsert dish catalog",
+    description:
+      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Send only changed rows plus explicit removeSkuIds; rows and removals total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted nullable row fields clear the stored value, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
+    inputSchema: upsertDishCatalogInputSchema,
+    inputFields: [
+      {
+        name: "enterpriseName",
+        required: true,
+        description: "Exact registered enterprise name of the current organization."
+      },
+      {
+        name: "rows",
+        required: false,
+        description: "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries."
+      },
+      {
+        name: "removeSkuIds",
+        required: false,
+        description: "SKUs to permanently delete; removing an absent SKU is a no-op."
+      },
+      {
+        name: "sourceFileName",
+        required: false,
+        description: "Optional audit-only source file name; the server reads no file."
+      }
+    ],
+    resultShape: ["received, created, updated, unchanged, removed"],
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
     name: "query_store_reviews",
     title: "Query store reviews",
     description:
@@ -1786,18 +1882,81 @@ export function apiErrorToolResult(body: unknown): McpJsonToolResult {
   if (isApiErrorBody(body)) {
     const defaultRetryable = defaultApiErrorRetryable(body.error.code);
 
-    return errorToolResult(body.error.code, body.error.message, undefined, {
-      retryable:
-        defaultRetryable && typeof body.error.retryable === "boolean"
-          ? body.error.retryable
-          : defaultRetryable,
-      requestId: safeRequestId(body.error.requestId)
-    });
+    return errorToolResult(
+      body.error.code,
+      body.error.message,
+      safeApiErrorDetails(body.error.details),
+      {
+        retryable:
+          defaultRetryable && typeof body.error.retryable === "boolean"
+            ? body.error.retryable
+            : defaultRetryable,
+        requestId: safeRequestId(body.error.requestId)
+      }
+    );
   }
 
   return errorToolResult("SMEDC_API_ERROR", "SMEDC API request failed.", undefined, {
     retryable: true
   });
+}
+
+const SAFE_API_ERROR_DETAIL_KEYS = new Set(["field", "rowIndexes"]);
+
+/**
+ * API errors stay opaque by default. Dish catalog validation returns only bounded public row
+ * indexes and fixed field names, so preserve exactly those keys and drop anything else.
+ */
+function safeApiErrorDetails(
+  value: unknown
+): { field?: string; rowIndexes?: number[] } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+
+  if (keys.length === 0 || keys.some((key) => !SAFE_API_ERROR_DETAIL_KEYS.has(key)))
+    return undefined;
+
+  const details: { field?: string; rowIndexes?: number[] } = {};
+
+  if (typeof record["field"] === "string" && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(record["field"]))
+    details.field = record["field"];
+
+  if (Array.isArray(record["rowIndexes"])) {
+    const rowIndexes = [
+      ...new Set(
+        record["rowIndexes"].filter(
+          (index): index is number => Number.isInteger(index) && index >= 0
+        )
+      )
+    ]
+      .sort((left, right) => left - right)
+      .slice(0, DISH_CATALOG_LIMITS.maxRowIndexes);
+    if (rowIndexes.length) details.rowIndexes = rowIndexes;
+  }
+
+  return Object.keys(details).length ? details : undefined;
+}
+
+/** Keep typed catalog errors ahead of the SDK's generic input validation. */
+export function dishCatalogValidationErrorToolResult(
+  input: unknown
+): McpJsonToolResult | undefined {
+  try {
+    parseDishCatalogBatch(input);
+  } catch (error) {
+    if (!(error instanceof DishCatalogValidationError)) throw error;
+    const { field, rowIndexes } = error.details;
+    const details = safeApiErrorDetails({
+      ...(field !== undefined && isDishCatalogInputField(field) ? { field } : {}),
+      ...(rowIndexes === undefined ? {} : { rowIndexes })
+    });
+    return errorToolResult(error.code, "Invalid dish catalog input.", details, {
+      retryable: false
+    });
+  }
+  return undefined;
 }
 
 export function validationErrorToolResult(details: unknown): McpJsonToolResult {
@@ -1830,6 +1989,7 @@ interface ApiErrorBody {
     message: string;
     retryable?: unknown;
     requestId?: unknown;
+    details?: unknown;
   };
 }
 

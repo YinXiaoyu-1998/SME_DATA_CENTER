@@ -59,6 +59,7 @@ function context(
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
     storeReviews: unexpectedDependency,
+    dishCatalog: unexpectedDependency,
     costCards: unexpectedDependency,
     skills: unexpectedDependency,
     ledgerPdfs: () => {
@@ -447,6 +448,110 @@ it("uses current granted category rules and rejects cursors after authorization 
     expect(compiledQueries).toHaveLength(1);
   } finally {
     await app.close();
+  }
+});
+
+it("anchors dish catalog reads to the per-enterprise catalog resource in query and coverage", async () => {
+  const compiledQueries: Parameters<StructuredQueryRepository["execute"]>[0][] = [];
+  const coverageQueries: Parameters<StructuredCoverageRepository["list"]>[0][] = [];
+  const dependencies = context(
+    {
+      execute: async (compiled) => {
+        compiledQueries.push(compiled);
+        return { rows: [{ sku_id: "sku_1" }], hasMore: false };
+      }
+    },
+    {
+      list: async (compiled) => {
+        coverageQueries.push(compiled);
+        return {
+          dataset: compiled.dataset,
+          metadataPolicy: "current",
+          rowCount: 3,
+          lastUpdatedAt: "2026-11-01T00:00:00.000Z"
+        };
+      }
+    }
+  );
+  const service = legacyPermissionService(employee);
+  service.current = async () => ({
+    orgId: employee.orgId,
+    userAccountId: employee.id,
+    role: "employee",
+    disabled: false,
+    clearance: 3,
+    mode: "enabled",
+    authorizationVersion: "1",
+    categories: [
+      {
+        id: "catalog-id",
+        key: "dish_catalog",
+        kind: "fixed",
+        confidentialityLevel: 0,
+        ownerships: ["group"],
+        requiredDimensionIds: []
+      },
+      {
+        id: "vip-id",
+        key: "vip",
+        kind: "fixed",
+        confidentialityLevel: 0,
+        ownerships: ["group"],
+        requiredDimensionIds: []
+      }
+    ],
+    grants: [
+      {
+        id: "grant",
+        orgId: employee.orgId,
+        enterpriseKey: "synthetic",
+        categoryIds: ["catalog-id", "vip-id"],
+        ownership: "group",
+        dimensions: {}
+      }
+    ]
+  });
+  dependencies.permissions = () => service;
+  const scopedApp = createApp(dependencies);
+  try {
+    const headers = { authorization: "Bearer valid" };
+    const catalogQuery = await scopedApp.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers,
+      payload: { dataset: "dish_catalog", select: ["sku_id"], page: { limit: 1 } }
+    });
+    expect(catalogQuery.statusCode).toBe(200);
+    await scopedApp.inject({
+      method: "POST",
+      url: "/v1/structured/query",
+      headers,
+      payload: { dataset: "vip", select: ["member_id"], page: { limit: 1 } }
+    });
+
+    expect(compiledQueries[0]!.sql).toContain("CONCAT('dish-catalog:', r.enterprise_key)");
+    expect(compiledQueries[0]!.sql).not.toContain("d.confidentiality_level");
+    expect(compiledQueries[1]!.sql).toContain("EXISTS (SELECT 1 FROM business_resources");
+    expect(compiledQueries[1]!.sql).not.toContain("CONCAT('dish-catalog:'");
+
+    const coverage = await scopedApp.inject({
+      method: "GET",
+      url: "/v1/structured/datasets/dish_catalog/coverage",
+      headers
+    });
+    expect(coverage.statusCode).toBe(200);
+    expect(coverage.json()).toEqual({
+      dataset: "dish_catalog",
+      metadataPolicy: "current",
+      rowCount: 3,
+      lastUpdatedAt: "2026-11-01T00:00:00.000Z"
+    });
+    expect(coverageQueries).toHaveLength(1);
+    expect(coverageQueries[0]!.metadataPolicy).toBe("current");
+    expect(coverageQueries[0]!.sql).toContain("CONCAT('dish-catalog:', r.enterprise_key)");
+    expect(coverageQueries[0]!.sql).not.toContain("d.confidentiality_level");
+  } finally {
+    await scopedApp.close();
   }
 });
 

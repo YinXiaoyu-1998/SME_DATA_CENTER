@@ -25,12 +25,34 @@ export interface StructuredFieldCapabilities {
 }
 
 type StructuredRowTableName =
-  "vip_rows" | "dish_catalog_rows" | "delivery_ledger_rows" | "supplier_catalog_rows";
+  "vip_rows" | "dish_catalog_entries" | "delivery_ledger_rows" | "supplier_catalog_rows";
 
-export interface StructuredFieldStorageMapping {
-  table: StructuredRowTableName;
-  column: "payload" | "source_document_id";
-  jsonPath?: string;
+export type StructuredFieldStorageMapping =
+  | {
+      table: StructuredRowTableName;
+      column: "payload";
+      jsonPath: string;
+    }
+  | {
+      table: StructuredRowTableName;
+      column: "source_document_id" | "department_id" | "created_at" | "updated_at";
+    }
+  | {
+      table: "business_departments";
+      column: "name";
+      join: StructuredJoinId;
+    };
+
+export type StructuredJoinId = "department";
+
+/** Fixed developer-registered join. Client query bodies never select a table or column. */
+export interface StructuredJoinRegistry {
+  id: StructuredJoinId;
+  type: "left";
+  table: "business_departments";
+  alias: string;
+  localColumn: "department_id";
+  foreignColumn: "department_id";
 }
 
 export interface StructuredFieldRegistryEntry {
@@ -39,7 +61,7 @@ export interface StructuredFieldRegistryEntry {
   aliases: string[];
   type: StructuredFieldType;
   nullable: boolean;
-  inputSource: "file" | "upload_metadata" | "derived" | "dynamic_lookup";
+  inputSource: "file" | "upload_metadata" | "derived" | "dynamic_lookup" | "api";
   sensitivity: "normal" | "business_metric";
   lifecycle: "active";
   volatility: "stable_export" | "review_on_export_change";
@@ -58,9 +80,11 @@ export interface StructuredDatasetRegistry {
   dataset: StructuredDatasetName;
   accessMode: "partition_extract" | "row_query" | "catalog_query";
   rowTable?: StructuredRowTableName;
-  sheetPolicy: "strict_all_nonempty" | "import_matching_visible" | "cost_card_candidates";
-  metadataPolicy: "window" | "snapshot" | "derived_receipt" | "none";
-  datePolicy?: "row_business_date" | "snapshot_metadata";
+  sheetPolicy: "strict_all_nonempty" | "import_matching_visible" | "cost_card_candidates" | "none";
+  metadataPolicy: "window" | "derived_receipt" | "none" | "current";
+  datePolicy?: "row_business_date";
+  joins?: readonly StructuredJoinRegistry[];
+  defaultSort?: { field: string; direction: "asc" | "desc" };
   fields: StructuredFieldRegistryEntry[];
   presentation?: StructuredPresentationProfile;
 }
@@ -296,31 +320,242 @@ const BUSINESS_SOURCE_COLUMNS = [
   "营业天数"
 ] as const;
 
-const DISH_CATALOG_SOURCE_COLUMNS = [
-  "菜品编码（SPUID）",
-  "菜品编码（SKUID）",
-  "菜品名称",
-  "品牌",
-  "基础分类",
-  "一级分类编码",
-  "二级分类编码",
-  "规格名称",
-  "售卖价",
-  "菜品别名"
-] as const;
+const DISH_CATALOG_CURRENT_ROW_TABLE = "dish_catalog_entries" as const;
 
-const DISH_CATALOG_CANONICAL_OVERRIDES: Record<string, string> = {
-  "菜品编码（SPUID）": "spu_id",
-  "菜品编码（SKUID）": "sku_id",
-  菜品名称: "dish_name",
-  品牌: "brand_name",
-  基础分类: "base_category_name",
-  一级分类编码: "level_1_category_code",
-  二级分类编码: "level_2_category_code",
-  规格名称: "specification_name",
-  售卖价: "sale_price",
-  菜品别名: "dish_alias"
+/** The only fixed lookup a current dataset may use; never client-selectable. */
+const DISH_CATALOG_DEPARTMENT_JOIN: StructuredJoinRegistry = Object.freeze({
+  id: "department",
+  type: "left",
+  table: "business_departments",
+  alias: "department",
+  localColumn: "department_id",
+  foreignColumn: "department_id"
+});
+
+const CATALOG_DIMENSION_CAPABILITIES: StructuredFieldCapabilities = {
+  filter: true,
+  sort: true,
+  group: true,
+  aggregate: false
 };
+const CATALOG_MEASURE_CAPABILITIES: StructuredFieldCapabilities = {
+  filter: true,
+  sort: true,
+  group: false,
+  aggregate: true
+};
+const CATALOG_METADATA_CAPABILITIES: StructuredFieldCapabilities = {
+  filter: true,
+  sort: true,
+  group: true,
+  aggregate: true
+};
+
+function createDishCatalogApiField(input: {
+  canonicalName: string;
+  sourceColumn: string;
+  nullable: boolean;
+  maxLength: number;
+  defaultReturn: boolean;
+  capabilities: StructuredFieldCapabilities;
+}): StructuredFieldRegistryEntry {
+  return {
+    canonicalName: input.canonicalName,
+    sourceColumn: input.sourceColumn,
+    aliases: [],
+    type: "string",
+    nullable: input.nullable,
+    inputSource: "api",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: input.defaultReturn,
+    operators: operatorsForType("string"),
+    capabilities: input.capabilities,
+    indexStatus: "planned",
+    valueLimits: { maxLength: input.maxLength },
+    storage: {
+      table: DISH_CATALOG_CURRENT_ROW_TABLE,
+      column: "payload",
+      jsonPath: `$.${input.canonicalName}`
+    }
+  };
+}
+
+const DISH_CATALOG_FIELDS: StructuredFieldRegistryEntry[] = [
+  createDishCatalogApiField({
+    canonicalName: "spu_id",
+    sourceColumn: "菜品编码（SPUID）",
+    nullable: false,
+    maxLength: 128,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "sku_id",
+    sourceColumn: "菜品编码（SKUID）",
+    nullable: false,
+    maxLength: 128,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "dish_name",
+    sourceColumn: "菜品名称",
+    nullable: false,
+    maxLength: 512,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "brand_name",
+    sourceColumn: "品牌",
+    nullable: false,
+    maxLength: 255,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "base_category_name",
+    sourceColumn: "基础分类",
+    nullable: false,
+    maxLength: 255,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "level_1_category_code",
+    sourceColumn: "一级分类编码",
+    nullable: false,
+    maxLength: 128,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "level_2_category_code",
+    sourceColumn: "二级分类编码",
+    nullable: true,
+    maxLength: 128,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  createDishCatalogApiField({
+    canonicalName: "specification_name",
+    sourceColumn: "规格名称",
+    nullable: true,
+    maxLength: 255,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  {
+    canonicalName: "sale_price",
+    sourceColumn: "售卖价",
+    aliases: [],
+    type: "decimal",
+    nullable: false,
+    inputSource: "api",
+    sensitivity: "business_metric",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: true,
+    operators: operatorsForType("decimal"),
+    capabilities: CATALOG_MEASURE_CAPABILITIES,
+    indexStatus: "planned",
+    valueLimits: { decimalScale: 6 },
+    storage: {
+      table: DISH_CATALOG_CURRENT_ROW_TABLE,
+      column: "payload",
+      jsonPath: "$.sale_price"
+    }
+  },
+  createDishCatalogApiField({
+    canonicalName: "dish_alias",
+    sourceColumn: "菜品别名",
+    nullable: true,
+    maxLength: 512,
+    defaultReturn: true,
+    capabilities: CATALOG_DIMENSION_CAPABILITIES
+  }),
+  {
+    canonicalName: "department_id",
+    sourceColumn: "department_id",
+    aliases: [],
+    type: "string",
+    nullable: true,
+    inputSource: "derived",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: false,
+    operators: operatorsForType("string"),
+    capabilities: CATALOG_METADATA_CAPABILITIES,
+    indexStatus: "planned",
+    valueLimits: { maxLength: 36 },
+    storage: {
+      table: DISH_CATALOG_CURRENT_ROW_TABLE,
+      column: "department_id"
+    }
+  },
+  {
+    canonicalName: "department_name",
+    sourceColumn: "department_name",
+    aliases: [],
+    type: "string",
+    nullable: true,
+    inputSource: "derived",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: true,
+    operators: operatorsForType("string"),
+    capabilities: CATALOG_METADATA_CAPABILITIES,
+    indexStatus: "planned",
+    valueLimits: { maxLength: 255 },
+    storage: {
+      table: "business_departments",
+      column: "name",
+      join: "department"
+    }
+  },
+  {
+    canonicalName: "created_at",
+    sourceColumn: "created_at",
+    aliases: [],
+    type: "date_time",
+    nullable: false,
+    inputSource: "derived",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: false,
+    operators: operatorsForType("date_time"),
+    capabilities: CATALOG_METADATA_CAPABILITIES,
+    indexStatus: "planned",
+    storage: {
+      table: DISH_CATALOG_CURRENT_ROW_TABLE,
+      column: "created_at"
+    }
+  },
+  {
+    canonicalName: "updated_at",
+    sourceColumn: "updated_at",
+    aliases: [],
+    type: "date_time",
+    nullable: false,
+    inputSource: "derived",
+    sensitivity: "normal",
+    lifecycle: "active",
+    volatility: "stable_export",
+    defaultReturn: true,
+    operators: operatorsForType("date_time"),
+    capabilities: CATALOG_METADATA_CAPABILITIES,
+    indexStatus: "planned",
+    storage: {
+      table: DISH_CATALOG_CURRENT_ROW_TABLE,
+      column: "updated_at"
+    }
+  }
+];
 
 const SUPPLIER_CATALOG_COLUMNS = [
   ["供应商编码", "supplier_code"],
@@ -982,25 +1217,16 @@ export const STRUCTURED_DATASET_REGISTRIES = {
     sourceColumns: VIP_SOURCE_COLUMNS,
     canonicalOverrides: VIP_CANONICAL_OVERRIDES
   }),
-  dish_catalog: createRegistry({
+  dish_catalog: {
     dataset: "dish_catalog",
     accessMode: "row_query",
-    rowTable: "dish_catalog_rows",
-    sheetPolicy: "import_matching_visible",
-    metadataPolicy: "snapshot",
-    datePolicy: "snapshot_metadata",
-    sourceColumns: DISH_CATALOG_SOURCE_COLUMNS,
-    canonicalOverrides: DISH_CATALOG_CANONICAL_OVERRIDES,
-    nullableCanonicalNames: new Set(["level_2_category_code", "specification_name", "dish_alias"]),
-    metadataFields: [
-      {
-        canonicalName: "snapshot_date",
-        sourceColumn: "snapshot_date",
-        type: "date",
-        nullable: false
-      }
-    ]
-  }),
+    rowTable: "dish_catalog_entries",
+    sheetPolicy: "none",
+    metadataPolicy: "current",
+    joins: [DISH_CATALOG_DEPARTMENT_JOIN],
+    defaultSort: { field: "sku_id", direction: "asc" },
+    fields: DISH_CATALOG_FIELDS
+  },
   delivery_ledger: {
     dataset: "delivery_ledger",
     accessMode: "row_query",
@@ -1140,12 +1366,6 @@ export function resolveStructuredHeaders(
   const fields: Array<{ canonicalName: string; sourceColumnIndex: number }> = [];
 
   if (
-    dataset === "dish_catalog" &&
-    (headers.length !== fileFields.length || headers.some((header) => !normalizeHeader(header)))
-  ) {
-    errors.push({ code: "UNKNOWN_COLUMN", column: "" });
-  }
-  if (
     (dataset === "supplier_catalog" ||
       dataset === "cost_cards" ||
       isOrderPartitionDataset(dataset)) &&
@@ -1273,9 +1493,7 @@ function createRegistry(input: {
           lifecycle: "active" as const,
           volatility: "review_on_export_change" as const,
           defaultReturn:
-            input.dataset === "dish_catalog" ||
-            index < 20 ||
-            ["business_date", "matched_product_name"].includes(canonicalName),
+            index < 20 || ["business_date", "matched_product_name"].includes(canonicalName),
           operators: operatorsForType(type),
           capabilities: {
             filter: true,
@@ -1406,10 +1624,6 @@ function inferFieldType(dataset: StructuredDatasetName, sourceColumn: string): S
       return "decimal";
     }
     return "string";
-  }
-
-  if (dataset === "dish_catalog") {
-    return sourceColumn === "售卖价" ? "decimal" : "string";
   }
 
   if (dataset === "supplier_catalog") {

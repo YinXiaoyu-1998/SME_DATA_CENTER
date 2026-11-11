@@ -149,6 +149,8 @@ describe("deploy-staging image build", () => {
 });
 
 describe("deploy-staging remote scripts", () => {
+  const catalogProbe = '[[ "$*" == *dish_catalog_entries* ]]';
+
   it("keeps the standalone rollback probe compatible with the staging RDS text protocol", () => {
     expect(ORDER_SCOPE_ROLLBACK_PROBE).toMatch(
       /new PrismaMariaDb\(process\.env\.DATABASE_URL,\s*\{[\s\S]*?useTextProtocol:\s*true/
@@ -160,10 +162,19 @@ describe("deploy-staging remote scripts", () => {
     { label: "", used: true, allowed: false, runningIds: "" },
     { label: "", used: false, allowed: true, runningIds: "aaaaaaaaaaaa" },
     { label: "1", used: true, allowed: true, runningIds: "aaaaaaaaaaaa" },
-    { label: "", used: true, allowed: false, runningIds: "aaaaaaaaaaaa", oldTag: true }
+    { label: "", used: true, allowed: false, runningIds: "aaaaaaaaaaaa", oldTag: true },
+    { label: "1", used: false, allowed: false, runningIds: "aaaaaaaaaaaa", catalogBlocked: true },
+    {
+      label: "1",
+      used: false,
+      allowed: false,
+      runningIds: "aaaaaaaaaaaa",
+      catalogBlocked: true,
+      oldTag: true
+    }
   ])(
     "guards manual rollback before mutation ($label, used=$used)",
-    async ({ label, used, allowed, runningIds, oldTag }) => {
+    async ({ label, used, allowed, runningIds, oldTag, catalogBlocked }) => {
       const root = await mkdtemp(join(tmpdir(), "smedc-scope-rollback-"));
       const bin = join(root, "bin");
       const log = join(root, "commands");
@@ -181,7 +192,8 @@ describe("deploy-staging remote scripts", () => {
         );
         const commands = {
           docker: `printf '%s\\n' "$*" >> "$GUARD_LOG"
-if [ "$1:$2" = "image:inspect" ]; then printf '%s\\n' "$TARGET_LABEL"; fi
+if [ "$1:$2" = "image:inspect" ] && [[ "$*" == *order-scope-contract* ]]; then printf '%s\\n' "$TARGET_LABEL"; fi
+if ${catalogProbe}; then printf '%s\\n' "$CATALOG_SCHEMA"; exit 0; fi
 if [[ "$*" == *"ps --status running -q api worker"* ]]; then printf '%s\\n' "$RUNNING_IDS"; fi
 for arg in "$@"; do
   if [ "$arg" = "--input-type=module" ] && [ "$SCOPE_USED" = "true" ]; then exit 42; fi
@@ -213,6 +225,7 @@ cp "\${files[0]}" "\${files[1]}"`,
               GUARD_LOG: log,
               TARGET_LABEL: label,
               SCOPE_USED: String(used),
+              CATALOG_SCHEMA: catalogBlocked ? "current" : "legacy",
               RUNNING_IDS: runningIds
             }
           }
@@ -222,13 +235,13 @@ cp "\${files[0]}" "\${files[1]}"`,
         if (!allowed) {
           expect(await readFile(join(root, "runtime.env"), "utf8")).toBe(original);
           expect(await readFile(join(root, "docker-compose.yml"), "utf8")).toBe("current compose");
-          if (runningIds) {
+          if (runningIds && !catalogBlocked) {
             expect(trace).toContain("stop aaaaaaaaaaaa");
             expect(trace).toContain("start aaaaaaaaaaaa");
             expect(trace.indexOf("stop aaaaaaaaaaaa")).toBeLessThan(
-              trace.indexOf("--input-type=module")
+              trace.indexOf("enterprise_integrations")
             );
-            expect(trace.indexOf("--input-type=module")).toBeLessThan(
+            expect(trace.indexOf("enterprise_integrations")).toBeLessThan(
               trace.indexOf("start aaaaaaaaaaaa")
             );
           } else {
@@ -346,15 +359,21 @@ cp "\${files[0]}" "\${files[1]}"
     }
   });
 
-  it.each([false, true])(
-    "guards automatic restoration of a two-image release after rollout failure (scope in use=%s)",
-    async (scopeUsed) => {
+  it.each([
+    { scopeUsed: false, catalogCutover: false, duplicates: false },
+    { scopeUsed: true, catalogCutover: false, duplicates: false },
+    { scopeUsed: false, catalogCutover: true, duplicates: false },
+    { scopeUsed: false, catalogCutover: true, duplicates: true }
+  ])(
+    "guards automatic restoration after rollout failure (scope=$scopeUsed, cutover=$catalogCutover, duplicates=$duplicates)",
+    async ({ scopeUsed, catalogCutover, duplicates }) => {
       const root = await mkdtemp(join(tmpdir(), "smedc-rollout-"));
       const fakeBin = join(root, "bin");
       const runtimeFile = join(root, "runtime.env");
       const composeFile = join(root, "docker-compose.yml");
       const composeNext = join(root, "docker-compose.yml.next");
       const dockerState = join(root, "docker-count");
+      const dockerLog = join(root, "docker-log");
       const oldApi = "registry.example.com/smedc/api:aaaaaaaaaaaa";
       const oldWorker = "registry.example.com/smedc/worker:aaaaaaaaaaaa";
       const nextApi = "registry.example.com/smedc/api:bbbbbbbbbbbb";
@@ -377,8 +396,20 @@ count=0
 if [ -f "$FAKE_DOCKER_STATE" ]; then count="$(<"$FAKE_DOCKER_STATE")"; fi
 count=$((count + 1))
 printf '%s\n' "$count" > "$FAKE_DOCKER_STATE"
-if [[ "$*" == *"--profile release pull api worker release-ops"* ]]; then exit 42; fi
-if [ "$1:$2" = "image:inspect" ] && [[ "$*" == *"bbbbbbbbbbbb"* ]]; then printf '%s\n' "1"; fi
+printf '%s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+if [ "$1:$2" = "image:inspect" ] && [[ "$*" == *"bbbbbbbbbbbb"* ]]; then
+  if [[ "$*" == *order-scope-contract* ]]; then printf '%s\\n' "1"; fi
+  if [[ "$*" == *dish-catalog-schema* ]] && [ "$CATALOG_CUTOVER" = "true" ]; then printf '%s\\n' "current"; fi
+fi
+if ${catalogProbe}; then
+  if [ -f "$FAKE_DOCKER_STATE-migrated" ]; then printf '%s\\n' "current"
+  else printf '%s\\n' "legacy"; fi
+  if [[ "$*" == *" preflight" ]] && [ "$DUPLICATE_DEPARTMENTS" = "true" ]; then exit 42; fi
+  exit 0
+fi
+if [[ "$*" == *"migrate deploy"* ]]; then touch "$FAKE_DOCKER_STATE-migrated"; fi
+if [[ "$*" == *"up -d --remove-orphans"* ]]; then exit 42; fi
+if [[ "$*" == *"--profile release pull api worker release-ops"* ]] && [ "$CATALOG_CUTOVER" = "false" ]; then exit 42; fi
 if [[ "$*" == *"ps --status running -q api worker"* ]]; then printf '%s\n' "aaaaaaaaaaaa"; fi
 for arg in "$@"; do
   if [ "$arg" = "--input-type=module" ] && [ "$SCOPE_USED" = "true" ]; then exit 43; fi
@@ -414,26 +445,43 @@ cp "\${files[0]}" "\${files[1]}"
         );
 
         const rollout = remoteScriptsForValidation()[0]!.replaceAll("/opt/smedc", root);
-        const result = spawnSync("bash", ["-s", "--", nextApi, nextWorker, nextOps, "0"], {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            FAKE_DOCKER_STATE: dockerState,
-            SCOPE_USED: String(scopeUsed),
-            PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
-          },
-          input: rollout
-        });
+        const result = spawnSync(
+          "bash",
+          ["-s", "--", nextApi, nextWorker, nextOps, catalogCutover ? "1" : "0"],
+          {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              FAKE_DOCKER_STATE: dockerState,
+              FAKE_DOCKER_LOG: dockerLog,
+              SCOPE_USED: String(scopeUsed),
+              CATALOG_CUTOVER: String(catalogCutover),
+              DUPLICATE_DEPARTMENTS: String(duplicates),
+              PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`
+            },
+            input: rollout
+          }
+        );
 
         expect(result.status, result.stderr).toBe(42);
+        const refused = scopeUsed || (catalogCutover && !duplicates);
+        if (catalogCutover) {
+          const trace = await readFile(dockerLog, "utf8");
+          expect(trace).toContain("stop api worker");
+          if (duplicates) expect(trace).not.toContain("migrate deploy");
+          else {
+            expect(trace.indexOf("stop api worker")).toBeLessThan(trace.indexOf("migrate deploy"));
+            expect(trace).not.toContain("up -d api worker");
+          }
+        }
         expect(await readFile(composeFile, "utf8")).toBe(
-          scopeUsed ? "three-image-compose\n" : "legacy-compose\n"
+          refused ? "three-image-compose\n" : "legacy-compose\n"
         );
         expect(await readFile(runtimeFile, "utf8")).toContain(
-          `SMEDC_API_IMAGE=${scopeUsed ? nextApi : oldApi}\n`
+          `SMEDC_API_IMAGE=${refused ? nextApi : oldApi}\n`
         );
         expect(await readFile(runtimeFile, "utf8")).toContain(
-          `SMEDC_WORKER_IMAGE=${scopeUsed ? nextWorker : oldWorker}\n`
+          `SMEDC_WORKER_IMAGE=${refused ? nextWorker : oldWorker}\n`
         );
         expect(await readFile(runtimeFile, "utf8")).toContain(
           `SMEDC_RELEASE_OPS_IMAGE=${nextOps}\n`
@@ -460,7 +508,7 @@ cp "\${files[0]}" "\${files[1]}"
       await writeFile(join(root, "docker-compose.yml"), "old compose");
       await writeFile(join(root, "docker-compose.yml.next"), "new compose");
       const commands: Record<string, string> = {
-        docker: "exit 0",
+        docker: `if ${catalogProbe}; then printf '%s\\n' "legacy"; fi`,
         install: `if [ "$1" = "-d" ]; then mkdir -p "\${@: -1}"; exit 0; fi
 files=()
 while [ "$#" -gt 0 ]; do

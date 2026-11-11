@@ -20,7 +20,6 @@ const inventory = {
   storageGarbageIds: ["garbage-1"],
   quarantineCertificateIds: ["certificate-1"],
   vipRowIds: ["vip-1"],
-  dishCatalogRowIds: ["catalog-1"],
   uploadAuditLogIds: ["audit-1"],
   storageObjectKeys: ["uploads/doc-1.csv"],
   qdrantPoints: [{ collection: "evidence", pointId: "point-1" }]
@@ -127,7 +126,6 @@ describe("staging upload-domain cleanup support", () => {
       "StorageGarbage",
       "QuarantineCertificate",
       "VipRow",
-      "DishCatalogRow",
       "ImportBatch",
       "Document"
     ]);

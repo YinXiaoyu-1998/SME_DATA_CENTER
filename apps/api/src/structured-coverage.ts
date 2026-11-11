@@ -21,6 +21,11 @@ interface StructuredCoverageRow {
   end_date: Date | string | null;
 }
 
+interface StructuredCurrentCoverageRow {
+  row_count: bigint | number;
+  last_updated_at: Date | string | null;
+}
+
 function requireDatabaseUrl(): string {
   const databaseUrl = process.env["DATABASE_URL"];
 
@@ -41,48 +46,62 @@ export function createPrismaStructuredCoverageRepository(
 
   return {
     async list(compiled) {
-      if (!compiled.sql) {
+      // Current-state datasets collapse to one scalar row: how many rows and when the
+      // content last actually changed. Authorization is already bound into the SQL.
+      if (compiled.metadataPolicy === "current") {
+        if (!compiled.sql) {
+          return {
+            dataset: compiled.dataset,
+            metadataPolicy: "current",
+            rowCount: 0,
+            lastUpdatedAt: null
+          };
+        }
+
+        const rows = (await prisma.$queryRawUnsafe(
+          compiled.sql,
+          ...compiled.params
+        )) as StructuredCurrentCoverageRow[];
+        const row = rows[0];
+
+        return {
+          dataset: compiled.dataset,
+          metadataPolicy: "current",
+          rowCount: formatRowCount(row?.row_count ?? 0),
+          lastUpdatedAt: row?.last_updated_at ? formatDateTime(row.last_updated_at) : null
+        };
+      }
+
+      if (compiled.metadataPolicy === "derived_receipt" || compiled.metadataPolicy === "none") {
         return {
           dataset: compiled.dataset,
           metadataPolicy: compiled.metadataPolicy,
           sources: []
-        } as StructuredDatasetCoverage;
+        };
+      }
+
+      if (!compiled.sql) {
+        return {
+          dataset: compiled.dataset,
+          metadataPolicy: "window",
+          sources: []
+        };
       }
 
       const rows = (await prisma.$queryRawUnsafe(
         compiled.sql,
         ...compiled.params
       )) as StructuredCoverageRow[];
-      const sources = rows.map(baseCoverageSource);
-
-      if (compiled.metadataPolicy === "snapshot") {
-        return {
-          dataset: compiled.dataset,
-          metadataPolicy: compiled.metadataPolicy,
-          sources: rows.map((row, index) => ({
-            ...sources[index]!,
-            snapshotDate: formatDateOnly(row.start_date)
-          }))
-        };
-      }
-
-      if (compiled.metadataPolicy === "window") {
-        return {
-          dataset: compiled.dataset,
-          metadataPolicy: compiled.metadataPolicy,
-          sources: rows.map((row, index) => ({
-            ...sources[index]!,
-            startDate: formatDateOnly(row.start_date),
-            endDate: formatDateOnly(row.end_date)
-          }))
-        };
-      }
 
       return {
         dataset: compiled.dataset,
-        metadataPolicy: compiled.metadataPolicy,
-        sources: []
-      } as StructuredDatasetCoverage;
+        metadataPolicy: "window",
+        sources: rows.map((row) => ({
+          ...baseCoverageSource(row),
+          startDate: formatDateOnly(row.start_date),
+          endDate: formatDateOnly(row.end_date)
+        }))
+      };
     },
     async disconnect() {
       await prisma.$disconnect();

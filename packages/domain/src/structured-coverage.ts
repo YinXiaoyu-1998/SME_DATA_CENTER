@@ -24,8 +24,9 @@ export type StructuredDatasetCoverage =
     }
   | {
       dataset: StructuredDatasetName;
-      metadataPolicy: "snapshot";
-      sources: Array<StructuredCoverageSourceBase & { snapshotDate: string }>;
+      metadataPolicy: "current";
+      rowCount: number;
+      lastUpdatedAt: string | null;
     }
   | {
       dataset: StructuredDatasetName;
@@ -52,6 +53,35 @@ export function compileStructuredCoverageQuery(input: {
     orgId: input.orgId,
     employee: { ...input.employee }
   };
+
+  if (registry.metadataPolicy === "current") {
+    const rowTable = registry.rowTable;
+
+    if (!rowTable) {
+      throw new Error("Current structured dataset is missing its row table.");
+    }
+
+    const params: Array<string | number> = [input.orgId];
+    const clauses = ["WHERE r.org_id = ?"];
+
+    if (input.businessAuthorization) {
+      clauses.push(`AND (${input.businessAuthorization.sql})`);
+      params.push(...input.businessAuthorization.params);
+    } else {
+      clauses.push("AND 0 = 1");
+    }
+
+    return {
+      dataset: registry.dataset,
+      metadataPolicy: "current",
+      sql: `SELECT COUNT(*) AS row_count,
+                 MAX(r.updated_at) AS last_updated_at
+            FROM ${rowTable} r
+           ${clauses.join(" ")}`,
+      params,
+      authorizationScope
+    };
+  }
 
   if (registry.metadataPolicy === "derived_receipt" || registry.metadataPolicy === "none") {
     return {

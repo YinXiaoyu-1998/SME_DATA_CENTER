@@ -8,6 +8,8 @@
 - 当前公共 HTTP/MCP：[API 契约](../implementation/api-contract.md)。
 - 已确认、尚未实现的工作流边界：[ADR 0027](0027-portable-enterprise-workflows.md)；完整实施规格为 [Issue #298](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/298)。
 - 已确认、尚未实现的员工档案与正式门店边界：[ADR 0028](0028-employee-directory-store-identity.md)；完整实施规格为 [Issue #327](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/327)。
+- 菜品目录当前状态与批量写入：[ADR 0029](0029-dish-catalog-current-state.md)，状态为已实现（源码），未部署；实施边界见[实施计划](../implementation/dish-catalog-current-state.md)。
+- 部门名称唯一：[ADR 0030](0030-department-name-uniqueness.md)，状态为已实现（源码），未部署。
 
 ADR 0004/0009/0025 等记录的标签或仅密级读取、不可变文件分类、仅运维管理密级等旧规则已被当前业务授权契约取代。ADR 0020/0021 的早期 MCP/令牌方案不是现行登录路径。ADR 0026 的当前分区存储决定仍体现在分区契约中，读取权限采用现行业务授权。
 

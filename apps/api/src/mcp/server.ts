@@ -5,7 +5,11 @@ import {
   McpError,
   type CallToolRequest
 } from "@modelcontextprotocol/sdk/types.js";
-import { SMEDC_MCP_TOOL_CONTRACTS, type SmedcMcpToolName } from "@smedc/mcp-contract";
+import {
+  dishCatalogValidationErrorToolResult,
+  SMEDC_MCP_TOOL_CONTRACTS,
+  type SmedcMcpToolName
+} from "@smedc/mcp-contract";
 import type { McpRequestContext, SmedcMcpToolHandlers } from "./tool-handlers.js";
 import { createNoopToolHandler } from "./tool-handlers.js";
 
@@ -32,6 +36,10 @@ export function createSmedcHttpMcpServer(input: {
     }
     setRequestHandler.call(server.server, schema, async (request, extra) => {
       const { params } = request as CallToolRequest;
+      if (params.name === "upsert_dish_catalog") {
+        const invalid = dishCatalogValidationErrorToolResult(params.arguments);
+        if (invalid) return invalid;
+      }
       if (
         params.name === "upload_evidence_document" ||
         params.name === "upload_quarantine_certificate" ||

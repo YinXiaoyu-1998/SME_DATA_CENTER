@@ -1,6 +1,7 @@
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
   COST_CARD_LAUNCHER_VERSION,
+  dishCatalogValidationErrorToolResult,
   errorToolResult,
   validationErrorToolResult,
   type PermissionMcpInputs,
@@ -19,6 +20,7 @@ export const ACTION_MCP_TOOL_NAMES = [
   "archive_quarantine_certificates",
   "archive_cost_card",
   "upsert_store_reviews",
+  "upsert_dish_catalog",
   "prepare_ledger_pdf_download",
   "update_account_permissions",
   "configure_business_category",
@@ -56,6 +58,10 @@ export function createActionMcpToolHandlers(context: ApiDelegationContext): Smed
             undefined,
             { requestId: mcpContext.audit?.requestId ?? context.audit.requestId }
           );
+        if (toolName === "upsert_dish_catalog") {
+          const invalid = dishCatalogValidationErrorToolResult(input);
+          if (invalid) return invalid;
+        }
         const parsed = ACTION_TOOL_CONTRACTS[toolName].inputSchema.safeParse(input);
 
         if (!parsed.success) {
@@ -82,6 +88,8 @@ function routeForActionTool(
   switch (toolName) {
     case "upsert_store_reviews":
       return { method: "POST", path: "/v1/store-reviews/upsert", body: input };
+    case "upsert_dish_catalog":
+      return { method: "POST", path: "/v1/dish-catalog/upsert", body: input };
     case "archive_cost_card":
       return {
         method: "POST",

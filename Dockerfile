@@ -73,7 +73,7 @@ ENV NODE_ENV=production
 
 FROM runtime-base AS api
 
-LABEL xyz.smedatacenter.order-scope-contract="1"
+LABEL xyz.smedatacenter.order-scope-contract="1" xyz.smedatacenter.dish-catalog-schema="current"
 
 ENV HOST=127.0.0.1
 ENV PORT=3000
@@ -91,7 +91,7 @@ CMD ["node", "dist/release/api.js"]
 
 FROM runtime-base AS worker
 
-LABEL xyz.smedatacenter.order-scope-contract="1"
+LABEL xyz.smedatacenter.order-scope-contract="1" xyz.smedatacenter.dish-catalog-schema="current"
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libreoffice-calc fonts-noto-cjk poppler-utils \

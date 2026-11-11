@@ -246,8 +246,9 @@ After uploading a table, the agent must retain or rediscover:
 
 The agent should call dataset discovery before structured queries and use only `canonicalName`
 fields. When the employee asks what data is available, the agent may use
-`describe_structured_dataset_coverage` to show readable applied source windows or snapshots, but it
-must not treat coverage as a completeness guarantee or infer hidden sources from missing entries.
+`describe_structured_dataset_coverage` to show readable applied source windows or current-state row
+counts, but it must not treat coverage as a completeness guarantee or infer hidden sources from
+missing entries.
 
 For follow-up questions such as “这份表一共有多少条记录？” the agent must query SMEDC MCP
 with that context. It must not answer by reading the local CSV unless the employee explicitly asks

@@ -7,6 +7,7 @@ import { registerLedgerWebRoutes } from "./ledger-web/routes.js";
 import { registerAdminPermissionsRoutes } from "./admin-permissions/routes.js";
 import { registerBusinessAuthorizationRoutes } from "./routes/business-authorization.js";
 import { registerStoreReviewRoutes } from "./routes/store-reviews.js";
+import { registerDishCatalogRoutes } from "./routes/dish-catalog.js";
 import { registerCostCardRoutes } from "./routes/cost-cards.js";
 import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
@@ -152,6 +153,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   registerEmployeeDirectoryRoutes(app, { auth: requestAuth, directory: context.directory });
   registerBusinessAuthorizationRoutes(app, { auth: requestAuth, permissions: context.permissions });
   registerStoreReviewRoutes(app, { auth: requestAuth, storeReviews: context.storeReviews });
+  registerDishCatalogRoutes(app, { auth: requestAuth, dishCatalog: context.dishCatalog });
   registerCostCardRoutes(app, { auth: requestAuth, costCards: context.costCards });
 
   registerSystemRoutes(app, { auth: requestAuth, readinessCheck });

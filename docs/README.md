@@ -36,6 +36,10 @@
 
 [ADR 0028](adr/0028-employee-directory-store-identity.md) 记录员工档案授权、目录、离职交互与门店正式名称规则。实施与验收以 [Issue #327](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/327) 为准。
 
+## 菜品目录与部门名称（已实现（源码），未部署）
+
+[ADR 0029](adr/0029-dish-catalog-current-state.md) 记录菜品目录从追加式快照改为当前状态并由批量 MCP 接口维护；[ADR 0030](adr/0030-department-name-uniqueness.md) 记录部门名称在同一业务企业内唯一。规格以 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337) 为准；实现边界、公共契约、迁移顺序与测试面见[实施计划](implementation/dish-catalog-current-state.md)。源码实现不表示已部署或已激活真实企业。
+
 ## 历史与过程记录
 
 这些文档保留当时的决定或验证证据，允许出现旧版本、撤回方案和当时尚未完成的工作。执行当前任务必须回到上表。

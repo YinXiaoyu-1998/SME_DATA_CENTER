@@ -33,7 +33,6 @@ export interface CleanupCounts {
   costCardResourceScopes: number;
   storageGarbage: number;
   vipRows: number;
-  dishCatalogRows: number;
   deliveryLedgerRows: number;
   supplierCatalogRows: number;
   quarantineCertificates: number;

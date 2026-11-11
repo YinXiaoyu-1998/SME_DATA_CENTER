@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.18.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.19.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1165,6 +1165,34 @@ it("advertises PDF side effects and validates scope before contacting service", 
       }
     });
     expect(crossOrganization.isError).toBe(true);
+    expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("returns the catalog field error locally for explicit null arrays", async () => {
+  const server = new McpServer({ name: "catalog-contract", version: "0.0.0" });
+  const remote = vi.fn<typeof fetch>();
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "catalog-contract-test", version: "0.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: "upsert_dish_catalog",
+      arguments: { enterpriseName: "合成企业", rows: null, removeSkuIds: ["SKU-A"] }
+    });
+    expect(result.isError).toBe(true);
+    const [content] = result.content as Array<{ text: string }>;
+    expect(JSON.parse(content!.text)).toMatchObject({
+      error: { code: "DISH_CATALOG_INVALID_INPUT", details: { field: "rows" } }
+    });
     expect(remote).not.toHaveBeenCalled();
   } finally {
     await client.close();

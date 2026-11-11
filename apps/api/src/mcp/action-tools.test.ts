@@ -39,6 +39,7 @@ describe("action MCP tool handlers", () => {
       "archive_quarantine_certificates",
       "archive_cost_card",
       "upsert_store_reviews",
+      "upsert_dish_catalog",
       "prepare_ledger_pdf_download",
       "update_account_permissions",
       "configure_business_category",
@@ -195,6 +196,45 @@ it("delegates cost-card archive without a content body and preserves backend adm
     error: { code: "UPLOAD_ADMIN_REQUIRED", retryable: false }
   });
   expect(result?.isError).toBe(true);
+});
+
+it("delegates one atomic dish catalog batch to its controlled HTTP route", async () => {
+  const { calls, handlers } = createCapturingDelegate();
+  const input = {
+    enterpriseName: "合成企业",
+    rows: [
+      {
+        spuId: "spu_1",
+        skuId: "sku_1",
+        dishName: "合成菜品",
+        brandName: "合成品牌",
+        baseCategoryName: "主食",
+        level1CategoryCode: "L1",
+        salePrice: "12.5",
+        departmentName: null
+      }
+    ],
+    removeSkuIds: ["sku_2"],
+    sourceFileName: "catalog.xlsx"
+  };
+  const result = await handlers.upsert_dish_catalog?.(input, {} as never);
+  expect(result?.isError).toBe(false);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatchObject({
+    method: "POST",
+    url: "/v1/dish-catalog/upsert",
+    payload: input
+  });
+  const invalid = await handlers.upsert_dish_catalog?.(
+    { ...input, orgId: "other-org" },
+    {} as never
+  );
+  expect(invalid?.isError).toBe(true);
+  expect(JSON.parse(invalid!.content[0]!.text)).toMatchObject({
+    error: { code: "DISH_CATALOG_INVALID_INPUT" }
+  });
+  expect(invalid!.content[0]!.text).not.toContain("orgId");
+  expect(calls).toHaveLength(1);
 });
 
 it("delegates reviews with platform status, arbitrary dimensions, explicit null and omitted reply intact", async () => {

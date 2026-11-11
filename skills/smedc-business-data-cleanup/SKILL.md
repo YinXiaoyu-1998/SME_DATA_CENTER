@@ -16,7 +16,7 @@ Business data includes uploaded source documents, evidence chunks and Qdrant poi
 indexes, processing runs, import batches, import-window claims, partition import jobs
 (`partition_import_jobs`), published structured partitions (`structured_partitions`), deferred
 object cleanup records (`storage_garbage`), the current/archived cost-card directory
-(`cost_cards`) and its `cost_card` BusinessResource records (cascading scopes/dimensions), row-backed datasets (`vip_rows`, `dish_catalog_rows`,
+(`cost_cards`) and its `cost_card` BusinessResource records (cascading scopes/dimensions), row-backed datasets (`vip_rows`, `dish_catalog_entries`,
 `delivery_ledger_rows`, `supplier_catalog_rows`), quarantine certificates, document-label links,
 and business audit logs for document/import/quarantine actions. Business and dishes datasets live
 in structured partitions, not legacy row tables.

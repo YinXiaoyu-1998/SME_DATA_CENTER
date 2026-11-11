@@ -408,13 +408,9 @@ describe("structured imports", () => {
     expect(JSON.stringify(documentRepository.auditLogs)).not.toContain("保利店_dishes");
   });
 
-  it("queues a catalog snapshot with its dedicated public date and canonical filename", async () => {
-    const { app, structuredImportRepository } = await buildStructuredImportTestServer();
-    const catalogCsv = validStructuredCsv("dish_catalog");
-
-    expect(catalogCsv.split("\n")[0]?.split(",")).toHaveLength(10);
-    expect(catalogCsv.split("\n")[1]?.split(",")).toHaveLength(10);
-    expect(catalogCsv.split("\n")[0]?.split(",")).not.toContain("snapshot_date");
+  it("rejects a retired catalog upload before reservation, storage, audit, or document creation", async () => {
+    const { app, documentRepository, structuredImportRepository, storagePutCalls } =
+      await buildStructuredImportTestServer();
 
     const response = await postStructuredImport(app, {
       dataset: "dish_catalog",
@@ -424,25 +420,18 @@ describe("structured imports", () => {
       snapshotDate: "20260819",
       idempotencyKey: "catalog-20260819",
       fileName: "catalog.csv",
-      body: Buffer.from(catalogCsv, "utf8")
+      body: Buffer.from(validStructuredCsv("dish_catalog"), "utf8")
     });
 
-    expect(response.statusCode).toBe(202);
-    expect(response.json().importBatch).toMatchObject({
-      dataset: "dish_catalog",
-      snapshotDate: "20260819",
-      status: "pending"
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "DATASET_UPLOAD_RETIRED" }
     });
-    expect(response.json().importBatch).not.toHaveProperty("startDate");
-    expect(response.json().importBatch).not.toHaveProperty("endDate");
-    expect(response.json().document.storageObjectKey).toContain(
-      "u793a_u4f8b_dish_catalog_20260819.csv"
-    );
-    expect(structuredImportRepository.batches[0]).toMatchObject({
-      dataset: "dish_catalog",
-      startDate: "20260819",
-      endDate: "20260819"
-    });
+    expect(JSON.stringify(response.json())).not.toContain("value_1");
+    expect(storagePutCalls()).toBe(0);
+    expect(documentRepository.documents).toHaveLength(0);
+    expect(documentRepository.auditLogs).toHaveLength(0);
+    expect(structuredImportRepository.batches).toHaveLength(0);
   });
 
   it("derives delivery metadata before reservation and replays by receipt without another storage write", async () => {
@@ -586,28 +575,6 @@ describe("structured imports", () => {
 
   it.each([
     {
-      name: "catalog without snapshotDate",
-      input: { dataset: "dish_catalog" as const, startDate: null, endDate: null }
-    },
-    {
-      name: "catalog with startDate",
-      input: {
-        dataset: "dish_catalog" as const,
-        startDate: "20260819",
-        endDate: null,
-        snapshotDate: "20260819"
-      }
-    },
-    {
-      name: "catalog with endDate",
-      input: {
-        dataset: "dish_catalog" as const,
-        startDate: null,
-        endDate: "20260819",
-        snapshotDate: "20260819"
-      }
-    },
-    {
       name: "window dataset with snapshotDate",
       input: { dataset: "vip" as const, snapshotDate: "20260819" }
     },
@@ -637,29 +604,6 @@ describe("structured imports", () => {
     expect(response.json()).toMatchObject({ error: { code: "INVALID_DATE_WINDOW" } });
     expect(storagePutCalls()).toBe(0);
     expect(documentRepository.documents).toHaveLength(0);
-  });
-
-  it("preserves catalog same-snapshot claims while accepting out-of-order snapshots", async () => {
-    const { app } = await buildStructuredImportTestServer();
-    const uploadCatalog = (snapshotDate: string, idempotencyKey: string) =>
-      postStructuredImport(app, {
-        dataset: "dish_catalog",
-        startDate: null,
-        endDate: null,
-        snapshotDate,
-        idempotencyKey,
-        fileName: "catalog.csv",
-        body: Buffer.from(validStructuredCsv("dish_catalog"), "utf8")
-      });
-
-    const newer = await uploadCatalog("20260820", "catalog-newer");
-    const older = await uploadCatalog("20260819", "catalog-older");
-    const duplicate = await uploadCatalog("20260820", "catalog-duplicate");
-
-    expect(newer.statusCode).toBe(202);
-    expect(older.statusCode).toBe(202);
-    expect(duplicate.statusCode).toBe(409);
-    expect(duplicate.json()).toMatchObject({ error: { code: "IMPORT_IN_PROGRESS" } });
   });
 
   it("accepts structured upload metadata exactly at the public string boundaries", async () => {
@@ -1053,17 +997,16 @@ describe("structured imports", () => {
     expect(storagePutCalls()).toBe(1);
   });
 
-  it("replaces an archived catalog snapshot with a new key while replaying the original batch", async () => {
+  it("replaces an archived window import with a new key while replaying the original batch", async () => {
     const { app, documentRepository, structuredImportRepository, storagePutCalls } =
       await buildStructuredImportTestServer();
     const originalInput = {
-      dataset: "dish_catalog" as const,
-      startDate: null,
-      endDate: null,
-      snapshotDate: "20260819",
-      idempotencyKey: "catalog-original",
-      fileName: "catalog.csv",
-      body: Buffer.from(validStructuredCsv("dish_catalog"), "utf8")
+      dataset: "vip" as const,
+      startDate: "20260819",
+      endDate: "20260819",
+      idempotencyKey: "vip-original",
+      fileName: "vip.csv",
+      body: Buffer.from(validStructuredCsv("vip"), "utf8")
     };
     const original = await postStructuredImport(app, originalInput);
     const originalBatchId = original.json().importBatch.importBatchId;
@@ -1095,20 +1038,30 @@ describe("structured imports", () => {
 
     const replacement = await postStructuredImport(app, {
       ...originalInput,
-      idempotencyKey: "catalog-replacement"
+      idempotencyKey: "vip-replacement"
     });
     const replay = await postStructuredImport(app, originalInput);
 
     expect(replacement.statusCode).toBe(202);
     expect(replacement.json()).toMatchObject({
       document: { status: "pending_processing" },
-      importBatch: { dataset: "dish_catalog", snapshotDate: "20260819", status: "pending" }
+      importBatch: {
+        dataset: "vip",
+        startDate: "20260819",
+        endDate: "20260819",
+        status: "pending"
+      }
     });
     expect(replacement.json().importBatch.importBatchId).not.toBe(originalBatchId);
     expect(replay.statusCode).toBe(202);
     expect(replay.json()).toMatchObject({
       document: { documentId: originalDocumentId, status: "archived" },
-      importBatch: { importBatchId: originalBatchId, status: "archived", snapshotDate: "20260819" }
+      importBatch: {
+        importBatchId: originalBatchId,
+        status: "archived",
+        startDate: "20260819",
+        endDate: "20260819"
+      }
     });
     expect(storagePutCalls()).toBe(2);
   });

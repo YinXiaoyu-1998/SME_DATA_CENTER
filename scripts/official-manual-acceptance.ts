@@ -956,7 +956,6 @@ export async function cleanupRun(
     await tx.costCard.deleteMany({ where: { orgId: run.orgId, id: { in: costCardIds } } });
     if (importBatchIds.length > 0) {
       await tx.vipRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
-      await tx.dishCatalogRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.deliveryLedgerRow.deleteMany({ where: { importBatchId: { in: importBatchIds } } });
       await tx.supplierCatalogRow.deleteMany({
         where: { importBatchId: { in: importBatchIds } }
@@ -1090,7 +1089,6 @@ async function verifyCleanup(
     costCardResourceScopes,
     storageGarbage,
     vipRows,
-    dishCatalogRows,
     deliveryLedgerRows,
     supplierCatalogRows,
     quarantineCertificates,
@@ -1135,9 +1133,6 @@ async function verifyCleanup(
       prisma.vipRow.count({ where: { importBatchId: { in: ids } } })
     ),
     countByIds(deleted.importBatchIds, (ids) =>
-      prisma.dishCatalogRow.count({ where: { importBatchId: { in: ids } } })
-    ),
-    countByIds(deleted.importBatchIds, (ids) =>
       prisma.deliveryLedgerRow.count({ where: { importBatchId: { in: ids } } })
     ),
     countByIds(deleted.importBatchIds, (ids) =>
@@ -1163,7 +1158,6 @@ async function verifyCleanup(
     costCardResourceScopes,
     storageGarbage,
     vipRows,
-    dishCatalogRows,
     deliveryLedgerRows,
     supplierCatalogRows,
     quarantineCertificates,

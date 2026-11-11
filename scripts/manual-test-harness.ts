@@ -367,7 +367,6 @@ interface ManualTestSnapshot {
     structuredPartitions: number;
     storageGarbage: number;
     vipRows: number;
-    dishCatalogRows: number;
     auditLogs: number;
     qdrantPoints: number;
     storageFiles: number;
@@ -405,7 +404,6 @@ async function captureManualTestSnapshot(
       structuredPartitions,
       storageGarbage,
       vipRows,
-      dishCatalogRows,
       auditLogs,
       documentRecords,
       qdrantPoints,
@@ -422,7 +420,6 @@ async function captureManualTestSnapshot(
       prisma.structuredPartition.count(),
       prisma.storageGarbage.count(),
       prisma.vipRow.count(),
-      prisma.dishCatalogRow.count(),
       prisma.auditLog.count(),
       prisma.document.findMany({
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -459,7 +456,6 @@ async function captureManualTestSnapshot(
         structuredPartitions,
         storageGarbage,
         vipRows,
-        dishCatalogRows,
         auditLogs,
         qdrantPoints,
         storageFiles
@@ -518,7 +514,6 @@ function assertCleanBusinessState(snapshot: ManualTestSnapshot): void {
     structuredPartitions: snapshot.counts.structuredPartitions,
     storageGarbage: snapshot.counts.storageGarbage,
     vipRows: snapshot.counts.vipRows,
-    dishCatalogRows: snapshot.counts.dishCatalogRows,
     auditLogs: snapshot.counts.auditLogs,
     qdrantPoints: snapshot.counts.qdrantPoints,
     storageFiles: snapshot.counts.storageFiles

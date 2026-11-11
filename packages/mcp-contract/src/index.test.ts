@@ -29,6 +29,30 @@ const contractsByName = new Map(
   SMEDC_MCP_TOOL_CONTRACTS.map((contract) => [contract.name, contract])
 );
 
+it("documents department name uniqueness and keeps store name whitespace unchanged", () => {
+  const contract = contractsByName.get("manage_employee_directory")!;
+  expect(contract.description).toContain("DIRECTORY_DUPLICATE_NAME");
+  expect(contract.description).toContain("retired departments");
+  expect(
+    contract.inputSchema.safeParse({
+      request: {
+        action: "manage_store",
+        enterpriseKey: "synthetic",
+        operation: { kind: "create", name: " Store " }
+      }
+    }).success
+  ).toBe(true);
+  expect(
+    contract.inputSchema.safeParse({
+      request: {
+        action: "manage_department",
+        enterpriseKey: "synthetic",
+        operation: { kind: "create", name: " 后厨 " }
+      }
+    }).success
+  ).toBe(false);
+});
+
 it("retains server admin-only upload authorization and explains fixed category authority", () => {
   expect(FILE_UPLOAD_ADMIN_REQUIRED_CODE).toBe("UPLOAD_ADMIN_REQUIRED");
   expect(FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE).toBe("File upload requires the admin role.");
@@ -115,6 +139,26 @@ const validInputs = {
         scores: {}
       }
     ]
+  },
+  upsert_dish_catalog: {
+    enterpriseName: "合成企业",
+    rows: [
+      {
+        spuId: "spu_1",
+        skuId: "sku_1",
+        dishName: "合成菜品",
+        brandName: "合成品牌",
+        baseCategoryName: "主食",
+        level1CategoryCode: "L1",
+        level2CategoryCode: "L2",
+        specificationName: "大份",
+        salePrice: "12.50",
+        dishAlias: "别名",
+        departmentName: "后厨"
+      }
+    ],
+    removeSkuIds: ["sku_2"],
+    sourceFileName: "catalog.xlsx"
   },
   query_store_reviews: { enterpriseName: "企业" },
   smedc_get_current_user: {},
@@ -330,6 +374,43 @@ const invalidConsolidatedInputCases = [
 const invalidInputCases = [
   { tool: "prepare_order_scope_transition", cases: [{ label: "missing scope", input: {} }] },
   { tool: "upsert_store_reviews", cases: [{ label: "empty batch", input: { reviews: [] } }] },
+  {
+    tool: "upsert_dish_catalog",
+    cases: [
+      {
+        label: "unknown row field",
+        input: {
+          enterpriseName: "企业",
+          rows: [
+            {
+              spuId: "spu",
+              skuId: "sku",
+              dishName: "菜",
+              brandName: "品牌",
+              baseCategoryName: "主食",
+              level1CategoryCode: "L1",
+              salePrice: "1",
+              costPrice: "2"
+            }
+          ]
+        }
+      },
+      {
+        label: "batch above limit",
+        input: {
+          enterpriseName: "企业",
+          removeSkuIds: Array.from({ length: 1001 }, (_, index) => `sku_${index}`)
+        }
+      },
+      {
+        label: "non-decimal sale price",
+        input: {
+          enterpriseName: "企业",
+          rows: [{ ...validInputs.upsert_dish_catalog.rows[0], salePrice: "12.1234567" }]
+        }
+      }
+    ]
+  },
   { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
   {
     tool: "smedc_get_current_user",
@@ -716,10 +797,73 @@ const invalidInputCases = [
 }>;
 
 describe("SMEDC MCP contract", () => {
+  it("defines a strict atomic dish catalog batch with destructive idempotent annotations", () => {
+    const contract = contractsByName.get("upsert_dish_catalog")!;
+    const row = validInputs.upsert_dish_catalog.rows[0]!;
+    const schema = contract.inputSchema;
+
+    expect(contract.annotations).toEqual({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true
+    });
+    expect(contract.description).toContain("Atomically");
+    expect(contract.description).toContain("1,000");
+    expect(contract.description).toContain("rolls back");
+    expect(contract.description).toContain("departmentName");
+    expect(contract.description).toContain("hard-deletes");
+    expect(contract.description).toContain("updated_at");
+    expect(contract.resultShape).toEqual(["received, created, updated, unchanged, removed"]);
+    expect(schema.safeParse(validInputs.upsert_dish_catalog).success).toBe(true);
+    expect(schema.safeParse({ enterpriseName: "企业", removeSkuIds: ["sku_2"] }).success).toBe(
+      true
+    );
+    expect(
+      schema.safeParse({
+        enterpriseName: "企业",
+        rows: [
+          {
+            spuId: "spu_1",
+            skuId: "sku_1",
+            dishName: "菜",
+            brandName: "品牌",
+            baseCategoryName: "主食",
+            level1CategoryCode: "L1",
+            salePrice: "0"
+          }
+        ]
+      }).success
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        enterpriseName: "企业",
+        rows: [{ ...row, level2CategoryCode: null, dishAlias: null, departmentName: null }]
+      }).success
+    ).toBe(true);
+    expect(
+      schema.safeParse({ enterpriseName: "企业", rows: [row], sourceFileName: null }).success
+    ).toBe(false);
+    expect(
+      schema.safeParse({ enterpriseName: "企业", rows: [row], orgId: "foreign" }).success
+    ).toBe(false);
+    // Structural/length/price checks stay in the contract; semantic batch errors must reach
+    // the domain so HTTP/MCP can return DISH_CATALOG_* codes with bounded row indexes.
+    expect(schema.safeParse({ enterpriseName: "企业", rows: [row, row] }).success).toBe(true);
+    expect(
+      schema.safeParse({
+        enterpriseName: "企业",
+        rows: [row],
+        removeSkuIds: [row.skuId]
+      }).success
+    ).toBe(true);
+    expect(schema.safeParse({ enterpriseName: "企业" }).success).toBe(true);
+  });
+
   it("exports the stable business tool names without local-session tools", () => {
     expect(SMEDC_MCP_TOOL_NAMES).toEqual([
       "prepare_order_scope_transition",
       "upsert_store_reviews",
+      "upsert_dish_catalog",
       "query_store_reviews",
       "smedc_get_current_user",
       "smedc_list_skills",
@@ -878,8 +1022,7 @@ describe("SMEDC MCP contract", () => {
           },
           dataset,
           startDate: undefined,
-          endDate: undefined,
-          snapshotDate: undefined
+          endDate: undefined
         };
 
         expect(parseTool("upload_structured_dataset", input)).toEqual(input);
@@ -903,7 +1046,7 @@ describe("SMEDC MCP contract", () => {
     }
   );
 
-  it("lists all structured datasets in query and upload field descriptions", () => {
+  it("lists all queryable datasets including dish_catalog in query descriptions", () => {
     const expectedDatasets = [
       "dishes",
       "business",
@@ -913,15 +1056,41 @@ describe("SMEDC MCP contract", () => {
       "supplier_catalog"
     ];
 
-    for (const toolName of ["query_structured_dataset", "upload_structured_dataset"] as const) {
-      const field = contractsByName
-        .get(toolName)
-        ?.inputFields.find((inputField) => inputField.name === "dataset");
+    const field = contractsByName
+      .get("query_structured_dataset")
+      ?.inputFields.find((inputField) => inputField.name === "dataset");
 
-      for (const dataset of expectedDatasets) {
-        expect(field?.description).toContain(dataset);
-      }
+    for (const dataset of expectedDatasets) {
+      expect(field?.description).toContain(dataset);
     }
+  });
+
+  it("keeps retired dish_catalog out of the upload dataset enum and description", () => {
+    const contract = contractsByName.get("upload_structured_dataset");
+    const field = contract?.inputFields.find((inputField) => inputField.name === "dataset");
+
+    expect(field?.description).not.toContain("dish_catalog");
+    for (const dataset of [
+      "dishes",
+      "business",
+      "vip",
+      "delivery_ledger",
+      "supplier_catalog",
+      "cost_cards"
+    ])
+      expect(field?.description).toContain(dataset);
+    expect(
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
+        dataset: "dish_catalog"
+      }).success
+    ).toBe(false);
+    expect(
+      parseTool("query_structured_dataset", {
+        ...validInputs.query_structured_dataset,
+        dataset: "dish_catalog"
+      })
+    ).toMatchObject({ dataset: "dish_catalog" });
   });
 
   it("defines strict coverage input with optional partition scope", () => {
@@ -945,10 +1114,13 @@ describe("SMEDC MCP contract", () => {
       { name: "storeNameContains", required: false }
     ]);
     expect(coverage?.description).toContain("applied source windows");
+    expect(coverage?.description).toContain("current-state row count");
+    expect(coverage?.description).not.toContain("snapshots");
     expect(coverage?.resultShape).toEqual([
       "dataset",
       "metadataPolicy",
-      "sources[]: readable applied source windows or snapshots",
+      "window datasets: sources[]: readable applied source windows",
+      "dish_catalog: metadataPolicy: current, rowCount, lastUpdatedAt",
       "cost_cards: accessMode: catalog_query, cardCount, totalItemRowCount, sources[]: { sourceDocumentId, importBatchId, cardCount, totalItemRowCount }"
     ]);
   });
@@ -969,40 +1141,29 @@ describe("SMEDC MCP contract", () => {
     ).toBe(false);
   });
 
-  it("keeps the structured upload schema object-shaped while enforcing conditional dates", () => {
+  it("keeps the structured upload schema object-shaped without retired snapshot dates", () => {
     const contract = contractsByName.get("upload_structured_dataset");
-    const catalogInput = {
+    const windowInput = {
       ...validInputs.upload_structured_dataset,
-      dataset: "dish_catalog",
-      snapshotDate: "20260819",
-      startDate: undefined,
-      endDate: undefined
+      dataset: "vip",
+      startDate: "20260819",
+      endDate: "20260819"
     };
 
     expect(contract?.inputSchema).toBeInstanceOf(z.ZodObject);
     expect(Object.keys(contract?.inputSchema.shape ?? {})).toEqual(
-      expect.arrayContaining(["startDate", "endDate", "snapshotDate"])
+      expect.arrayContaining(["startDate", "endDate"])
     );
-    expect(parseTool("upload_structured_dataset", catalogInput)).toMatchObject({
-      dataset: "dish_catalog",
-      snapshotDate: "20260819"
+    expect(Object.keys(contract?.inputSchema.shape ?? {})).not.toContain("snapshotDate");
+    expect(parseTool("upload_structured_dataset", windowInput)).toMatchObject({
+      dataset: "vip",
+      startDate: "20260819",
+      endDate: "20260819"
     });
     expect(
-      parseTool("query_structured_dataset", {
-        ...validInputs.query_structured_dataset,
+      safeParseTool("upload_structured_dataset", {
+        ...validInputs.upload_structured_dataset,
         dataset: "dish_catalog"
-      })
-    ).toMatchObject({ dataset: "dish_catalog" });
-    expect(
-      safeParseTool("upload_structured_dataset", {
-        ...catalogInput,
-        snapshotDate: undefined
-      }).success
-    ).toBe(false);
-    expect(
-      safeParseTool("upload_structured_dataset", {
-        ...catalogInput,
-        startDate: "20260819"
       }).success
     ).toBe(false);
     expect(
@@ -1377,6 +1538,33 @@ describe("SMEDC MCP contract", () => {
         requestId: "req_1"
       }
     });
+
+    // Dish catalog validation details are bounded public field names and row indexes.
+    expect(
+      parseErrorResult(
+        apiErrorToolResult({
+          error: {
+            code: "DISH_CATALOG_DUPLICATE_SKU",
+            message: "SKU IDs must be unique.",
+            details: { field: "skuId", rowIndexes: [0, 1, 1, 2] }
+          }
+        })
+      ).error.details
+    ).toEqual({ field: "skuId", rowIndexes: [0, 1, 2] });
+    // Any other detail shape stays opaque, including unknown keys and unbounded values.
+    for (const [details, expected] of [
+      [{ sql: "select secret from private_table" }, undefined],
+      [{ field: "skuId", rowIndexes: [0], extra: true }, undefined],
+      // A non-field-shaped name is dropped; bounded indexes remain.
+      [{ field: "skuId; DROP TABLE users", rowIndexes: [0] }, { rowIndexes: [0] }]
+    ] as const)
+      expect(
+        parseErrorResult(
+          apiErrorToolResult({
+            error: { code: "DISH_CATALOG_INVALID_INPUT", message: "Invalid.", details }
+          })
+        ).error.details
+      ).toEqual(expected);
 
     expect(parseErrorResult(apiErrorToolResult({ nope: true }))).toEqual({
       error: {

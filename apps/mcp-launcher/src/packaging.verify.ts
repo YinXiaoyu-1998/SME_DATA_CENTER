@@ -125,7 +125,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.18.0");
+    expect(manifest.version).toBe("0.19.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -151,11 +151,11 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.18.0");
+      expect(client.getServerVersion()?.version).toBe("0.19.0");
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(52);
-      expect(new Set(names).size).toBe(52);
+      expect(names).toHaveLength(53);
+      expect(new Set(names).size).toBe(53);
       const retiredNames = [
         "list_account_permissions",
         "get_account_permissions",
@@ -273,6 +273,7 @@ describe("published launcher artifact", () => {
           "smedc_logout",
           "smedc_auth_status",
           "smedc_get_current_user",
+          "upsert_dish_catalog",
           "describe_structured_dataset_coverage",
           "prepare_structured_partition_download",
           "get_structured_partition_download_status",
@@ -332,20 +333,18 @@ describe("published launcher artifact", () => {
           "Requires the admin role."
         );
       }
-      expect(structuredUpload?.inputSchema).toMatchObject({
-        type: "object",
-        properties: {
-          dataset: {
-            enum: expect.arrayContaining([
-              "dish_catalog",
-              "delivery_ledger",
-              "supplier_catalog",
-              "cost_cards"
-            ])
-          },
-          snapshotDate: { type: "string" }
-        }
-      });
+      const structuredUploadSchema = structuredUpload?.inputSchema as {
+        type?: string;
+        additionalProperties?: boolean;
+        properties?: { dataset?: { enum?: string[] } } & Record<string, unknown>;
+      };
+      const structuredUploadDatasets = structuredUploadSchema.properties?.dataset?.enum;
+      expect(structuredUploadDatasets).toEqual(
+        expect.arrayContaining(["delivery_ledger", "supplier_catalog", "cost_cards"])
+      );
+      expect(structuredUploadDatasets).not.toContain("dish_catalog");
+      expect(structuredUploadSchema.type).toBe("object");
+      expect(structuredUploadSchema.properties).not.toHaveProperty("snapshotDate");
       for (const name of [
         "upload_structured_dataset",
         "describe_structured_dataset_coverage",

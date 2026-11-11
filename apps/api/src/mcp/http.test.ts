@@ -630,6 +630,33 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(results[1]).toEqual(results[0]);
   });
 
+  it("returns bounded catalog validation details before generic MCP schema errors", async () => {
+    const handler = vi.fn();
+    app = buildCustomMcpTestServer({ upsert_dish_catalog: handler });
+    const response = await postMcp(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 67,
+        method: "tools/call",
+        params: {
+          name: "upsert_dish_catalog",
+          arguments: { enterpriseName: "合成企业", rows: Array.from({ length: 1001 }, () => ({})) }
+        }
+      },
+      { "mcp-protocol-version": "2025-11-25" }
+    );
+    const result = parseJsonRpc(response.payload).result as {
+      isError: boolean;
+      content: Array<{ text: string }>;
+    };
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      error: { code: "DISH_CATALOG_BATCH_TOO_LARGE", retryable: false }
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("restores the SDK registration method when tool registration throws", () => {
     const instances: Server[] = [];
     const register = vi.spyOn(McpServer.prototype, "registerTool").mockImplementation(function (
@@ -987,7 +1014,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       const toolNames = (
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
-      expect(new Set(toolNames).size).toBe(49);
+      expect(new Set(toolNames).size).toBe(50);
       expect(toolNames).toEqual(
         expect.arrayContaining([
           "query_account_permissions",
@@ -997,7 +1024,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           "configure_business_dimension_value",
           "query_enterprise_workflows",
           "query_employee_directory",
-          "manage_employee_directory"
+          "manage_employee_directory",
+          "upsert_dish_catalog"
         ])
       );
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
@@ -1032,6 +1060,11 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           destructiveHint: false,
           idempotentHint: true
         });
+      expect(tools.find((tool) => tool.name === "upsert_dish_catalog")?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true
+      });
       for (const name of [
         "describe_ledger_pdf_coverage",
         "get_ledger_pdf_request_status",

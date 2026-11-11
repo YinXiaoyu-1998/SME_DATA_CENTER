@@ -410,7 +410,7 @@ describe("upload MCP tool handlers", () => {
     expect(textField(fields, "confidentialityLevel")).toBe("0");
   });
 
-  it("maps a catalog snapshot to multipart snapshotDate without window fields", async () => {
+  it("rejects the retired catalog upload before file decoding or delegation", async () => {
     const { handlers, requests } = createHandlers({});
     const result = await handlers.upload_structured_dataset?.(
       validStructuredInput({
@@ -422,15 +422,14 @@ describe("upload MCP tool handlers", () => {
       mcpContext
     );
 
-    expect(parseResult(result!)).toEqual({
-      ok: true,
-      requestPath: "/v1/structured/imports"
+    expect(parseResult(result!)).toMatchObject({
+      error: {
+        code: "DATASET_UPLOAD_RETIRED",
+        message: "dish_catalog uploads are retired; use upsert_dish_catalog."
+      }
     });
-    expect(requests).toHaveLength(1);
-    const fields = multipartFields(requests[0]!);
-    expect(textField(fields, "snapshotDate")).toBe("20260819");
-    expect(textField(fields, "startDate")).toBeUndefined();
-    expect(textField(fields, "endDate")).toBeUndefined();
+    expect(result?.isError).toBe(true);
+    expect(requests).toHaveLength(0);
   });
 
   it.each([
@@ -451,7 +450,6 @@ describe("upload MCP tool handlers", () => {
           dataset,
           startDate: undefined,
           endDate: undefined,
-          snapshotDate: undefined,
           enterpriseName: "Supplier and Delivery Smoke",
           idempotencyKey: `${dataset}-upload-key`,
           confidentialityLevel: 0
