@@ -230,17 +230,17 @@ function compileNormalizedQuery(
           (fieldName) => requireField(fields, fieldName).inputSource === "dynamic_lookup"
         )
       : [];
-  const projection = buildProjection(query, fields, mode);
+  const projection = buildProjection(query, fields, mode, registry);
   const from = baseFromAndWhere({
     registry,
     employee: input.employee,
     orgId: input.orgId,
     businessAuthorization: input.businessAuthorization
   });
-  const filter = query.filter ? compileFilter(query.filter, fields) : null;
+  const filter = query.filter ? compileFilter(query.filter, fields, registry) : null;
   const whereSql = filter ? `${from.sql} AND (${filter.sql})` : from.sql;
   const params = [...projection.params, ...from.params, ...(filter?.params ?? [])];
-  const order = buildOrderBy(query, fields, mode);
+  const order = buildOrderBy(query, fields, mode, registry);
 
   if (mode === "aggregate") {
     const groupBy =
@@ -253,7 +253,7 @@ function compileNormalizedQuery(
     return {
       dataset: query.dataset,
       mode,
-      sql: `SELECT ${projection.sql} FROM ${registry.rowTable} r ${whereSql}${groupBy}${order.sql} LIMIT ? OFFSET ?`,
+      sql: `SELECT ${projection.sql} ${whereSql}${groupBy}${order.sql} LIMIT ? OFFSET ?`,
       params: [...params, ...order.params, query.page.limit, offset],
       selectedFields,
       dynamicSelectedFields,
@@ -271,7 +271,7 @@ function compileNormalizedQuery(
   return {
     dataset: query.dataset,
     mode,
-    sql: `SELECT ${projection.sql} FROM ${registry.rowTable} r ${whereSql}${order.sql} LIMIT ? OFFSET ?`,
+    sql: `SELECT ${projection.sql} ${whereSql}${order.sql} LIMIT ? OFFSET ?`,
     params: [...params, ...order.params, query.page.limit, offset],
     selectedFields,
     dynamicSelectedFields,
@@ -1064,7 +1064,8 @@ function validateScalarType(type: StructuredFieldType, value: ScalarValue) {
 function buildProjection(
   query: NormalizedQuery,
   fields: Map<string, StructuredFieldRegistryEntry>,
-  mode: StructuredQueryMode
+  mode: StructuredQueryMode,
+  registry: StructuredDatasetRegistry
 ): SqlFragment {
   if (mode === "aggregate") {
     const parts: string[] = [];
@@ -1072,12 +1073,13 @@ function buildProjection(
 
     for (const fieldName of query.groupBy) {
       const field = requireField(fields, fieldName);
-      parts.push(`${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`);
-      params.push(requireJsonPath(field));
+      const expression = fieldExpression(field, registry);
+      parts.push(`${expression.sql} AS ${quoteIdentifier(field.canonicalName)}`);
+      params.push(...expression.params);
     }
 
     for (const aggregate of query.aggregates) {
-      const fragment = aggregateExpression(aggregate, fields);
+      const fragment = aggregateExpression(aggregate, fields, registry);
       parts.push(fragment.sql);
       params.push(...fragment.params);
     }
@@ -1088,17 +1090,15 @@ function buildProjection(
   const storedFields = query.select.filter(
     (fieldName) => requireField(fields, fieldName).inputSource !== "dynamic_lookup"
   );
-  const parts = storedFields.map((fieldName) => {
+  const parts: string[] = [];
+  const params: Array<string | number> = [];
+
+  for (const fieldName of storedFields) {
     const field = requireField(fields, fieldName);
-    if (requireStorage(field).column === "source_document_id") {
-      return `r.source_document_id AS ${quoteIdentifier(field.canonicalName)}`;
-    }
-    return `${jsonValueExpression()} AS ${quoteIdentifier(field.canonicalName)}`;
-  });
-  const params = storedFields
-    .map((fieldName) => requireField(fields, fieldName))
-    .filter((field) => requireStorage(field).column === "payload")
-    .map((field) => requireJsonPath(field));
+    const expression = fieldExpression(field, registry);
+    parts.push(`${expression.sql} AS ${quoteIdentifier(field.canonicalName)}`);
+    params.push(...expression.params);
+  }
 
   if (
     query.select.some(
@@ -1115,12 +1115,38 @@ function buildProjection(
   };
 }
 
+const REGISTERED_JOIN_IDENTIFIER = /^[a-z][a-z0-9_]{0,63}$/;
+
 function baseFromAndWhere(input: {
   registry: StructuredDatasetRegistry;
   employee: StructuredQueryEmployeeScope;
   orgId: string;
   businessAuthorization?: CompileStructuredQueryInput["businessAuthorization"];
 }): SqlFragment {
+  if (input.registry.metadataPolicy === "current") {
+    const rowTable = input.registry.rowTable;
+
+    if (!rowTable) {
+      throw new Error("Current structured datasets require a row table.");
+    }
+
+    const clauses = [
+      `FROM ${rowTable} r`,
+      ...(input.registry.joins ?? []).map(renderRegisteredJoin),
+      "WHERE r.org_id = ?"
+    ];
+    const params: Array<string | number> = [input.orgId];
+
+    if (input.businessAuthorization) {
+      clauses.push(`AND (${input.businessAuthorization.sql})`);
+      params.push(...input.businessAuthorization.params);
+    } else {
+      clauses.push("AND 0 = 1");
+    }
+
+    return { sql: clauses.join(" "), params };
+  }
+
   const params: Array<string | number> = [
     input.orgId,
     input.orgId,
@@ -1131,6 +1157,7 @@ function baseFromAndWhere(input: {
     "active"
   ];
   const clauses = [
+    `FROM ${input.registry.rowTable} r`,
     "JOIN import_batches ib ON ib.id = r.import_batch_id",
     "JOIN documents d ON d.id = r.source_document_id",
     "WHERE r.org_id = ?",
@@ -1158,57 +1185,76 @@ function baseFromAndWhere(input: {
   };
 }
 
+function renderRegisteredJoin(
+  join: NonNullable<StructuredDatasetRegistry["joins"]>[number]
+): string {
+  if (
+    join.type !== "left" ||
+    join.table !== "business_departments" ||
+    join.id !== "department" ||
+    join.localColumn !== "department_id" ||
+    join.foreignColumn !== "department_id" ||
+    !REGISTERED_JOIN_IDENTIFIER.test(join.alias)
+  ) {
+    throw new Error("Structured query join is not registered.");
+  }
+
+  return `LEFT JOIN ${join.table} ${join.alias} ON ${join.alias}.${join.foreignColumn} = r.${join.localColumn}`;
+}
+
 function compileFilter(
   node: FilterNode,
-  fields: Map<string, StructuredFieldRegistryEntry>
+  fields: Map<string, StructuredFieldRegistryEntry>,
+  registry: StructuredDatasetRegistry
 ): SqlFragment {
   if ("and" in node) {
-    const fragments = node.and.map((child) => compileFilter(child, fields));
+    const fragments = node.and.map((child) => compileFilter(child, fields, registry));
     return joinFragments(fragments, "AND");
   }
 
   if ("or" in node) {
-    const fragments = node.or.map((child) => compileFilter(child, fields));
+    const fragments = node.or.map((child) => compileFilter(child, fields, registry));
     return joinFragments(fragments, "OR");
   }
 
   if ("not" in node) {
-    const fragment = compileFilter(node.not, fields);
+    const fragment = compileFilter(node.not, fields, registry);
     return { sql: `NOT (${fragment.sql})`, params: fragment.params };
   }
 
   const field = requireField(fields, node.field);
-  const expression = typedFieldExpression(field);
+  const expression = fieldExpression(field, registry);
+  const params = (value: string | number) => [...expression.params, value];
 
   switch (node.op) {
     case "eq":
       return {
-        sql: `${expression} = ?`,
-        params: [requireJsonPath(field), scalarParam(node.value)]
+        sql: `${expression.sql} = ?`,
+        params: params(scalarParam(node.value))
       };
     case "contains":
       return {
-        sql: `${expression} LIKE ?`,
-        params: [requireJsonPath(field), `%${String(node.value)}%`]
+        sql: `${expression.sql} LIKE ?`,
+        params: params(`%${String(node.value)}%`)
       };
     case "starts_with":
       return {
-        sql: `${expression} LIKE ?`,
-        params: [requireJsonPath(field), `${String(node.value)}%`]
+        sql: `${expression.sql} LIKE ?`,
+        params: params(`${String(node.value)}%`)
       };
     case "between": {
       const values = node.value as ScalarValue[];
       const [start, end] = values as [ScalarValue, ScalarValue];
       return {
-        sql: `${expression} BETWEEN ? AND ?`,
-        params: [requireJsonPath(field), scalarParam(start), scalarParam(end)]
+        sql: `${expression.sql} BETWEEN ? AND ?`,
+        params: [...expression.params, scalarParam(start), scalarParam(end)]
       };
     }
     case "in": {
       const values = node.value as ScalarValue[];
       return {
-        sql: `${expression} IN (${values.map(() => "?").join(", ")})`,
-        params: [requireJsonPath(field), ...values.map(scalarParam)]
+        sql: `${expression.sql} IN (${values.map(() => "?").join(", ")})`,
+        params: [...expression.params, ...values.map(scalarParam)]
       };
     }
     case "gt":
@@ -1217,8 +1263,8 @@ function compileFilter(
     case "lte": {
       const operators = { gt: ">", gte: ">=", lt: "<", lte: "<=" };
       return {
-        sql: `${expression} ${operators[node.op]} ?`,
-        params: [requireJsonPath(field), scalarParam(node.value)]
+        sql: `${expression.sql} ${operators[node.op]} ?`,
+        params: params(scalarParam(node.value))
       };
     }
     default:
@@ -1232,7 +1278,8 @@ function compileFilter(
 function buildOrderBy(
   query: NormalizedQuery,
   fields: Map<string, StructuredFieldRegistryEntry>,
-  mode: StructuredQueryMode
+  mode: StructuredQueryMode,
+  registry: StructuredDatasetRegistry
 ): SqlFragment {
   if (mode === "aggregate") {
     const sort =
@@ -1251,23 +1298,28 @@ function buildOrderBy(
     };
   }
 
-  const sort = query.sort.length > 0 ? query.sort : [];
+  const sort =
+    query.sort.length > 0 ? query.sort : registry.defaultSort ? [registry.defaultSort] : [];
+  const expressions = sort.map((item) => ({
+    ...fieldExpression(requireField(fields, item.field), registry),
+    direction: item.direction.toUpperCase()
+  }));
+  const tiebreakers =
+    registry.metadataPolicy === "current" ? ["r.id ASC"] : ["r.source_row_number ASC", "r.id ASC"];
+
   return {
     sql: ` ORDER BY ${[
-      ...sort.map(
-        (item) =>
-          `${typedFieldExpression(requireField(fields, item.field))} ${item.direction.toUpperCase()}`
-      ),
-      "r.source_row_number ASC",
-      "r.id ASC"
+      ...expressions.map((expression) => `${expression.sql} ${expression.direction}`),
+      ...tiebreakers
     ].join(", ")}`,
-    params: sort.map((item) => requireJsonPath(requireField(fields, item.field)))
+    params: expressions.flatMap((expression) => expression.params)
   };
 }
 
 function aggregateExpression(
   aggregate: AggregateSpec,
-  fields: Map<string, StructuredFieldRegistryEntry>
+  fields: Map<string, StructuredFieldRegistryEntry>,
+  registry: StructuredDatasetRegistry
 ): SqlFragment {
   const alias = quoteIdentifier(aggregateAlias(aggregate));
 
@@ -1276,27 +1328,30 @@ function aggregateExpression(
   }
 
   const field = requireField(fields, aggregate.field ?? "");
-  const expression = typedFieldExpression(field);
+  const expression = fieldExpression(field, registry);
 
   switch (aggregate.op) {
     case "count":
-      return { sql: `COUNT(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+      return { sql: `COUNT(${expression.sql}) AS ${alias}`, params: expression.params };
     case "countDistinct":
-      return { sql: `COUNT(DISTINCT ${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+      return {
+        sql: `COUNT(DISTINCT ${expression.sql}) AS ${alias}`,
+        params: expression.params
+      };
     case "sum":
-      return { sql: `SUM(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+      return { sql: `SUM(${expression.sql}) AS ${alias}`, params: expression.params };
     case "avg":
-      return { sql: `AVG(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+      return { sql: `AVG(${expression.sql}) AS ${alias}`, params: expression.params };
     case "min":
-      return { sql: `MIN(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+      return { sql: `MIN(${expression.sql}) AS ${alias}`, params: expression.params };
     case "max":
-      return { sql: `MAX(${expression}) AS ${alias}`, params: [requireJsonPath(field)] };
+      return { sql: `MAX(${expression.sql}) AS ${alias}`, params: expression.params };
     case "weightedAvg": {
       const weightField = requireField(fields, aggregate.weightField);
-      const weightExpression = typedFieldExpression(weightField);
+      const weightExpression = fieldExpression(weightField, registry);
       return {
-        sql: `SUM(${expression} * ${weightExpression}) / NULLIF(SUM(${weightExpression}), 0) AS ${alias}`,
-        params: [requireJsonPath(field), requireJsonPath(weightField), requireJsonPath(weightField)]
+        sql: `SUM(${expression.sql} * ${weightExpression.sql}) / NULLIF(SUM(${weightExpression.sql}), 0) AS ${alias}`,
+        params: [...expression.params, ...weightExpression.params, ...weightExpression.params]
       };
     }
   }
@@ -1306,10 +1361,50 @@ function jsonValueExpression(): string {
   return `JSON_UNQUOTE(JSON_EXTRACT(r.payload, ?))`;
 }
 
-function typedFieldExpression(field: StructuredFieldRegistryEntry): string {
+/** Only registered storage can render SQL; client bodies provide field names alone. */
+function fieldExpression(
+  field: StructuredFieldRegistryEntry,
+  registry: StructuredDatasetRegistry
+): SqlFragment {
+  const storage = requireStorage(field);
+
+  switch (storage.column) {
+    case "payload":
+      return {
+        sql: typedPayloadExpression(field.type),
+        params: [storage.jsonPath]
+      };
+    case "source_document_id":
+      return { sql: "r.source_document_id", params: [] };
+    case "department_id":
+      return { sql: "r.department_id", params: [] };
+    case "created_at":
+      return { sql: "r.created_at", params: [] };
+    case "updated_at":
+      return { sql: "r.updated_at", params: [] };
+    case "name": {
+      const join = registry.joins?.find((candidate) => candidate.id === storage.join);
+      if (
+        storage.table !== "business_departments" ||
+        !join ||
+        join.table !== storage.table ||
+        !REGISTERED_JOIN_IDENTIFIER.test(join.alias)
+      ) {
+        throw new StructuredQueryValidationError(
+          PHASE3_ERROR_CODES.unsupportedCapability,
+          "Field does not use a registered lookup join.",
+          { field: field.canonicalName }
+        );
+      }
+      return { sql: `${join.alias}.name`, params: [] };
+    }
+  }
+}
+
+function typedPayloadExpression(type: StructuredFieldType): string {
   const expression = jsonValueExpression();
 
-  switch (field.type) {
+  switch (type) {
     case "boolean":
       return `JSON_EXTRACT(r.payload, ?)`;
     case "integer":
@@ -1356,7 +1451,7 @@ function requireField(
 
 function requireJsonPath(field: StructuredFieldRegistryEntry): string {
   const storage = requireStorage(field);
-  if (!storage.jsonPath) {
+  if (storage.column !== "payload") {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.unsupportedCapability,
       "Field does not use JSON payload storage.",

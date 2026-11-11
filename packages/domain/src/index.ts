@@ -112,6 +112,7 @@ export {
 export {
   COST_CARD_UPLOAD_REGISTRY,
   type CostCardUploadRegistry,
+  FILE_IMPORT_UNSUPPORTED_CODE,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_DATASETS,
   buildStructuredHeaderLookup,
@@ -122,7 +123,10 @@ export {
   type StructuredDatasetName,
   type StructuredDatasetRegistry,
   type StructuredFieldRegistryEntry,
+  type StructuredFieldStorageMapping,
   type StructuredFieldType,
+  type StructuredJoinId,
+  type StructuredJoinRegistry,
   type StructuredPresentationProfile
 } from "./structured-registry.js";
 export {
@@ -166,6 +170,7 @@ export * from "./partition-downloads.js";
 export * from "./business-authorization.js";
 
 export * from "./cost-cards.js";
+export * from "./dish-catalog.js";
 export * from "./store-reviews.js";
 export * from "./store-review-query.js";
 
