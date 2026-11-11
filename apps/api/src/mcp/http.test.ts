@@ -987,7 +987,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       const toolNames = (
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
-      expect(new Set(toolNames).size).toBe(49);
+      expect(new Set(toolNames).size).toBe(50);
       expect(toolNames).toEqual(
         expect.arrayContaining([
           "query_account_permissions",
@@ -997,7 +997,8 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           "configure_business_dimension_value",
           "query_enterprise_workflows",
           "query_employee_directory",
-          "manage_employee_directory"
+          "manage_employee_directory",
+          "upsert_dish_catalog"
         ])
       );
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
@@ -1032,6 +1033,11 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
           destructiveHint: false,
           idempotentHint: true
         });
+      expect(tools.find((tool) => tool.name === "upsert_dish_catalog")?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true
+      });
       for (const name of [
         "describe_ledger_pdf_coverage",
         "get_ledger_pdf_request_status",

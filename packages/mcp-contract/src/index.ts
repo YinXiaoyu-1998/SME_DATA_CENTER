@@ -28,7 +28,9 @@ import {
   STORE_REVIEW_SOURCES,
   STORE_REVIEW_REPLY_STATUSES,
   parseStoreReviewBatch,
-  parseStoreReviewQuery
+  parseStoreReviewQuery,
+  DISH_CATALOG_LIMITS,
+  parseDishCatalogBatch
 } from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -45,6 +47,21 @@ const structuredDataset = z
   .enum(STRUCTURED_DATASETS)
   .describe(
     "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+  );
+const uploadableStructuredDatasets = [
+  "dishes",
+  "business",
+  "vip",
+  "delivery_ledger",
+  "supplier_catalog",
+  "cost_cards",
+  "in_store_orders",
+  "takeaway_orders"
+] as const;
+const uploadStructuredDataset = z
+  .enum(uploadableStructuredDatasets)
+  .describe(
+    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
   );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -446,7 +463,7 @@ const queryStructuredDatasetInputSchema = z
 const uploadStructuredDatasetInputSchema = z
   .object({
     file: uploadFileInputSchema,
-    dataset: structuredDataset,
+    dataset: uploadStructuredDataset,
     orderScopeTransition: orderScopeTransitionConfirmationSchema
       .optional()
       .describe(
@@ -476,11 +493,6 @@ const uploadStructuredDatasetInputSchema = z
       .describe(
         "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, or vip."
       ),
-    snapshotDate: z
-      .string()
-      .regex(/^\d{8}$/)
-      .optional()
-      .describe("YYYYMMDD complete snapshot date for dish_catalog."),
     idempotencyKey: z
       .string()
       .min(1)
@@ -512,32 +524,7 @@ const uploadStructuredDatasetInputSchema = z
     const metadataPolicy = getStructuredRegistry(input.dataset).metadataPolicy;
 
     switch (metadataPolicy) {
-      case "snapshot":
-        if (!input.snapshotDate) {
-          context.addIssue({
-            code: "custom",
-            message: `${input.dataset} requires snapshotDate.`,
-            path: ["snapshotDate"]
-          });
-        }
-        for (const field of ["startDate", "endDate"] as const) {
-          if (input[field] !== undefined) {
-            context.addIssue({
-              code: "custom",
-              message: `${input.dataset} does not accept ${field}.`,
-              path: [field]
-            });
-          }
-        }
-        return;
       case "window":
-        if (input.snapshotDate !== undefined) {
-          context.addIssue({
-            code: "custom",
-            message: "Window datasets do not accept snapshotDate.",
-            path: ["snapshotDate"]
-          });
-        }
         for (const field of ["startDate", "endDate"] as const) {
           if (!input[field]) {
             context.addIssue({
@@ -550,7 +537,7 @@ const uploadStructuredDatasetInputSchema = z
         return;
       case "derived_receipt":
       case "none":
-        for (const field of ["startDate", "endDate", "snapshotDate"] as const) {
+        for (const field of ["startDate", "endDate"] as const) {
           if (input[field] !== undefined) {
             context.addIssue({
               code: "custom",
@@ -559,6 +546,14 @@ const uploadStructuredDatasetInputSchema = z
             });
           }
         }
+        return;
+      case "snapshot":
+      case "current":
+        context.addIssue({
+          code: "custom",
+          message: `${input.dataset} does not accept structured file uploads.`,
+          path: ["dataset"]
+        });
         return;
     }
   });
@@ -857,6 +852,86 @@ export const queryStoreReviewsInputSchema = z
     }
   });
 
+// Mirrors DISH_CATALOG_LIMITS without importing runtime builders: the contract keeps the
+// same code-point length rule as parseDishCatalogBatch (never trimming or rewriting).
+function dishCatalogTextFits(value: string, max: number): boolean {
+  let count = 0;
+  for (const character of value) {
+    if (character.length === 1 && /[\uD800-\uDFFF]/u.test(character)) return false;
+    count += 1;
+  }
+  return count <= max;
+}
+function dishCatalogText(max: number) {
+  return z
+    .string()
+    .refine((value) => dishCatalogTextFits(value, max), `At most ${max} characters.`);
+}
+function dishCatalogRequiredText(max: number) {
+  return z
+    .string()
+    .refine((value) => value.length > 0, "Required.")
+    .refine((value) => dishCatalogTextFits(value, max), `At most ${max} characters.`);
+}
+function dishCatalogOptionalText(max: number) {
+  return dishCatalogText(max).nullable().optional();
+}
+const DISH_CATALOG_SALE_PRICE_PATTERN = /^\d{1,14}(?:\.\d{1,6})?$/;
+const dishCatalogRowSchema = z
+  .object({
+    spuId: dishCatalogRequiredText(DISH_CATALOG_LIMITS.spuIdChars).describe("SPU identifier."),
+    skuId: dishCatalogRequiredText(DISH_CATALOG_LIMITS.skuIdChars).describe(
+      "SKU identifier, unique within one batch."
+    ),
+    dishName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.dishNameChars),
+    brandName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.brandNameChars),
+    baseCategoryName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.baseCategoryNameChars),
+    level1CategoryCode: dishCatalogRequiredText(DISH_CATALOG_LIMITS.level1CategoryCodeChars),
+    level2CategoryCode: dishCatalogOptionalText(DISH_CATALOG_LIMITS.level2CategoryCodeChars),
+    specificationName: dishCatalogOptionalText(DISH_CATALOG_LIMITS.specificationNameChars),
+    salePrice: z
+      .string()
+      .regex(
+        DISH_CATALOG_SALE_PRICE_PATTERN,
+        "Sale price must be a plain decimal string with at most 14 integer and 6 fractional digits."
+      )
+      .describe("Decimal text; the service canonicalizes it and never rounds."),
+    dishAlias: dishCatalogOptionalText(DISH_CATALOG_LIMITS.dishAliasChars),
+    departmentName: dishCatalogOptionalText(DISH_CATALOG_LIMITS.departmentNameChars).describe(
+      "Exact active department name of the same enterprise; the service resolves it to a stable ID and never creates departments."
+    )
+  })
+  .strict();
+export const upsertDishCatalogInputSchema = z
+  .object({
+    enterpriseName: dishCatalogRequiredText(DISH_CATALOG_LIMITS.enterpriseNameChars).describe(
+      "Exact registered enterprise name of the current organization."
+    ),
+    rows: z
+      .array(dishCatalogRowSchema)
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe(
+        "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries per batch."
+      ),
+    removeSkuIds: z
+      .array(dishCatalogRequiredText(DISH_CATALOG_LIMITS.skuIdChars))
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe("SKUs to permanently delete; removing an absent SKU is a no-op."),
+    sourceFileName: dishCatalogText(DISH_CATALOG_LIMITS.sourceFileNameChars)
+      .optional()
+      .describe("Optional source file name for the audit record only; the server reads no file.")
+  })
+  .strict()
+  .superRefine((value, context) => {
+    try {
+      parseDishCatalogBatch(value);
+    } catch {
+      context.addIssue({ code: "custom", message: "Invalid dish catalog batch." });
+    }
+  });
+
 const businessDirectoryFields = { name: exactBusinessName, retired: z.boolean().optional() };
 const evidenceCategoryFields = {
   ownerships: z
@@ -984,6 +1059,7 @@ const permissionReadNames = new Set<keyof PermissionMcpInputs>([
 export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_order_scope_transition",
   "upsert_store_reviews",
+  "upsert_dish_catalog",
   "query_store_reviews",
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -1642,6 +1718,37 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     ],
     resultShape: ["received, inserted, updated, unchanged"],
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }
+  }),
+  defineToolContract({
+    name: "upsert_dish_catalog",
+    title: "Upsert dish catalog",
+    description:
+      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Send only changed rows plus explicit removeSkuIds; rows and removals total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted nullable row fields clear the stored value, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
+    inputSchema: upsertDishCatalogInputSchema,
+    inputFields: [
+      {
+        name: "enterpriseName",
+        required: true,
+        description: "Exact registered enterprise name of the current organization."
+      },
+      {
+        name: "rows",
+        required: false,
+        description: "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries."
+      },
+      {
+        name: "removeSkuIds",
+        required: false,
+        description: "SKUs to permanently delete; removing an absent SKU is a no-op."
+      },
+      {
+        name: "sourceFileName",
+        required: false,
+        description: "Optional audit-only source file name; the server reads no file."
+      }
+    ],
+    resultShape: ["received, created, updated, unchanged, removed"],
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
   }),
   defineToolContract({
     name: "query_store_reviews",

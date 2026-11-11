@@ -57,8 +57,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
             windowClaim: { id: "claim-1" },
             structuredPartitions: [{ id: "dish-1" }],
             partitionImportJobs: [{ id: "business-1" }],
-            vipRows: [{ id: "vip-1" }],
-            dishCatalogRows: [{ id: "catalog-1" }]
+            vipRows: [{ id: "vip-1" }]
           }
         ]),
         deleteMany: vi.fn(async () => ({})),
@@ -183,8 +182,7 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         deleteMany: vi.fn(async () => ({})),
         count: vi.fn(async () => 0)
       },
-      vipRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) },
-      dishCatalogRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) }
+      vipRow: { deleteMany: vi.fn(async () => ({})), count: vi.fn(async () => 0) }
     } as unknown as PrismaClient;
     const storage = {
       deleteObject: vi.fn(async () => undefined),
@@ -212,7 +210,6 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       importBatchIds: ["batch-1"],
       quarantineCertificateIds: ["certificate-1"],
       vipRowIds: ["vip-1"],
-      dishCatalogRowIds: ["catalog-1"],
       costCardIds: ["card-1"],
       costCardResources: [{ orgId: "org", id: "resource-1" }],
       costCardSourceResources: [{ orgId: "org", id: "source-resource-1" }],
@@ -292,7 +289,6 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
       storageGarbage: emptyCount,
       quarantineCertificate: emptyCount,
       vipRow: emptyCount,
-      dishCatalogRow: emptyCount,
       auditLog: emptyCount
     } as unknown as PrismaClient;
     const adapter = createStagingUploadDomainCleanupAdapter(
@@ -323,7 +319,6 @@ describe("repo-contained staging upload-domain cleanup adapter", () => {
         storageGarbageIds: [],
         quarantineCertificateIds: [],
         vipRowIds: [],
-        dishCatalogRowIds: [],
         uploadAuditLogIds: [],
         storageObjectKeys: ["uploads/doc-1"],
         qdrantPoints: []

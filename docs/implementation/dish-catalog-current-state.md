@@ -1,6 +1,6 @@
 # 菜品目录当前状态与部门名称唯一
 
-状态：2026-11-11 已确认设计，**尚未实现**。规格（权威入口）：[Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)。决策记录见 [ADR 0029](../adr/0029-dish-catalog-current-state.md) 与 [ADR 0030](../adr/0030-department-name-uniqueness.md)。本文件是实现边界与验收依据，不表示已经部署或可用于真实企业。
+状态：2026-11-11 源码已实现并通过聚焦测试，**未部署、未激活真实企业**。规格（权威入口）：[Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)。决策记录见 [ADR 0029](../adr/0029-dish-catalog-current-state.md) 与 [ADR 0030](../adr/0030-department-name-uniqueness.md)。本文件是实现边界与验收依据，不表示已经部署或可用于真实企业。
 
 ## 1. 范围
 
@@ -193,7 +193,7 @@ HAVING duplicates > 1;
 - worker：删除 catalog 解析、行写入、归档删除分支。
 - `packages/domain`：删除 catalog 专用表头/sheet 校验与 `snapshotDate` 分支；`sheetPolicy` 增加 `"none"`，`metadataPolicy` 增加 `"current"`，`inputSource` 增加 `"api"`；行存储映射增加物理列与部门关联。
 - launcher：打包/契约断言里移除上传枚举中的 `dish_catalog`，保留查询枚举；按契约边界 bump launcher 版本。
-- 文档与 Skill：`README.md` / `README.zh.md` 的“菜品目录快照”章节删除；`skills/smedc-mcp` 与 `smedc-mcp-skill` 改写。
+- 文档与 Skill：`README.md` / `README.zh.md` 的菜品目录章节已改为当前状态与批量写入；本仓 `skills/smedc-mcp` 已改写。独立仓 `smedc-mcp-skill` 与 pin 在 launcher 发布后按 #345 处理。
 
 ## 10. 发布顺序
 

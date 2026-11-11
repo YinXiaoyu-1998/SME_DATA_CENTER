@@ -68,6 +68,7 @@ export const PHASE3_ERROR_CODES = {
   ledgerPdfBundleStale: "LEDGER_PDF_BUNDLE_STALE",
   datasetForbidden: "DATASET_FORBIDDEN",
   datasetRequiresPartitionExtract: "DATASET_REQUIRES_PARTITION_EXTRACT",
+  datasetUploadRetired: "DATASET_UPLOAD_RETIRED",
   activeImportExists: "ACTIVE_IMPORT_EXISTS",
   importInProgress: "IMPORT_IN_PROGRESS",
   idempotencyKeyConflict: "IDEMPOTENCY_KEY_CONFLICT",

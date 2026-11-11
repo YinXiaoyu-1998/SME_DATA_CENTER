@@ -247,10 +247,18 @@ export function registerStructuredQueryRoutes(
         },
         dataset: dataset as (typeof STRUCTURED_DATASETS)[number],
         ...(snapshot.mode === "enabled" || snapshot.mode === "suspended"
-          ? { businessAuthorization: compileStructuredReadScope(snapshot, "coverage", dataset) }
+          ? {
+              businessAuthorization: compileStructuredReadScope(
+                snapshot,
+                dataset === "dish_catalog" ? "catalog" : "coverage",
+                dataset
+              )
+            }
           : {})
       });
 
+      // The coverage repository already returns the current-state shape
+      // ({ rowCount, lastUpdatedAt }) for dish catalog; never reshape it into sources.
       return await dependencies.structuredCoverage().list(compiled);
     } catch (error) {
       if (error instanceof CostCardPublicationError)
@@ -313,9 +321,15 @@ export function registerStructuredQueryRoutes(
           ? {
               businessAuthorization: {
                 version: snapshot.authorizationVersion,
+                // Dish catalog rows have no source document; anchor them to the
+                // per-enterprise catalog resource while other datasets keep their target.
                 ...compileStructuredReadScope(
                   snapshot,
-                  dataset === "cost_cards" ? "cost_card" : "row",
+                  dataset === "cost_cards"
+                    ? "cost_card"
+                    : dataset === "dish_catalog"
+                      ? "catalog"
+                      : "row",
                   dataset ?? ""
                 )
               }

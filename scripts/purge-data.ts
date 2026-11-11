@@ -226,7 +226,6 @@ async function purgeLocalDatabase(options: PurgeOptions): Promise<DatabasePurgeR
       await tx.storageGarbage.deleteMany({});
       await tx.partitionImportJob.deleteMany({});
       await tx.vipRow.deleteMany({});
-      await tx.dishCatalogRow.deleteMany({});
       await tx.deliveryLedgerRow.deleteMany({});
       await tx.supplierCatalogRow.deleteMany({});
       await tx.quarantineCertificate.deleteMany({});

@@ -1,6 +1,6 @@
 # 企业资料中枢 API / MCP Contract
 
-Last updated: 2026-10-28
+Last updated: 2026-11-11
 
 ## Authorization model
 
@@ -75,6 +75,11 @@ clearance cannot grant upload permission.
 | `GET /v1/structured/partition-uploads/:jobId/parts`     | partition part URLs                                                        | `structured_dataset`         |
 | `POST /v1/structured/partition-uploads/:jobId/complete` | partition complete                                                         | `structured_dataset`         |
 
+`dish_catalog` is retired from every upload entry point: `upload_structured_dataset` and
+`POST /v1/structured/imports` return `DATASET_UPLOAD_RETIRED` before creating a document, import
+batch, claim, storage object or audit record. Maintain the catalog through
+`POST /v1/dish-catalog/upsert` instead.
+
 Partition owner abort (`DELETE /v1/structured/partition-uploads/:jobId`) remains allowed for an
 employee owner. Status, manifest, read, search, query, and download are not made admin-only; their
 current server business authorization and safe owner-progress rules apply. Admin upload above the admin's
@@ -98,36 +103,37 @@ employee-callable upload boundary.
 
 ## Public HTTP surface
 
-| Method         | Path                                                | Purpose                                                                          |
-| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `GET`          | `/healthz`                                          | Liveness                                                                         |
-| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                              |
-| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                   |
-| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                          |
-| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                |
-| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                               |
-| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                |
-| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                      |
-| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                      |
-| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                  |
-| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                              |
-| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                       |
-| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                 |
-| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                        |
-| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, catalogs, ledgers); rejects partition datasets |
-| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                    |
-| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart partition-dataset upload session                              |
-| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                        |
-| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                       |
-| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                |
-| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                     |
-| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                        |
-| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                      |
-| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                 |
-| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                          |
-| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                         |
-| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                            |
-| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage                                                         |
+| Method         | Path                                                | Purpose                                                                                                                                       |
+| -------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`          | `/healthz`                                          | Liveness                                                                                                                                      |
+| `GET`          | `/.well-known/oauth-authorization-server`           | OAuth discovery and launcher compatibility metadata                                                                                           |
+| `GET` / `POST` | `/oauth/*`                                          | Browser authorization, token, and revoke flows                                                                                                |
+| `GET` / `POST` | `/auth/password/setup/*`                            | Password setup/reset bootstrap and form                                                                                                       |
+| `POST`         | `/mcp`                                              | Authenticated Streamable HTTP MCP                                                                                                             |
+| `GET`          | `/me`                                               | Current user: display name, email, role, clearance                                                                                            |
+| `GET`          | `/skills`                                           | Approved skill-directory metadata                                                                                                             |
+| `POST`         | `/v1/documents/evidence`                            | Upload MD/TXT/DOCX evidence                                                                                                                   |
+| `GET`          | `/v1/documents/evidence/:documentId/status`         | Uploader-visible evidence processing status                                                                                                   |
+| `POST`         | `/v1/evidence/search`                               | Search readable evidence chunks                                                                                                               |
+| `POST`         | `/v1/documents/quarantine-certificates`             | Upload one JPG/JPEG/PNG certificate                                                                                                           |
+| `POST`         | `/v1/quarantine-certificates/query`                 | Query readable certificates by receipt IDs                                                                                                    |
+| `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                                                                              |
+| `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                                                                                     |
+| `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, `supplier_catalog`, `delivery_ledger`, `cost_cards`); rejects partition datasets and retired `dish_catalog` |
+| `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                                                                                 |
+| `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart partition-dataset upload session                                                                                           |
+| `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                                                                                     |
+| `POST`         | `/v1/structured/partition-uploads/:jobId/complete`  | Verify and queue a completed source upload                                                                                                    |
+| `DELETE`       | `/v1/structured/partition-uploads/:jobId`           | Abort an unfinished source upload                                                                                                             |
+| `GET`          | `/v1/structured/partition-imports/:jobId`           | Read partition import status                                                                                                                  |
+| `POST`         | `/v1/structured/partition-manifests`                | Resolve an authorized date/store manifest                                                                                                     |
+| `POST`         | `/v1/structured/partition-downloads`                | Prepare an authorized bounded partition ZIP                                                                                                   |
+| `GET`          | `/v1/structured/partition-downloads/:requestId`     | Read authorized packaging status                                                                                                              |
+| `POST`         | `/v1/structured/partition-downloads/:requestId/url` | Sign a succeeded nonempty ZIP; empty success has no URL                                                                                       |
+| `GET`          | `/v1/structured/datasets`                           | Dataset schema discovery                                                                                                                      |
+| `POST`         | `/v1/structured/query`                              | Controlled, readable structured query                                                                                                         |
+| `GET`          | `/v1/structured/datasets/:dataset/coverage`         | Readable source coverage or current-state catalog counts                                                                                      |
+| `POST`         | `/v1/dish-catalog/upsert`                           | Admin-only atomic current-state catalog batch write                                                                                           |
 
 `GET /labels` and `GET /audit` are not registered. `GET /readyz` accepts loopback only.
 
@@ -152,6 +158,10 @@ All uploads retain existing file/type/size validation. The common request fields
 | Quarantine certificate      | `file`, `receiptId`, `idempotencyKey`, `enterpriseName`, exact `storeName` | optional legacy level; current fixed category is authoritative when enabled |
 | Row-query structured import | `file`, `dataset`, `enterpriseName`, `idempotencyKey` and dataset metadata | optional legacy level; current fixed category is authoritative when enabled |
 | Store-day partition source  | multipart session metadata, then ordered upload-part ETags                 | optional legacy level; current fixed category is authoritative when enabled |
+
+`dish_catalog` is absent from this upload contract. It is written only through
+`POST /v1/dish-catalog/upsert`, and an old upload request is rejected with
+`DATASET_UPLOAD_RETIRED`.
 
 The decoded inline file limit is 50 MiB. The official launcher streams local `business`/`dishes`/`in_store_orders`/`takeaway_orders`
 paths through multipart storage, with a 2 GiB default source limit. Filenames, titles, idempotency keys, receipt IDs, structured
@@ -552,6 +562,119 @@ applied currently readable batches receive publicationSummary verbatim. Failed/r
 readers can receive validation locations and ignored/source-summary arrays; owner-only access
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
 read permission is exposed. Launcher 0.15.0 is published and independently verified; service rollout and tenant authorization remain separate.
+
+## Dish catalog (current state; source implemented, launcher publication pending)
+
+`dish_catalog` is one current catalog per business enterprise: `(organization, enterprise, SKU)`
+unique, one row per SKU. There is no dated snapshot, `snapshot_date`, date-ordered history, archive
+step, or cross-snapshot diff, and the service never parses or stores a catalog file. The calling
+agent reads the employee's local file and submits structured rows. Source launcher `0.19.0`
+registers `upsert_dish_catalog`; publication and the approved Skill pin are separate release steps.
+The legacy upload is retired (see below).
+
+| HTTP                           | MCP                   | Input / result                                                                                                 |
+| ------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/dish-catalog/upsert` | `upsert_dish_catalog` | `{enterpriseName, rows?, removeSkuIds?, sourceFileName?}` → `{received, created, updated, unchanged, removed}` |
+
+| Input field      | Type     | Required | Rules                                                                                                |
+| ---------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `enterpriseName` | string   | yes      | ≤255; matches one registered enterprise of the current organization by shared identity normalization |
+| `rows`           | array    | no       | Rows to create or replace; rows plus removals total 1–1000 entries                                   |
+| `removeSkuIds`   | string[] | no       | SKUs to permanently delete; each ≤128; same total limit; no duplicates                               |
+| `sourceFileName` | string   | no       | ≤255; audit record only; the server reads no file                                                    |
+
+`rows` objects are strict and reject unknown keys:
+
+| Row field            | Type   | Required | Rules                                                                                 |
+| -------------------- | ------ | -------- | ------------------------------------------------------------------------------------- |
+| `spuId`              | string | yes      | ≤128                                                                                  |
+| `skuId`              | string | yes      | ≤128; unique within the batch                                                         |
+| `dishName`           | string | yes      | ≤512                                                                                  |
+| `brandName`          | string | yes      | ≤255                                                                                  |
+| `baseCategoryName`   | string | yes      | ≤255                                                                                  |
+| `level1CategoryCode` | string | yes      | ≤128                                                                                  |
+| `level2CategoryCode` | string | no       | ≤128; omitted or null clears                                                          |
+| `specificationName`  | string | no       | ≤255; omitted or null clears                                                          |
+| `salePrice`          | string | yes      | Plain decimal text, `^\d{1,14}(\.\d{1,6})?$`; zero is valid; never rounded            |
+| `dishAlias`          | string | no       | ≤512; omitted or null clears                                                          |
+| `departmentName`     | string | no       | ≤255; exact active department name of the same enterprise; never creates a department |
+
+The row is the authoritative value. Required fields must be present; omitting a nullable field
+stores null rather than retaining the previous value. The server preserves submitted text without
+trimming, case conversion, width conversion or Unicode rewriting; only `salePrice` is canonicalized
+as decimal text (for example `018.50` becomes `18.5`) without rounding. Length checks count Unicode
+code points. `DISH_CATALOG_LIMITS` is the shared limit source.
+
+The whole request is at most 16 MiB UTF-8 JSON. The batch is atomic: any invalid row rejects the
+whole request before side effects and returns `field` plus `rowIndexes` (zero-based indexes into
+`rows`, deduplicated, sorted and capped at 50). Duplicate batch SKUs, one SKU both written and
+removed, and a batch over 1000 entries are rejected before any write. The service then locks the
+authorization publication state, rechecks the current active admin, enabled business authorization
+and a valid fixed `dish_catalog` category, matches the enterprise, resolves all department names
+once among active departments, compares each existing row under lock, writes only
+real changes, hard-deletes the listed SKUs, writes one batch audit record and commits. Concurrent
+writes are row-level last-write-wins; there is no per-row expected version. Replaying identical
+content writes nothing and does not refresh `updated_at`. Removing an absent SKU is a no-op;
+removing all rows does not delete the enterprise's catalog resource.
+
+`departmentName` resolves to the stable department ID stored on the row. A rename is transparent to
+reads, a retired department remains readable but cannot be used by a later write, and a missing or
+retired name fails with `DISH_CATALOG_DEPARTMENT_NOT_FOUND`. The write never creates or restores a
+department.
+
+Output counters follow `received = rows.length + removeSkuIds.length`,
+`created + updated + unchanged = rows.length`, and `removed` counts rows actually deleted. MCP
+annotations are `readOnlyHint: false`, `destructiveHint: true` and `idempotentHint: true`.
+
+| Error code                                                       | HTTP | Meaning                                                                            |
+| ---------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------- |
+| `DISH_CATALOG_INVALID_INPUT`                                     | 400  | Invalid field, length, decimal, shape or duplicate remove IDs; bounded row indexes |
+| `DISH_CATALOG_DUPLICATE_SKU`                                     | 400  | The same `skuId` appears more than once in `rows`                                  |
+| `DISH_CATALOG_SKU_CONFLICT`                                      | 400  | The same `skuId` appears in both `rows` and `removeSkuIds`                         |
+| `DISH_CATALOG_DEPARTMENT_NOT_FOUND`                              | 400  | Department name is absent or retired; bounded row indexes                          |
+| `DISH_CATALOG_DEPARTMENT_AMBIGUOUS`                              | 400  | Defensive guard for duplicate active names; bounded row indexes                    |
+| `DISH_CATALOG_ENTERPRISE_NOT_AVAILABLE`                          | 400  | Enterprise name is not registered in this organization                             |
+| `DISH_CATALOG_BATCH_TOO_LARGE`                                   | 400  | Rows plus removals exceed 1000 entries                                             |
+| `UPLOAD_ADMIN_REQUIRED`                                          | 403  | Caller is not a current active admin                                               |
+| `AUTHORIZATION_NOT_ENABLED` / `RESOURCE_CATEGORY_NOT_CONFIGURED` | 403  | Existing business-authorization/category gate                                      |
+| `PAYLOAD_TOO_LARGE`                                              | 413  | Request body exceeds the 16 MiB limit                                              |
+
+`POST /v1/dish-catalog/upsert` is the equivalent HTTP route; it returns `cache-control: no-store`,
+uses strict JSON parsing that cannot pollute object prototypes, and exposes only fixed public field
+names and bounded row indexes in errors.
+
+### Dish catalog reads and coverage
+
+`query_structured_dataset` continues to support `dish_catalog` with these canonical fields:
+`spu_id`, `sku_id`, `dish_name`, `brand_name`, `base_category_name`,
+`level_1_category_code`, `level_2_category_code`, `specification_name`, `sale_price`,
+`dish_alias`, `department_id`, `department_name`, `created_at` and `updated_at`.
+`department_id` comes from the row and `department_name` is the current department name from the
+fixed `department` left join; both can be filtered, sorted, grouped and aggregated. The ten catalog
+fields, `department_name` and `updated_at` return by default; `department_id` and `created_at` are
+selectable but hidden by default. Default order is `sku_id ASC` for stable cursor pagination;
+explicit sorts keep the existing unique tiebreaker. `sale_price` is a decimal field and accepts
+exact decimal strings, not JSON numbers.
+
+Coverage for `dish_catalog` returns
+`{dataset:"dish_catalog", metadataPolicy:"current", rowCount, lastUpdatedAt}` from `COUNT(*)` and
+`MAX(updated_at)` over the same authorized scope. It is not a list of snapshots or source files;
+zero readable rows yield `rowCount: 0` and `lastUpdatedAt: null`.
+
+Catalog rows carry no source document. Each business enterprise has one catalog resource
+(`kind: "structured"`, `resource_key: "dish-catalog:" + enterpriseKey`, category `dish_catalog`,
+one group scope for that enterprise), created idempotently on the first successful write. Reads use
+the existing resource/scope/grant predicates, anchored to that enterprise instead of a source
+document. A missing resource, disabled category or unmatched grant fails closed (zero rows and
+zero/null coverage); nothing falls back to document clearance or client-side filtering. Writing
+requires admin but never grants ordinary read access.
+
+The legacy `dish_catalog` upload is retired with no compatibility switch: `upload_structured_dataset`
+and `POST /v1/structured/imports` return HTTP 400 `DATASET_UPLOAD_RETIRED` before any document,
+import batch, claim, storage object or audit record is created. The `ImportDataset.dish_catalog`
+enum remains only to avoid destructive enum changes and legacy object references, and it never
+produces a new batch. There is no data migration or historical snapshot; keep any needed local copy
+before destructive changes.
 
 <a id="store-reviews-launcher-0110"></a>
 

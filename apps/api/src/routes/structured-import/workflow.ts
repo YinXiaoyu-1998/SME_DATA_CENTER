@@ -41,7 +41,6 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
       fileType: Extract<Phase3FileType, "xlsx" | "csv">;
       startDate: string | null;
       endDate: string | null;
-      snapshotDate?: string;
     }
   | {
       ok: false;
@@ -64,12 +63,20 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     };
   }
 
+  if (upload.dataset === "dish_catalog") {
+    return {
+      ok: false,
+      code: PHASE3_ERROR_CODES.datasetUploadRetired,
+      message: "dish_catalog uploads are retired; use upsert_dish_catalog."
+    };
+  }
+
   if (!upload.dataset || !(STRUCTURED_DATASETS as readonly string[]).includes(upload.dataset)) {
     return {
       ok: false,
       code: "INVALID_STRUCTURED_IMPORT_UPLOAD",
       message:
-        "dataset must be dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, or cost_cards."
+        "dataset must be dishes, business, vip, delivery_ledger, supplier_catalog, or cost_cards."
     };
   }
 
@@ -110,25 +117,8 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
   ).metadataPolicy;
   let startDate: string | null;
   let endDate: string | null;
-  let snapshotDate: string | undefined;
 
-  if (metadataPolicy === "snapshot") {
-    if (
-      upload.startDate !== undefined ||
-      upload.endDate !== undefined ||
-      !upload.snapshotDate ||
-      !isDateWindow(upload.snapshotDate, upload.snapshotDate)
-    ) {
-      return {
-        ok: false,
-        code: PHASE3_ERROR_CODES.invalidDateWindow,
-        message: "dish_catalog requires snapshotDate and does not accept startDate or endDate."
-      };
-    }
-    startDate = upload.snapshotDate;
-    endDate = upload.snapshotDate;
-    snapshotDate = upload.snapshotDate;
-  } else if (metadataPolicy === "window") {
+  if (metadataPolicy === "window") {
     if (
       upload.snapshotDate !== undefined ||
       !upload.startDate ||
@@ -175,8 +165,7 @@ export function validateStructuredImportMetadata(upload: ParsedStructuredImportU
     dataset: upload.dataset as StructuredDatasetName,
     fileType,
     startDate,
-    endDate,
-    ...(snapshotDate ? { snapshotDate } : {})
+    endDate
   };
 }
 
@@ -227,7 +216,6 @@ export function canonicalStructuredImportFileName(input: {
   dataset: StructuredDatasetName;
   startDate?: string | null;
   endDate?: string | null;
-  snapshotDate?: string;
   receiptId?: string;
   contentDigest?: string;
   fileHash?: string;
@@ -248,13 +236,11 @@ export function canonicalStructuredImportFileName(input: {
 
   const registry = getStructuredRegistry(input.dataset);
   const metadataSegment =
-    registry.metadataPolicy === "snapshot"
-      ? (input.snapshotDate ?? "snapshot")
-      : registry.metadataPolicy === "derived_receipt"
-        ? `${canonicalValueSegment(input.receiptId ?? "receipt")}_${input.startDate ?? "undated"}`
-        : registry.metadataPolicy === "none"
-          ? (input.contentDigest ?? input.fileHash ?? "content")
-          : `${input.startDate}_${input.endDate}`;
+    registry.metadataPolicy === "derived_receipt"
+      ? `${canonicalValueSegment(input.receiptId ?? "receipt")}_${input.startDate ?? "undated"}`
+      : registry.metadataPolicy === "none"
+        ? (input.contentDigest ?? input.fileHash ?? "content")
+        : `${input.startDate}_${input.endDate}`;
   const extension = `.${input.fileType}`;
   const fullStem = `${enterpriseSegment}_${input.dataset}_${metadataSegment}`;
   const fullName = `${fullStem}${extension}`;
@@ -271,7 +257,6 @@ export function structuredImportFingerprint(input: {
   enterpriseName: string;
   startDate?: string | null;
   endDate?: string | null;
-  snapshotDate?: string;
   naturalKey?: string;
   confidentialityLevel: number;
   fileHash: string;
@@ -283,13 +268,11 @@ export function structuredImportFingerprint(input: {
     ...(input.historicalSupplementReason !== undefined
       ? { historicalSupplementReason: input.historicalSupplementReason }
       : {}),
-    ...(registry.metadataPolicy === "snapshot"
-      ? { snapshotDate: input.snapshotDate }
-      : registry.metadataPolicy === "derived_receipt"
-        ? { startDate: input.startDate, endDate: input.endDate, naturalKey: input.naturalKey }
-        : registry.metadataPolicy === "window"
-          ? { startDate: input.startDate, endDate: input.endDate }
-          : {}),
+    ...(registry.metadataPolicy === "derived_receipt"
+      ? { startDate: input.startDate, endDate: input.endDate, naturalKey: input.naturalKey }
+      : registry.metadataPolicy === "window"
+        ? { startDate: input.startDate, endDate: input.endDate }
+        : {}),
     ...(input.dataset === "cost_cards" ? {} : { confidentialityLevel: input.confidentialityLevel }),
     fileHash: input.fileHash
   };
@@ -439,10 +422,6 @@ export function importBatchResponse(importBatch: StructuredImportBatchRecord) {
   };
 
   const metadataPolicy = getStructuredRegistry(importBatch.dataset).metadataPolicy;
-
-  if (metadataPolicy === "snapshot") {
-    return { ...response, snapshotDate: importBatch.startDate };
-  }
 
   if (metadataPolicy === "derived_receipt") {
     return {

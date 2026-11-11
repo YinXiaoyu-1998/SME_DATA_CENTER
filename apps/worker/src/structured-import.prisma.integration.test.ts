@@ -179,64 +179,6 @@ describeIntegration("Prisma structured import worker repository", () => {
     await Promise.all([repositoryA.disconnect?.(), repositoryB.disconnect?.()]);
   });
 
-  it("applies a catalog snapshot to dish_catalog_rows with safe ignored-sheet status", async () => {
-    const repository = createPrismaProcessingWorkerRepository(databaseUrl);
-    const fixture = await createStructuredRun(prisma, "catalog", ImportDataset.dish_catalog);
-    const now = new Date("2026-08-19T00:00:00.000Z");
-    await repository.claimNextProcessingRun({
-      workerId: "worker-catalog",
-      leaseSeconds: 120,
-      now
-    });
-    await repository.beginStructuredImportApply?.({
-      runId: fixture.runId,
-      attemptNumber: 1,
-      documentId: fixture.documentId,
-      importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      workerId: "worker-catalog",
-      now
-    });
-    const result = structuredResult();
-    result.rows[0]!.payload = { snapshot_date: "2026-08-19", sku_id: "sku-1" };
-    result.ignoredSheets = [{ sheetIndex: 1, name: "总部套餐", reason: "SCHEMA_NOT_MATCHED" }];
-    await repository.completeStructuredImport?.({
-      runId: fixture.runId,
-      attemptNumber: 1,
-      documentId: fixture.documentId,
-      importBatchId: fixture.importBatchId,
-      dataset: fixture.dataset,
-      workerId: "worker-catalog",
-      now,
-      batchInsertSize: 500,
-      result
-    });
-
-    expect(
-      await prisma.dishCatalogRow.findMany({ where: { importBatchId: fixture.importBatchId } })
-    ).toEqual([
-      expect.objectContaining({
-        sourceSheetIndex: 0,
-        sourceSheetName: "Sheet1",
-        sourceRowNumber: 2,
-        payload: { snapshot_date: "2026-08-19", sku_id: "sku-1" }
-      })
-    ]);
-    expect(await prisma.vipRow.count({ where: { importBatchId: fixture.importBatchId } })).toBe(0);
-    expect(
-      (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
-        .sourceSheetSummary
-    ).toEqual([
-      expect.objectContaining({ name: "Sheet1", status: "imported" }),
-      { sheetIndex: 1, name: "总部套餐", reason: "SCHEMA_NOT_MATCHED", status: "ignored" }
-    ]);
-    expect(
-      (await prisma.importBatch.findUniqueOrThrow({ where: { id: fixture.importBatchId } }))
-        .appliedAt
-    ).toEqual(now);
-    await repository.disconnect?.();
-  });
-
   it("publishes delivery ledger rows and appliedAt in one transaction", async () => {
     const repository = createPrismaProcessingWorkerRepository(databaseUrl);
     const fixture = await createStructuredRun(prisma, "dlgr", ImportDataset.delivery_ledger);
@@ -633,7 +575,6 @@ async function expectRepositoryState(
 async function clearTestRecords(prisma: PrismaClient) {
   await prisma.auditLog.deleteMany({ where: { orgId } });
   await prisma.vipRow.deleteMany({ where: { orgId } });
-  await prisma.dishCatalogRow.deleteMany({ where: { orgId } });
   await prisma.deliveryLedgerRow.deleteMany({ where: { orgId } });
   await prisma.ledgerPdfPartition.deleteMany({ where: { orgId } });
   await prisma.supplierCatalogRow.deleteMany({ where: { orgId } });

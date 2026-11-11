@@ -32,7 +32,6 @@ export interface StagingUploadDomainCleanupAdapter {
   deleteStorageGarbage(ids: string[]): Promise<void>;
   deleteQuarantineCertificates(ids: string[]): Promise<void>;
   deleteVipRows(ids: string[]): Promise<void>;
-  deleteDishCatalogRows(ids: string[]): Promise<void>;
   deleteImportBatches(ids: string[]): Promise<void>;
   deleteDocuments(ids: string[]): Promise<void>;
   verifyPostCleanup(plan: StagingUploadDomainCleanupPlan): Promise<PostCleanupCounts>;
@@ -85,7 +84,6 @@ export async function runStagingUploadDomainCleanup(
   await input.adapter.deleteQuarantineCertificates(plan.quarantineCertificateIds);
   await input.adapter.deletePartitionImportJobs(plan.partitionImportJobIds);
   await input.adapter.deleteVipRows(plan.vipRowIds);
-  await input.adapter.deleteDishCatalogRows(plan.dishCatalogRowIds);
   await input.adapter.deleteImportBatches(plan.importBatchIds);
   await input.adapter.deleteDocuments(plan.documentIds);
 

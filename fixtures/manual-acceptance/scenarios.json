@@ -237,15 +237,15 @@
       ]
     },
     {
-      "id": "dish-catalog-upload",
-      "title": "菜品目录上传",
+      "id": "dish-catalog-upsert",
+      "title": "菜品目录批量写入",
       "account": "admin",
       "freshContext": true,
       "existingSession": "run",
       "turns": [
         {
-          "id": "dish-catalog-upload",
-          "prompt": "把 {enterpriseName} 在 {snapshotDate} 的完整菜品目录上传到 SMEDC：{dishCatalogFile}。"
+          "id": "dish-catalog-upsert",
+          "prompt": "读取 {dishCatalogFile} 中的菜品目录，按行批量写入 {enterpriseName} 的当前菜品目录。"
         }
       ]
     },
@@ -258,7 +258,7 @@
       "turns": [
         {
           "id": "dish-catalog-query",
-          "prompt": "{enterpriseName} 在 {snapshotDate} 的菜品目录里有哪些菜品？"
+          "prompt": "{enterpriseName} 的当前菜品目录里有哪些菜品？"
         }
       ]
     },

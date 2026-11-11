@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  FILE_IMPORT_UNSUPPORTED_CODE,
   STRUCTURED_DATASET_REGISTRIES,
   STRUCTURED_DATASETS,
   buildStructuredHeaderLookup,
@@ -229,8 +230,8 @@ describe("structured field registries", () => {
     }
   });
 
-  test("publishes source document ID only for datasets backed by row storage", () => {
-    for (const dataset of ["vip", "dish_catalog", "delivery_ledger", "supplier_catalog"] as const) {
+  test("publishes source document ID only for import-backed row datasets", () => {
+    for (const dataset of ["vip", "delivery_ledger", "supplier_catalog"] as const) {
       const registry = getStructuredRegistry(dataset);
       expect(registry.fields[0]).toMatchObject({
         canonicalName: "source_document_id",
@@ -252,6 +253,11 @@ describe("structured field registries", () => {
       );
       expect(registry.fields.every((field) => field.storage === undefined)).toBe(true);
     }
+    expect(
+      getStructuredRegistry("dish_catalog").fields.some(
+        (field) => field.canonicalName === "source_document_id"
+      )
+    ).toBe(false);
   });
 
   test("cover every reviewed dishes and business export column", () => {
@@ -479,130 +485,93 @@ describe("structured field registries", () => {
     }
   });
 
-  test("registers the catalog snapshot schema and its metadata policy", () => {
+  test("registers the current dish catalog contract with a department lookup", () => {
     const catalog = getStructuredRegistry("dish_catalog");
 
     expect(catalog).toMatchObject({
       dataset: "dish_catalog",
-      rowTable: "dish_catalog_rows",
-      sheetPolicy: "import_matching_visible",
-      metadataPolicy: "snapshot"
+      accessMode: "row_query",
+      rowTable: "dish_catalog_entries",
+      sheetPolicy: "none",
+      metadataPolicy: "current",
+      defaultSort: { field: "sku_id", direction: "asc" },
+      joins: [
+        {
+          id: "department",
+          type: "left",
+          table: "business_departments",
+          alias: "department",
+          localColumn: "department_id",
+          foreignColumn: "department_id"
+        }
+      ]
     });
-    expect(catalog.fields).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          canonicalName: "snapshot_date",
-          sourceColumn: "snapshot_date",
-          type: "date",
-          nullable: false,
-          inputSource: "upload_metadata",
-          defaultReturn: true
-        }),
-        expect.objectContaining({
-          canonicalName: "sku_id",
-          sourceColumn: "菜品编码（SKUID）",
-          type: "string",
-          nullable: false
-        }),
-        expect.objectContaining({
-          canonicalName: "sale_price",
-          sourceColumn: "售卖价",
-          type: "decimal",
-          nullable: false,
-          capabilities: expect.objectContaining({ aggregate: true, filter: true, sort: true })
-        })
-      ])
-    );
-    expect(catalog.fields).toHaveLength(12);
-    expect(
-      catalog.fields
-        .filter((field) => field.canonicalName !== "source_document_id")
-        .map(({ canonicalName, sourceColumn, type, nullable, inputSource }) => ({
-          canonicalName,
-          sourceColumn,
-          type,
-          nullable,
-          inputSource
-        }))
-    ).toEqual([
-      {
-        canonicalName: "snapshot_date",
-        sourceColumn: "snapshot_date",
-        type: "date",
-        nullable: false,
-        inputSource: "upload_metadata"
-      },
-      {
-        canonicalName: "spu_id",
-        sourceColumn: "菜品编码（SPUID）",
-        type: "string",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "sku_id",
-        sourceColumn: "菜品编码（SKUID）",
-        type: "string",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "dish_name",
-        sourceColumn: "菜品名称",
-        type: "string",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "brand_name",
-        sourceColumn: "品牌",
-        type: "string",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "base_category_name",
-        sourceColumn: "基础分类",
-        type: "string",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "level_1_category_code",
-        sourceColumn: "一级分类编码",
-        type: "string",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "level_2_category_code",
-        sourceColumn: "二级分类编码",
-        type: "string",
-        nullable: true,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "specification_name",
-        sourceColumn: "规格名称",
-        type: "string",
-        nullable: true,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "sale_price",
-        sourceColumn: "售卖价",
-        type: "decimal",
-        nullable: false,
-        inputSource: "file"
-      },
-      {
-        canonicalName: "dish_alias",
-        sourceColumn: "菜品别名",
-        type: "string",
-        nullable: true,
-        inputSource: "file"
-      }
+    expect(catalog).not.toHaveProperty("datePolicy");
+    expect(catalog.fields.map((field) => field.canonicalName)).toEqual([
+      "spu_id",
+      "sku_id",
+      "dish_name",
+      "brand_name",
+      "base_category_name",
+      "level_1_category_code",
+      "level_2_category_code",
+      "specification_name",
+      "sale_price",
+      "dish_alias",
+      "department_id",
+      "department_name",
+      "created_at",
+      "updated_at"
     ]);
+    expect(catalog.fields.some((field) => field.canonicalName === "source_document_id")).toBe(
+      false
+    );
+    expect(catalog.fields.some((field) => field.canonicalName === "snapshot_date")).toBe(false);
+
+    const byName = Object.fromEntries(catalog.fields.map((field) => [field.canonicalName, field]));
+    expect(byName["sku_id"]).toMatchObject({
+      sourceColumn: "菜品编码（SKUID）",
+      type: "string",
+      nullable: false,
+      inputSource: "api",
+      defaultReturn: true,
+      capabilities: { filter: true, sort: true, group: true, aggregate: false },
+      storage: { table: "dish_catalog_entries", column: "payload", jsonPath: "$.sku_id" }
+    });
+    expect(byName["sale_price"]).toMatchObject({
+      sourceColumn: "售卖价",
+      type: "decimal",
+      nullable: false,
+      inputSource: "api",
+      capabilities: { filter: true, sort: true, group: false, aggregate: true }
+    });
+    expect(byName["department_id"]).toMatchObject({
+      type: "string",
+      nullable: true,
+      inputSource: "derived",
+      defaultReturn: false,
+      capabilities: { filter: true, sort: true, group: true, aggregate: true },
+      storage: { table: "dish_catalog_entries", column: "department_id" }
+    });
+    expect(byName["department_name"]).toMatchObject({
+      type: "string",
+      nullable: true,
+      inputSource: "derived",
+      defaultReturn: true,
+      capabilities: { filter: true, sort: true, group: true, aggregate: true },
+      storage: { table: "business_departments", column: "name", join: "department" }
+    });
+    for (const name of ["created_at", "updated_at"] as const) {
+      expect(byName[name]).toMatchObject({
+        type: "date_time",
+        nullable: false,
+        inputSource: "derived",
+        capabilities: { filter: true, sort: true, group: true, aggregate: true },
+        storage: { table: "dish_catalog_entries", column: name }
+      });
+    }
+    expect(byName["updated_at"]?.defaultReturn).toBe(true);
+    expect(byName["created_at"]?.defaultReturn).toBe(false);
   });
 
   test("defines partition field semantics without obsolete MySQL payload mappings", () => {
@@ -723,25 +692,30 @@ describe("structured field registries", () => {
     });
   });
 
-  test("requires the catalog header to be the exact nonblank controlled set in any order", () => {
-    const headers = getStructuredRegistry("dish_catalog")
-      .fields.filter((field) => field.inputSource === "file")
-      .map((field) => field.sourceColumn);
-    const reordered = [...headers].reverse();
+  test("rejects file import for current datasets with a stable error", () => {
+    const legacyCatalogHeaders = [
+      "菜品编码（SPUID）",
+      "菜品编码（SKUID）",
+      "菜品名称",
+      "品牌",
+      "基础分类",
+      "一级分类编码",
+      "二级分类编码",
+      "规格名称",
+      "售卖价",
+      "菜品别名"
+    ];
 
-    expect(validateStructuredHeaders("dish_catalog", reordered)).toMatchObject({ ok: true });
-    expect(
-      validateStructuredHeaders("dish_catalog", [...headers.slice(0, 4), "", ...headers.slice(4)])
-    ).toMatchObject({ ok: false });
-    expect(
-      validateStructuredHeaders("dish_catalog", ["未知列", ...headers.slice(1)])
-    ).toMatchObject({ ok: false });
-    expect(
-      validateStructuredHeaders("dish_catalog", [headers[1]!, ...headers.slice(1)])
-    ).toMatchObject({ ok: false });
-    expect(validateStructuredHeaders("dish_catalog", headers.slice(1))).toMatchObject({
-      ok: false
-    });
+    for (const headers of [[], ["任意列"], legacyCatalogHeaders, ["", "售卖价"]]) {
+      expect(validateStructuredHeaders("dish_catalog", headers)).toEqual({
+        ok: false,
+        errors: [{ code: FILE_IMPORT_UNSUPPORTED_CODE, column: "" }]
+      });
+      expect(resolveStructuredHeaders("dish_catalog", headers)).toEqual({
+        ok: false,
+        errors: [{ code: FILE_IMPORT_UNSUPPORTED_CODE, column: "" }]
+      });
+    }
   });
 
   test("accepts the reviewed vip member export header and rejects missing columns", () => {

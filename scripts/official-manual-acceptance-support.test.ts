@@ -289,7 +289,6 @@ describe("official manual acceptance cleanup", () => {
         costCardResourceScopes: 0,
         storageGarbage: 0,
         vipRows: 0,
-        dishCatalogRows: 0,
         deliveryLedgerRows: 3,
         supplierCatalogRows: 0,
         quarantineCertificates: 0,

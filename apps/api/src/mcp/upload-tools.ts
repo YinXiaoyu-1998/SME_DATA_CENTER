@@ -16,6 +16,7 @@ import { launcherVersionAtLeast, type RequestAuditContext } from "../request-aud
 import {
   FILE_UPLOAD_ADMIN_REQUIRED_CODE,
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
+  PHASE3_ERROR_CODES,
   getStructuredRegistry,
   isPartitionDataset,
   type FileUploadSurface,
@@ -38,7 +39,6 @@ interface UploadStructuredDatasetInput {
   enterpriseName: string;
   startDate?: string;
   endDate?: string;
-  snapshotDate?: string;
   idempotencyKey: string;
   confidentialityLevel?: number;
   historicalSupplementReason?: string;
@@ -144,6 +144,13 @@ async function uploadStructuredDataset(
     input && typeof input === "object" && "dataset" in input
       ? (input as { dataset?: unknown }).dataset
       : undefined;
+  if (requestedDataset === "dish_catalog")
+    return errorToolResult(
+      PHASE3_ERROR_CODES.datasetUploadRetired,
+      "dish_catalog uploads are retired; use upsert_dish_catalog.",
+      undefined,
+      { retryable: false, requestId: context.audit.requestId }
+    );
   if (
     requestedDataset === "takeaway_orders" &&
     !launcherVersionAtLeast(context.audit.launcherVersion, TAKEAWAY_ORDER_LAUNCHER_VERSION)
@@ -240,9 +247,6 @@ function appendStructuredMetadataParts(
   input: UploadStructuredDatasetInput
 ): void {
   switch (getStructuredRegistry(input.dataset).metadataPolicy) {
-    case "snapshot":
-      parts.push({ type: "field", name: "snapshotDate", value: input.snapshotDate! });
-      return;
     case "window":
       parts.push(
         { type: "field", name: "startDate", value: input.startDate! },
@@ -251,6 +255,8 @@ function appendStructuredMetadataParts(
       return;
     case "derived_receipt":
     case "none":
+    case "snapshot":
+    case "current":
       return;
   }
 }

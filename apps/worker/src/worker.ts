@@ -1188,6 +1188,8 @@ export function createPrismaProcessingWorkerRepository(
         });
         if (!batch)
           throw new Error(`Structured import batch ${input.importBatchId} cannot complete.`);
+        if (batch.dataset === ImportDataset.dish_catalog)
+          throw new Error(`Unsupported structured dataset: ${String(batch.dataset)}`);
 
         const ledgerStoreKey = await persistStructuredSourceReadRequirements(tx, {
           orgId: run.orgId,
@@ -1200,15 +1202,6 @@ export function createPrismaProcessingWorkerRepository(
         if (batch.dataset === ImportDataset.vip) {
           await tx.vipRow.deleteMany({ where: { importBatchId: batch.id } });
           await insertStructuredRows(tx, "vip", batch, input.result.rows, input.batchInsertSize);
-        } else if (batch.dataset === ImportDataset.dish_catalog) {
-          await tx.dishCatalogRow.deleteMany({ where: { importBatchId: batch.id } });
-          await insertStructuredRows(
-            tx,
-            "dish_catalog",
-            batch,
-            input.result.rows,
-            input.batchInsertSize
-          );
         } else if (batch.dataset === ImportDataset.delivery_ledger) {
           const shelfLives = await lookupShelfLives(
             tx,
@@ -1800,8 +1793,6 @@ async function insertStructuredRows(
     }));
     if (dataset === "vip") {
       await tx.vipRow.createMany({ data });
-    } else if (dataset === "dish_catalog") {
-      await tx.dishCatalogRow.createMany({ data });
     } else if (dataset === "delivery_ledger") {
       await tx.deliveryLedgerRow.createMany({ data });
     } else if (dataset === "supplier_catalog") {
@@ -1821,14 +1812,8 @@ export function persistedSourceSheetSummary(
       ...result.sheetSummary,
       ...result.ignoredSheets.map((sheet) => ({ ...sheet, status: "ignored" }))
     ] as unknown as Prisma.InputJsonValue;
-  if (dataset !== ImportDataset.dish_catalog) {
-    return result.sheetSummary as unknown as Prisma.InputJsonValue;
-  }
 
-  return [
-    ...result.sheetSummary.map((sheet) => ({ ...sheet, status: "imported" as const })),
-    ...result.ignoredSheets.map((sheet) => ({ ...sheet, status: "ignored" as const }))
-  ] as Prisma.InputJsonValue;
+  return result.sheetSummary as unknown as Prisma.InputJsonValue;
 }
 
 function structuredFileType(fileType: string | null | undefined): "csv" | "xlsx" | null {

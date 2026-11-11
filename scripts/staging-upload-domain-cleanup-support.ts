@@ -31,7 +31,6 @@ export interface StagingUploadDomainCleanupInventory {
   storageGarbageIds: string[];
   quarantineCertificateIds: string[];
   vipRowIds: string[];
-  dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
   storageObjectKeys: string[];
   qdrantPoints: QdrantPointTarget[];
@@ -54,7 +53,6 @@ export interface StagingUploadDomainCleanupPlan {
   storageGarbageIds: string[];
   quarantineCertificateIds: string[];
   vipRowIds: string[];
-  dishCatalogRowIds: string[];
   uploadAuditLogIds: string[];
   storageObjectKeys: string[];
   qdrantPoints: QdrantPointTarget[];
@@ -83,7 +81,6 @@ export interface StagingUploadDomainCleanupSafeLog {
     storageGarbage: number;
     quarantineCertificates: number;
     vipRows: number;
-    dishCatalogRows: number;
     uploadAuditLogs: number;
     storageObjects: number;
     qdrantPoints: number;
@@ -115,7 +112,6 @@ export const UPLOAD_DOMAIN_DELETION_TARGETS = [
   "StorageGarbage",
   "QuarantineCertificate",
   "VipRow",
-  "DishCatalogRow",
   "ImportBatch",
   "Document"
 ] as const;
@@ -180,7 +176,6 @@ export function buildStagingUploadDomainCleanupPlan(input: {
   const storageGarbageIds = sortIds(input.inventory.storageGarbageIds);
   const quarantineCertificateIds = sortIds(input.inventory.quarantineCertificateIds);
   const vipRowIds = sortIds(input.inventory.vipRowIds);
-  const dishCatalogRowIds = sortIds(input.inventory.dishCatalogRowIds);
   const uploadAuditLogIds = sortIds(input.inventory.uploadAuditLogIds);
   const storageObjectKeys = [...input.inventory.storageObjectKeys].sort();
   const qdrantPoints = [...input.inventory.qdrantPoints].sort(compareQdrantPointTargets);
@@ -202,7 +197,6 @@ export function buildStagingUploadDomainCleanupPlan(input: {
     storageGarbageIds,
     quarantineCertificateIds,
     vipRowIds,
-    dishCatalogRowIds,
     uploadAuditLogIds,
     storageObjectKeys,
     qdrantPoints,
@@ -227,7 +221,6 @@ export function buildStagingUploadDomainCleanupPlan(input: {
         storageGarbage: storageGarbageIds.length,
         quarantineCertificates: quarantineCertificateIds.length,
         vipRows: vipRowIds.length,
-        dishCatalogRows: dishCatalogRowIds.length,
         uploadAuditLogs: uploadAuditLogIds.length,
         storageObjects: storageObjectKeys.length,
         qdrantPoints: qdrantPoints.length
@@ -265,7 +258,6 @@ function validateInventory(inventory: StagingUploadDomainCleanupInventory): void
   validateUniqueNonEmpty(inventory.storageGarbageIds, "storage garbage ID");
   validateUniqueNonEmpty(inventory.quarantineCertificateIds, "quarantine certificate ID");
   validateUniqueNonEmpty(inventory.vipRowIds, "VIP row ID");
-  validateUniqueNonEmpty(inventory.dishCatalogRowIds, "dish catalog row ID");
   validateUniqueNonEmpty(inventory.uploadAuditLogIds, "upload audit log ID");
   validateUniqueNonEmpty(inventory.storageObjectKeys, "storage object key");
 

@@ -88,25 +88,32 @@ export function compileAuthorizedScope(
 }
 
 /** Only registered server targets can choose correlation columns. */
+export type StructuredReadTarget =
+  "row" | "coverage" | "partition" | "cost_card" | "store_review" | "catalog";
+
 export function compileStructuredReadScope(
   snapshot: AuthorizationSnapshot,
-  target: "row" | "coverage" | "partition" | "cost_card" | "store_review",
+  target: StructuredReadTarget,
   dataset: string
 ): AuthorizedScopeSql {
-  if (!["row", "coverage", "partition", "cost_card", "store_review"].includes(target))
+  if (!["row", "coverage", "partition", "cost_card", "store_review", "catalog"].includes(target))
     throw new Error("UNKNOWN_AUTHORIZATION_TARGET");
   if (target === "store_review" && dataset !== "store_reviews")
+    throw new Error("UNKNOWN_AUTHORIZATION_TARGET");
+  if (target === "catalog" && dataset !== "dish_catalog")
     throw new Error("UNKNOWN_AUTHORIZATION_TARGET");
   const compiled = compileAuthorizedScope(snapshot, "resource");
   const predicate = compiled.sql.replaceAll("r.", "ar.");
   const correlation =
-    target === "store_review"
-      ? "ar.kind = 'store_review' AND ar.org_id = v.org_id AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('store-review:', v.id) AS BINARY) AND EXISTS (SELECT 1 FROM business_resource_scopes vs WHERE vs.org_id = ar.org_id AND vs.resource_id = ar.id AND vs.ownership = 'store' AND CAST(vs.enterprise_key AS BINARY) = CAST(v.enterprise_key AS BINARY) AND CAST(vs.store_name AS BINARY) = CAST(v.store_name AS BINARY)) AND (SELECT COUNT(*) FROM business_resource_scopes vs WHERE vs.org_id = ar.org_id AND vs.resource_id = ar.id) = 1"
-      : target === "cost_card"
-        ? "ar.kind = 'cost_card' AND ar.org_id = c.org_id AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('cost-card:', c.id) AS BINARY)"
-        : target === "partition"
-          ? "ar.kind = 'structured' AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('partition:', structured_partitions.id) AS BINARY)"
-          : `ar.kind = 'source_fragment' AND ar.source_document_id = ${target === "row" ? "r" : "ib"}.source_document_id`;
+    target === "catalog"
+      ? "ar.kind = 'structured' AND ar.org_id = r.org_id AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('dish-catalog:', r.enterprise_key) AS BINARY)"
+      : target === "store_review"
+        ? "ar.kind = 'store_review' AND ar.org_id = v.org_id AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('store-review:', v.id) AS BINARY) AND EXISTS (SELECT 1 FROM business_resource_scopes vs WHERE vs.org_id = ar.org_id AND vs.resource_id = ar.id AND vs.ownership = 'store' AND CAST(vs.enterprise_key AS BINARY) = CAST(v.enterprise_key AS BINARY) AND CAST(vs.store_name AS BINARY) = CAST(v.store_name AS BINARY)) AND (SELECT COUNT(*) FROM business_resource_scopes vs WHERE vs.org_id = ar.org_id AND vs.resource_id = ar.id) = 1"
+        : target === "cost_card"
+          ? "ar.kind = 'cost_card' AND ar.org_id = c.org_id AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('cost-card:', c.id) AS BINARY)"
+          : target === "partition"
+            ? "ar.kind = 'structured' AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('partition:', structured_partitions.id) AS BINARY)"
+            : `ar.kind = 'source_fragment' AND ar.source_document_id = ${target === "row" ? "r" : "ib"}.source_document_id`;
   return {
     sql: `EXISTS (SELECT 1 FROM business_resources ar JOIN business_categories ac ON ac.org_id = ar.org_id AND ac.id = ar.category_id WHERE ${correlation} AND CAST(ac.\`key\` AS BINARY) = CAST(? AS BINARY) AND (${predicate}))`,
     params: [dataset, ...compiled.params]

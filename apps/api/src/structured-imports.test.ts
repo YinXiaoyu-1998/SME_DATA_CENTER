@@ -28,9 +28,6 @@ const prisma = vi.hoisted(() => ({
   vipRow: {
     deleteMany: vi.fn()
   },
-  dishCatalogRow: {
-    deleteMany: vi.fn()
-  },
   deliveryLedgerRow: {
     findMany: vi.fn().mockResolvedValue([]),
     deleteMany: vi.fn()
@@ -321,7 +318,6 @@ describe("Prisma structured import audit provenance", () => {
     prisma.importBatch.update.mockResolvedValue(importBatchRecord("applied"));
     prisma.document.update.mockResolvedValue({});
     prisma.vipRow.deleteMany.mockResolvedValue({ count: 0 });
-    prisma.dishCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.deliveryLedgerRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.supplierCatalogRow.deleteMany.mockResolvedValue({ count: 0 });
     prisma.processingRun.create.mockResolvedValue({});
@@ -466,7 +462,7 @@ describe("Prisma structured import audit provenance", () => {
     });
   });
 
-  it("uses the dedicated catalog row branch when reapplying a reserved snapshot", async () => {
+  it("rejects a retired catalog batch before writing rows or auditing", async () => {
     const repository = createPrismaStructuredImportRepository({
       databaseUrl: "mysql://test",
       transactionTimeoutMs: 1_000,
@@ -475,30 +471,29 @@ describe("Prisma structured import audit provenance", () => {
     prisma.importBatch.findFirst.mockResolvedValueOnce(
       importBatchRecord("pending", [], "dish_catalog")
     );
-    prisma.importBatch.update.mockResolvedValueOnce(
-      importBatchRecord("applied", [], "dish_catalog")
-    );
 
-    await repository.applyReservedStructuredImport({
-      orgId: "org_1",
-      actorUserAccountId: "emp_1",
-      importBatchId: "imp_1",
-      rows: [
-        {
-          sourceSheetIndex: 2,
-          sourceSheetName: "Catalog B",
-          sourceRowNumber: 2,
-          payload: { sku_id: "sku-1" }
-        }
-      ],
-      audit
-    });
+    await expect(
+      repository.applyReservedStructuredImport({
+        orgId: "org_1",
+        actorUserAccountId: "emp_1",
+        importBatchId: "imp_1",
+        rows: [
+          {
+            sourceSheetIndex: 2,
+            sourceSheetName: "Catalog B",
+            sourceRowNumber: 2,
+            payload: { sku_id: "sku-1" }
+          }
+        ],
+        audit
+      })
+    ).rejects.toThrow("dish_catalog uploads are retired");
 
-    expect(prisma.dishCatalogRow.deleteMany).toHaveBeenCalledWith({
-      where: { importBatchId: "imp_1" }
-    });
     expect(prisma.vipRow.deleteMany).not.toHaveBeenCalled();
-    expect(JSON.stringify(prisma.$executeRaw.mock.calls)).toContain("Catalog B");
+    expect(prisma.deliveryLedgerRow.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.supplierCatalogRow.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("creates a queued structured-import processing run only after a reservation exists", async () => {
@@ -687,18 +682,14 @@ describe("Prisma structured import audit provenance", () => {
     }
   );
 
-  it("releases an archived applied snapshot claim for a new key but replays the original key", async () => {
+  it("releases an archived applied window claim for a new key but replays the original key", async () => {
     const repository = createPrismaStructuredImportRepository({
       databaseUrl: "mysql://test",
       transactionTimeoutMs: 1_000,
       batchInsertSize: 100
     });
     const archivedBatch = {
-      ...importBatchRecord(
-        "applied",
-        [{ id: "run_archived", status: "succeeded" }],
-        "dish_catalog"
-      ),
+      ...importBatchRecord("applied", [{ id: "run_archived", status: "succeeded" }], "vip"),
       id: "imp_archived",
       requestFingerprint: "archived-fingerprint",
       startDate: new Date("2026-08-19T00:00:00.000Z"),
@@ -710,7 +701,7 @@ describe("Prisma structured import audit provenance", () => {
       }
     };
     const replacementBatch = {
-      ...importBatchRecord("pending", [], "dish_catalog"),
+      ...importBatchRecord("pending", [], "vip"),
       id: "imp_replacement",
       startDate: new Date("2026-08-19T00:00:00.000Z"),
       endDate: new Date("2026-08-19T00:00:00.000Z")
@@ -726,12 +717,12 @@ describe("Prisma structured import audit provenance", () => {
     const baseInput = {
       orgId: "org_1",
       actorUserAccountId: "emp_1",
-      dataset: "dish_catalog" as const,
+      dataset: "vip" as const,
       fileType: "csv" as const,
       startDate: "20260819",
       endDate: "20260819",
       document: {
-        title: "Catalog snapshot",
+        title: "VIP window",
         storageObjectKey: "org/org_1/documents/doc_replacement/original/catalog.csv",
         originalFileName: "catalog.csv",
         contentType: "text/csv",
@@ -753,7 +744,7 @@ describe("Prisma structured import audit provenance", () => {
       })
     ).resolves.toMatchObject({
       state: "created",
-      importBatch: { id: "imp_replacement", dataset: "dish_catalog" }
+      importBatch: { id: "imp_replacement", dataset: "vip" }
     });
     expect(prisma.importWindowClaim.deleteMany).toHaveBeenCalledWith({
       where: { id: "claim_archived", importBatchId: "imp_archived" }
