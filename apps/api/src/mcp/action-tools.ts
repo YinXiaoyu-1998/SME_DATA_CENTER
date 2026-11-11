@@ -1,6 +1,7 @@
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
   COST_CARD_LAUNCHER_VERSION,
+  dishCatalogValidationErrorToolResult,
   errorToolResult,
   validationErrorToolResult,
   type PermissionMcpInputs,
@@ -57,6 +58,10 @@ export function createActionMcpToolHandlers(context: ApiDelegationContext): Smed
             undefined,
             { requestId: mcpContext.audit?.requestId ?? context.audit.requestId }
           );
+        if (toolName === "upsert_dish_catalog") {
+          const invalid = dishCatalogValidationErrorToolResult(input);
+          if (invalid) return invalid;
+        }
         const parsed = ACTION_TOOL_CONTRACTS[toolName].inputSchema.safeParse(input);
 
         if (!parsed.success) {

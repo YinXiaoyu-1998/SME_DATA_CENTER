@@ -1,6 +1,7 @@
 import {
   DishCatalogValidationError,
   boundedDishCatalogRowIndexes,
+  isDishCatalogInputField,
   parseDishCatalogBatch
 } from "@smedc/domain";
 import {
@@ -11,25 +12,6 @@ import {
 
 /** Whole-request UTF-8 JSON cap; the transport rejects larger bodies before parsing. */
 export const DISH_CATALOG_BATCH_BYTES = 16 * 1024 * 1024;
-
-/** Fixed public row/batch field names; caller text is never echoed back as a field name. */
-const DISH_CATALOG_FIELDS = new Set([
-  "enterpriseName",
-  "rows",
-  "removeSkuIds",
-  "sourceFileName",
-  "spuId",
-  "skuId",
-  "dishName",
-  "brandName",
-  "baseCategoryName",
-  "level1CategoryCode",
-  "level2CategoryCode",
-  "specificationName",
-  "salePrice",
-  "dishAlias",
-  "departmentName"
-]);
 
 const BAD_REQUEST_REPOSITORY_CODES = new Set([
   "DISH_CATALOG_DEPARTMENT_NOT_FOUND",
@@ -68,7 +50,7 @@ function publicDetails(details: {
 }): DishCatalogPublicDetails {
   const rowIndexes = boundedDishCatalogRowIndexes(details.rowIndexes ?? []);
   return {
-    ...(details.field !== undefined && DISH_CATALOG_FIELDS.has(details.field)
+    ...(details.field !== undefined && isDishCatalogInputField(details.field)
       ? { field: details.field }
       : {}),
     ...(rowIndexes.length ? { rowIndexes } : {})

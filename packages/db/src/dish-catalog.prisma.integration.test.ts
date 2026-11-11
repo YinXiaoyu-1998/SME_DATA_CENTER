@@ -425,47 +425,36 @@ dishCatalogIntegrationSuite("dish catalog current-state MySQL repository", () =>
       (await prisma.dishCatalogEntry.findFirstOrThrow({ where: { orgId, enterpriseKey } }))
         .updatedAt
     ).toEqual(beforeReplay);
-
-    // A batch containing both variants ends on the last row's payload even when that payload
-    // equals the pre-batch state; the in-batch update must not be treated as unchanged.
-    await expect(
-      repository.upsert(actor(), {
-        enterpriseName,
-        rows: [
-          row("SKU-CASE", { dishName: "先", departmentName: "Café" }),
-          row("sku-case", { dishName: "更新", departmentName: "CAFE" })
-        ]
-      })
-    ).resolves.toEqual({
-      received: 2,
-      created: 0,
-      updated: 2,
-      unchanged: 0,
-      removed: 0
-    });
-    const replay = await prisma.dishCatalogEntry.findMany({ where: { orgId, enterpriseKey } });
-    expect(replay).toHaveLength(1);
-    expect(replay[0]!.payload).toMatchObject({ dish_name: "更新" });
   });
 
-  it("converges two collation-equivalent new SKUs in one batch to one row", async () => {
-    // The second insert hits the same unique key inside the same transaction; the repository
-    // must catch P2002 and update the first row instead of failing the whole batch.
+  it("rejects collation-equivalent SKUs across writes and deletions before changing the catalog", async () => {
+    await repository.upsert(actor(), { enterpriseName, rows: [row("SKU-Café")] });
+    const input = { enterpriseName, rows: [row("SKU-CAFE")], removeSkuIds: ["sku-café "] };
+    await expect(repository.upsert(actor(), input)).rejects.toMatchObject({
+      code: "DISH_CATALOG_SKU_CONFLICT",
+      details: { field: "skuId", rowIndexes: [0] }
+    });
     await expect(
       repository.upsert(actor(), {
         enterpriseName,
-        rows: [row("SKU-NEW", { dishName: "先" }), row("sku-new", { dishName: "后" })]
+        rows: [row("SKU-NEW"), row("sku-new")]
       })
-    ).resolves.toEqual({
-      received: 2,
-      created: 1,
-      updated: 1,
-      unchanged: 0,
-      removed: 0
+    ).rejects.toMatchObject({
+      code: "DISH_CATALOG_DUPLICATE_SKU",
+      details: { field: "skuId", rowIndexes: [0, 1] }
     });
-    const rows = await prisma.dishCatalogEntry.findMany({ where: { orgId, enterpriseKey } });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.payload).toMatchObject({ dish_name: "后" });
+    await expect(
+      repository.upsert(actor(), {
+        enterpriseName,
+        removeSkuIds: ["SKU-Café", "sku-cafe"]
+      })
+    ).rejects.toMatchObject({
+      code: "DISH_CATALOG_INVALID_INPUT",
+      details: { field: "removeSkuIds", rowIndexes: [0, 1] }
+    });
+    await expect(
+      prisma.dishCatalogEntry.findMany({ where: { orgId, enterpriseKey } })
+    ).resolves.toMatchObject([{ skuId: "SKU-Café" }]);
   });
 
   it("converges a concurrent create of one SKU to last-write-wins without a duplicate-key failure", async () => {

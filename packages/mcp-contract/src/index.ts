@@ -31,7 +31,10 @@ import {
   parseStoreReviewQuery,
   DISH_CATALOG_LIMITS,
   DISH_CATALOG_SALE_PRICE_PATTERN,
-  dishCatalogTextSchema
+  dishCatalogTextSchema,
+  DishCatalogValidationError,
+  isDishCatalogInputField,
+  parseDishCatalogBatch
 } from "@smedc/domain";
 
 export const MCP_UPLOAD_FILENAME_MAX_LENGTH = PUBLIC_INPUT_LIMITS.uploadFilenameChars;
@@ -1934,6 +1937,26 @@ function safeApiErrorDetails(
   }
 
   return Object.keys(details).length ? details : undefined;
+}
+
+/** Keep typed catalog errors ahead of the SDK's generic input validation. */
+export function dishCatalogValidationErrorToolResult(
+  input: unknown
+): McpJsonToolResult | undefined {
+  try {
+    parseDishCatalogBatch(input);
+  } catch (error) {
+    if (!(error instanceof DishCatalogValidationError)) throw error;
+    const { field, rowIndexes } = error.details;
+    const details = safeApiErrorDetails({
+      ...(field !== undefined && isDishCatalogInputField(field) ? { field } : {}),
+      ...(rowIndexes === undefined ? {} : { rowIndexes })
+    });
+    return errorToolResult(error.code, "Invalid dish catalog input.", details, {
+      retryable: false
+    });
+  }
+  return undefined;
 }
 
 export function validationErrorToolResult(details: unknown): McpJsonToolResult {

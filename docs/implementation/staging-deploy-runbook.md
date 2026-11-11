@@ -52,6 +52,8 @@ GitHub staging secrets：ACR_PASSWORD、STAGING_CURSOR_SIGNING_SECRET、STAGING_
 
 失败后发布程序恢复前一 API/worker/release-ops 镜像和 Compose。所有镜像切换入口（含指定旧 tag 的部署及手动／自动回滚）均先检查目标 API/worker 的订单来源口径兼容标签；不兼容目标需先停止两项写入服务，再以当前 release-ops 只读检查企业切换标记及明确来源口径的当前分区／未结束导入任务。已切换或存在明确口径时拒绝回滚，仅重启此前运行的原容器；查询失败同样拒绝，不创建或启用原本停止的容器。仅历史 `legacy_unknown` 或尚未使用该功能时允许旧镜像回滚，不清除标记或重写历史口径。数据库迁移始终前向，任何镜像回滚均需兼容已应用 schema 和已启用授权；不兼容则按 [安全暂停流程](business-authorization-cutover.md) 阻断读取，不能恢复旧权限放行。
 
+菜品目录硬切部署会比对目标 API/worker 的 `xyz.smedatacenter.dish-catalog-schema` 标签和数据库实际表结构。切换到当前目录模型时，先停旧 API/worker，在同一发布锁内复查重名部门，再运行迁移。迁移后复核旧表已删除、新表存在，才启动目标镜像。预检失败且旧表仍在时，可以恢复兼容的旧镜像。删表后自动和手动回滚均拒绝依赖旧表的镜像，需用兼容当前 schema 的镜像向前恢复。故障恢复应使用含此检查的部署入口。
+
 ## 获准诊断或恢复
 
 以下为受控命令形状，不是日常本地发布授权：

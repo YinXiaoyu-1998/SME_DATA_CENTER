@@ -608,13 +608,15 @@ code points. `DISH_CATALOG_LIMITS` is the shared limit source.
 The whole request is at most 16 MiB UTF-8 JSON. The batch is atomic: any invalid row rejects the
 whole request before side effects and returns `field` plus `rowIndexes` (zero-based indexes into
 `rows`, deduplicated, sorted and capped at 50). Duplicate batch SKUs, one SKU both written and
-removed, and a batch over 1000 entries are rejected before any write. The service then locks the
+removed, and a batch over 1000 entries are rejected before any write. SKU identity uses the
+MySQL unique key collation, including case and accent equivalence. Both transports reject explicit
+null for either array. The service then locks the
 authorization publication state, rechecks the current active admin, enabled business authorization
 and a valid fixed `dish_catalog` category, matches the enterprise, resolves all department names
 once among active departments, compares each existing row under lock, writes only
 real changes, hard-deletes the listed SKUs, writes one batch audit record and commits. Concurrent
 writes are row-level last-write-wins; there is no per-row expected version. Replaying identical
-content writes nothing and does not refresh `updated_at`. Removing an absent SKU is a no-op;
+content records only its batch audit and preserves `updated_at`, resource versions and query cursors. Removing an absent SKU is a no-op;
 removing all rows does not delete the enterprise's catalog resource.
 
 `departmentName` resolves to the stable department ID stored on the row. A rename is transparent to

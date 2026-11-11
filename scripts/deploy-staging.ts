@@ -105,12 +105,79 @@ try {
 }
 `;
 
+const DISH_CATALOG_SCHEMA_PROBE = String.raw`
+let prisma;
+try {
+  const [{ PrismaMariaDb }, { PrismaClient }] = await Promise.all([
+    import("@prisma/adapter-mariadb"), import("@prisma/client")
+  ]);
+  prisma = new PrismaClient({ adapter: new PrismaMariaDb(process.env.DATABASE_URL, {
+    useTextProtocol: true
+  }) });
+  const tables = await prisma.$queryRawUnsafe(
+    "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?)",
+    "dish_catalog_rows", "dish_catalog_entries"
+  );
+  if (tables.some(row => row.name === "dish_catalog_rows")) {
+    if (process.argv[1] === "preflight") {
+      const duplicates = await prisma.$queryRawUnsafe(
+        "SELECT 1 FROM business_departments GROUP BY org_id, enterprise_key, name HAVING COUNT(*) > 1 LIMIT 1"
+      );
+      if (duplicates.length) {
+        console.error("Dish catalog cutover blocked: resolve duplicate department names before migration.");
+        process.exitCode = 1;
+      }
+    }
+    console.log("legacy");
+  } else if (tables.some(row => row.name === "dish_catalog_entries")) {
+    console.log("current");
+  } else {
+    throw new Error("Dish catalog schema could not be verified.");
+  }
+} catch {
+  console.error("Dish catalog schema could not be verified.");
+  process.exitCode = 1;
+} finally {
+  if (prisma) await prisma.$disconnect().catch(() => { process.exitCode = 1; });
+}
+`;
+
+const REMOTE_DISH_CATALOG_GUARD = String.raw`
+catalog_target=""
+catalog_schema=""
+read_dish_catalog_schema() {
+  local compose_file="${BASH_DOLLAR}{2:-$compose_file}"
+  local catalog_probe='${DISH_CATALOG_SCHEMA_PROBE}'
+  compose --profile release run -T --rm --no-deps release-ops node --input-type=module -e "$catalog_probe" "$1" </dev/null
+}
+
+require_dish_catalog_compatible_images() {
+  local target_api="$1"
+  local target_worker="$2"
+  local allow_migrate="$3"
+  docker pull "$target_api" && docker pull "$target_worker" || return 1
+  local api_label worker_label
+  api_label="$(docker image inspect --format '{{index .Config.Labels "xyz.smedatacenter.dish-catalog-schema"}}' "$target_api")" || return 1
+  worker_label="$(docker image inspect --format '{{index .Config.Labels "xyz.smedatacenter.dish-catalog-schema"}}' "$target_worker")" || return 1
+  case "$api_label:$worker_label" in
+    current:current) catalog_target=current ;;
+    :|'<no value>:<no value>'|':<no value>'|'<no value>:') catalog_target=legacy ;;
+    *) echo "API and worker dish catalog schema labels are incompatible." >&2; return 1 ;;
+  esac
+
+  catalog_schema="$(read_dish_catalog_schema check "${BASH_DOLLAR}{4:-}")" || return 1
+  if [ "$catalog_target" = "$catalog_schema" ]; then return 0; fi
+  if [ "$allow_migrate" = "1" ] && [ "$catalog_schema:$catalog_target" = "legacy:current" ]; then return 0; fi
+  echo "Dish catalog schema is incompatible with the target API and worker images." >&2
+  return 1
+}
+`;
+
 const REMOTE_ORDER_SCOPE_GUARD = String.raw`
 guard_stopped_writer_ids=""
 require_order_scope_compatible_rollback() {
   local target_api="$1"
   local target_worker="$2"
-  docker pull "$target_api" && docker pull "$target_worker" || return 1
   local api_scope worker_scope
   api_scope="$(docker image inspect --format '{{index .Config.Labels "xyz.smedatacenter.order-scope-contract"}}' "$target_api")" || return 1
   worker_scope="$(docker image inspect --format '{{index .Config.Labels "xyz.smedatacenter.order-scope-contract"}}' "$target_worker")" || return 1
@@ -202,6 +269,7 @@ wait_for_url() {
   return 1
 }
 
+${REMOTE_DISH_CATALOG_GUARD}
 ${REMOTE_ORDER_SCOPE_GUARD}
 
 rollback_armed=0
@@ -214,6 +282,7 @@ rollback_on_error() {
     previous_worker="$(sed -n 's/^SMEDC_WORKER_IMAGE=//p' "$previous_file" | tail -n 1)"
     previous_release_ops="$(sed -n 's/^SMEDC_RELEASE_OPS_IMAGE=//p' "$previous_file" | tail -n 1)"
     if [ -n "$previous_api" ] && [ -n "$previous_worker" ] && [ -n "$previous_release_ops" ] && \
+       require_dish_catalog_compatible_images "$previous_api" "$previous_worker" 0 && \
        require_order_scope_compatible_rollback "$previous_api" "$previous_worker"; then
       echo "Rollout failed; restoring the previous API and worker images." >&2
       if [ -f "$previous_compose" ]; then
@@ -246,6 +315,10 @@ if [ -z "$current_release_ops" ]; then
   current_release_ops="$release_ops_image"
 fi
 test -n "$current_release_ops"
+SMEDC_API_IMAGE="$api_image" \
+SMEDC_WORKER_IMAGE="$worker_image" \
+SMEDC_RELEASE_OPS_IMAGE="$release_ops_image" \
+  require_dish_catalog_compatible_images "$api_image" "$worker_image" "$run_migrate" "$compose_next"
 require_order_scope_compatible_rollback "$api_image" "$worker_image"
 printf 'SMEDC_API_IMAGE=%s\nSMEDC_WORKER_IMAGE=%s\nSMEDC_RELEASE_OPS_IMAGE=%s\n' \
   "$current_api" "$current_worker" "$current_release_ops" > "$previous_file"
@@ -263,7 +336,16 @@ compose up -d qdrant
 wait_for_url http://127.0.0.1:6333/collections "Qdrant"
 compose --profile release run -T --rm release-ops node dist/release/readiness.js init-qdrant </dev/null
 if [ "$run_migrate" = "1" ]; then
+  if [ "$catalog_schema:$catalog_target" = "legacy:current" ]; then
+    compose stop api worker
+    preflight_schema="$(read_dish_catalog_schema preflight)"
+    test "$preflight_schema" = "legacy"
+  fi
   compose --profile release run -T --rm release-ops node node_modules/prisma/build/index.js migrate deploy --config packages/db/prisma.config.ts </dev/null
+  if [ "$catalog_schema" != "$catalog_target" ]; then
+    migrated_schema="$(read_dish_catalog_schema check)"
+    test "$migrated_schema" = "$catalog_target"
+  fi
 fi
 compose up -d --remove-orphans
 wait_for_url http://127.0.0.1:3000/healthz "API health"
@@ -304,7 +386,9 @@ compose() {
   docker compose --env-file "$runtime_file" -f "$compose_file" "$@"
 }
 
+${REMOTE_DISH_CATALOG_GUARD}
 ${REMOTE_ORDER_SCOPE_GUARD}
+require_dish_catalog_compatible_images "$previous_api" "$previous_worker" 0
 require_order_scope_compatible_rollback "$previous_api" "$previous_worker"
 
 if [ -f "$previous_compose" ]; then

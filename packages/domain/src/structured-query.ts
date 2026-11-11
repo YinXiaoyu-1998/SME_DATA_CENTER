@@ -1370,6 +1370,11 @@ function fieldExpression(
 
   switch (storage.column) {
     case "payload":
+      if (registry.metadataPolicy === "current" && field.nullable && field.type === "string")
+        return {
+          sql: `CASE WHEN JSON_TYPE(JSON_EXTRACT(r.payload, ?)) = 'NULL' THEN NULL ELSE ${jsonValueExpression()} END`,
+          params: [storage.jsonPath, storage.jsonPath]
+        };
       return {
         sql: typedPayloadExpression(field.type),
         params: [storage.jsonPath]

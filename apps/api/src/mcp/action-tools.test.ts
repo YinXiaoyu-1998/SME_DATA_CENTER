@@ -230,6 +230,10 @@ it("delegates one atomic dish catalog batch to its controlled HTTP route", async
     {} as never
   );
   expect(invalid?.isError).toBe(true);
+  expect(JSON.parse(invalid!.content[0]!.text)).toMatchObject({
+    error: { code: "DISH_CATALOG_INVALID_INPUT" }
+  });
+  expect(invalid!.content[0]!.text).not.toContain("orgId");
   expect(calls).toHaveLength(1);
 });
 

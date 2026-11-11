@@ -3,16 +3,16 @@ import { isDeepStrictEqual } from "node:util";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
   boundedDishCatalogRowIndexes,
+  DISH_CATALOG_ERROR_CODES,
+  DishCatalogValidationError,
   isBusinessClearance,
-  normalizeEnterpriseIdentity,
   parseDishCatalogBatch,
-  type DishCatalogRowInput
+  type DishCatalogRowInput,
+  type ParsedDishCatalogBatch
 } from "@smedc/domain";
+import { ResourceAttributesError } from "./business-authorization.js";
 import { categoriesInclude } from "./business-authorization-records.js";
-import {
-  lockAuthorizationPublication,
-  requireCurrentUploadAdmin
-} from "./source-read-requirements.js";
+import { requireCurrentUploadAdmin } from "./source-read-requirements.js";
 
 type Tx = Prisma.TransactionClient;
 
@@ -71,6 +71,58 @@ function catalogResourceKey(enterpriseKey: string): string {
   return `dish-catalog:${enterpriseKey}`;
 }
 
+/** Use the same collation as the unique SKU key, including its trailing-space rules. */
+async function validateStoredSkuIdentity(tx: Tx, batch: ParsedDishCatalogBatch) {
+  const rowCount = batch.rows.length;
+  const skuIds = [...batch.rows.map(({ skuId }) => skuId), ...batch.removeSkuIds];
+  if (skuIds.length < 2) return;
+
+  const collisions = await tx.$queryRaw<
+    Array<{ position: number; writes: bigint; removals: bigint }>
+  >`
+    WITH request_skus AS (
+      SELECT position, CONVERT(sku USING utf8mb4) COLLATE utf8mb4_unicode_ci AS sku
+      FROM JSON_TABLE(${JSON.stringify(skuIds)}, '$[*]' COLUMNS (
+        position FOR ORDINALITY, sku VARCHAR(128) PATH '$'
+      )) AS request_items
+    ), counts AS (
+      SELECT position,
+        COUNT(CASE WHEN position <= ${rowCount} THEN 1 END) OVER (PARTITION BY sku) AS writes,
+        COUNT(CASE WHEN position > ${rowCount} THEN 1 END) OVER (PARTITION BY sku) AS removals
+      FROM request_skus
+    )
+    SELECT position, writes, removals FROM counts WHERE writes + removals > 1
+  `;
+  const duplicateRows = [];
+  const conflictingRows = [];
+  const duplicateRemovals = [];
+  for (const { position, writes, removals } of collisions) {
+    const index = Number(position) - 1;
+    if (index < rowCount) {
+      if (Number(writes) > 1) duplicateRows.push(index);
+      if (Number(removals) > 0) conflictingRows.push(index);
+    } else if (Number(removals) > 1) duplicateRemovals.push(index - rowCount);
+  }
+  if (duplicateRemovals.length)
+    throw new DishCatalogValidationError(
+      DISH_CATALOG_ERROR_CODES.invalidInput,
+      "Remove SKU IDs must be unique within a dish catalog batch.",
+      { field: "removeSkuIds", rowIndexes: boundedDishCatalogRowIndexes(duplicateRemovals) }
+    );
+  if (duplicateRows.length)
+    throw new DishCatalogValidationError(
+      DISH_CATALOG_ERROR_CODES.duplicateSku,
+      "SKU IDs must be unique within a dish catalog batch.",
+      { field: "skuId", rowIndexes: boundedDishCatalogRowIndexes(duplicateRows) }
+    );
+  if (conflictingRows.length)
+    throw new DishCatalogValidationError(
+      DISH_CATALOG_ERROR_CODES.skuConflict,
+      "A SKU cannot be written and removed in the same dish catalog batch.",
+      { field: "skuId", rowIndexes: boundedDishCatalogRowIndexes(conflictingRows) }
+    );
+}
+
 /** Idempotent per-enterprise catalog resource and its single group scope. */
 async function persistCatalogResource(
   tx: Tx,
@@ -98,33 +150,36 @@ async function persistCatalogResource(
       existing.scopes[0]!.dimensions.length !== 0)
   )
     throw new DishCatalogRepositoryError("RESOURCE_IDENTITY_IMMUTABLE");
-  const resource = await tx.businessResource.upsert({
-    where,
-    create: {
+  if (existing) {
+    await tx.businessResource.update({
+      where,
+      data: {
+        valid: true,
+        ...(!existing.valid ? { authorizationVersion: { increment: 1 } } : {}),
+        contentVersion: { increment: 1 }
+      }
+    });
+    return;
+  }
+
+  await tx.businessResource.create({
+    data: {
       orgId,
       id: randomUUID().replaceAll("-", ""),
       kind: "structured",
       resourceKey,
       categoryId,
-      valid: true
-    },
-    update: {
       valid: true,
-      authorizationVersion: { increment: 1 },
-      contentVersion: { increment: 1 }
+      scopes: {
+        create: {
+          id: randomUUID().replaceAll("-", ""),
+          enterpriseKey,
+          ownership: "group",
+          storeName: null
+        }
+      }
     }
   });
-  if (!existing)
-    await tx.businessResourceScope.create({
-      data: {
-        orgId,
-        id: randomUUID().replaceAll("-", ""),
-        resourceId: resource.id,
-        enterpriseKey,
-        ownership: "group",
-        storeName: null
-      }
-    });
 }
 
 export function createPrismaDishCatalogRepository({
@@ -138,12 +193,21 @@ export function createPrismaDishCatalogRepository({
       const parsed = parseDishCatalogBatch(input);
       return prisma.$transaction(
         async (tx) => {
-          const state = await lockAuthorizationPublication(tx, actor.orgId);
+          // Serialize with permission changes without mutating the version on an unchanged replay.
+          const [state] = await tx.$queryRaw<Array<{ mode: string }>>`
+            SELECT mode FROM business_authorization_states WHERE org_id = ${actor.orgId} FOR UPDATE
+          `;
           await tx.$queryRaw(
             Prisma.sql`SELECT id FROM employees WHERE org_id = ${actor.orgId} AND id = ${actor.id} FOR SHARE`
           );
-          await requireCurrentUploadAdmin(tx, actor.orgId, actor.id);
-          if (state.mode !== "enabled")
+          try {
+            await requireCurrentUploadAdmin(tx, actor.orgId, actor.id);
+          } catch (error) {
+            if (error instanceof ResourceAttributesError && error.code === "UPLOAD_ADMIN_REQUIRED")
+              throw new DishCatalogRepositoryError(error.code);
+            throw error;
+          }
+          if (state?.mode !== "enabled")
             throw new DishCatalogRepositoryError("AUTHORIZATION_NOT_ENABLED");
           const category = await tx.businessCategory.findUnique({
             where: { orgId_key: { orgId: actor.orgId, key: "dish_catalog" } },
@@ -157,19 +221,15 @@ export function createPrismaDishCatalogRepository({
           )
             throw new DishCatalogRepositoryError("RESOURCE_CATEGORY_NOT_CONFIGURED");
 
-          const identity = normalizeEnterpriseIdentity(parsed.enterpriseName);
-          const enterprises = await tx.businessEnterpriseIdentity.findMany({
-            where: { orgId: actor.orgId }
-          });
-          if (
-            !enterprises.some(
-              (enterprise) =>
-                enterprise.enterpriseKey === identity.enterpriseKey &&
-                enterprise.enterpriseName === identity.enterpriseName
-            )
-          )
+          const [enterprise] = await tx.$queryRaw<Array<{ enterpriseKey: string }>>`
+            SELECT enterprise_key AS enterpriseKey FROM business_enterprise_identities
+            WHERE org_id = ${actor.orgId} AND CAST(enterprise_name AS BINARY) = CAST(${parsed.enterpriseName} AS BINARY)
+            FOR UPDATE
+          `;
+          if (!enterprise)
             throw new DishCatalogRepositoryError("DISH_CATALOG_ENTERPRISE_NOT_AVAILABLE");
-          const enterpriseKey = identity.enterpriseKey;
+          const { enterpriseKey } = enterprise;
+          await validateStoredSkuIdentity(tx, parsed);
 
           // Resolve every department name once, exactly and only among current departments.
           // Comparisons use the column collation (utf8mb4_unicode_ci) so case/accent variants
@@ -220,8 +280,6 @@ export function createPrismaDishCatalogRepository({
               rowIndexes: boundedDishCatalogRowIndexes(ambiguous)
             });
 
-          await persistCatalogResource(tx, actor.orgId, enterpriseKey, category.id);
-
           // Read existing rows through the column collation, keyed by the submitted SKU so a
           // case/accent variant maps to the stored row instead of a second insert.
           const skuIds = parsed.rows.map((row) => row.skuId);
@@ -230,7 +288,6 @@ export function createPrismaDishCatalogRepository({
                 Array<{
                   requested_sku_id: string;
                   id: string;
-                  sku_id: string;
                   department_id: string | null;
                   payload: string | null;
                 }>
@@ -238,7 +295,7 @@ export function createPrismaDishCatalogRepository({
                 Prisma.sql`${Prisma.join(
                   skuIds.map(
                     (skuId) =>
-                      Prisma.sql`SELECT ${skuId} AS requested_sku_id, id, sku_id, department_id,
+                      Prisma.sql`SELECT ${skuId} AS requested_sku_id, id, department_id,
                                         CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload
                                    FROM dish_catalog_entries
                                   WHERE org_id = ${actor.orgId}
@@ -249,15 +306,7 @@ export function createPrismaDishCatalogRepository({
                 )} FOR UPDATE`
               )
             : [];
-          const existingBySku = new Map<string, string>();
-          const stateById = new Map<string, { departmentId: string | null; payload: unknown }>();
-          for (const row of existingRows) {
-            existingBySku.set(row.requested_sku_id, row.id);
-            stateById.set(row.id, {
-              departmentId: row.department_id,
-              payload: row.payload === null ? null : JSON.parse(row.payload)
-            });
-          }
+          const existingBySku = new Map(existingRows.map((row) => [row.requested_sku_id, row]));
 
           const result: DishCatalogWriteResult = {
             received: parsed.rows.length + parsed.removeSkuIds.length,
@@ -270,27 +319,22 @@ export function createPrismaDishCatalogRepository({
           for (const [index, row] of parsed.rows.entries()) {
             const desired = catalogPayload(row);
             const departmentId = departmentIds[index] ?? null;
-            // Two rows whose SKUs differ only by case/accent map to the same stored row; read
-            // the latest in-batch state so the final row matches the final request semantics.
-            const existingId = existingBySku.get(row.skuId);
-            const existing = existingId ? stateById.get(existingId) : undefined;
-            if (
-              existing &&
-              existing.departmentId === departmentId &&
-              isDeepStrictEqual(existing.payload, desired)
-            ) {
-              result.unchanged++;
-              continue;
-            }
-            if (existingId) {
+            const existing = existingBySku.get(row.skuId);
+            if (existing) {
+              if (
+                existing.department_id === departmentId &&
+                isDeepStrictEqual(
+                  existing.payload === null ? null : JSON.parse(existing.payload),
+                  desired
+                )
+              ) {
+                result.unchanged++;
+                continue;
+              }
               await tx.dishCatalogEntry.update({
-                where: { id: existingId },
-                // The submitted spelling is authoritative, including a case/accent variant
-                // that already matched this row through the column collation.
+                where: { id: existing.id },
                 data: { skuId: row.skuId, departmentId, payload: desired, updatedAt: now }
               });
-              existingBySku.set(row.skuId, existingId);
-              stateById.set(existingId, { departmentId, payload: desired });
               result.updated++;
               continue;
             }
@@ -309,8 +353,6 @@ export function createPrismaDishCatalogRepository({
                 }
               });
               result.created++;
-              existingBySku.set(row.skuId, id);
-              stateById.set(id, { departmentId, payload: desired });
             } catch (error) {
               if (!isUniqueSkuConflict(error)) throw error;
               // FOR UPDATE cannot lock a row that does not exist yet: a concurrent batch can
@@ -321,15 +363,10 @@ export function createPrismaDishCatalogRepository({
                 where: { orgId: actor.orgId, enterpriseKey, skuId: row.skuId }
               });
               if (!conflicted) throw error;
-              existingBySku.set(row.skuId, conflicted.id);
               if (
                 conflicted.departmentId === departmentId &&
                 isDeepStrictEqual(conflicted.payload, desired)
               ) {
-                stateById.set(conflicted.id, {
-                  departmentId: conflicted.departmentId,
-                  payload: conflicted.payload
-                });
                 result.unchanged++;
                 continue;
               }
@@ -337,7 +374,6 @@ export function createPrismaDishCatalogRepository({
                 where: { id: conflicted.id },
                 data: { skuId: row.skuId, departmentId, payload: desired, updatedAt: now }
               });
-              stateById.set(conflicted.id, { departmentId, payload: desired });
               result.updated++;
             }
           }
@@ -347,6 +383,14 @@ export function createPrismaDishCatalogRepository({
               where: { orgId: actor.orgId, enterpriseKey, skuId: { in: parsed.removeSkuIds } }
             });
             result.removed = removed.count;
+          }
+
+          if (result.created + result.updated + result.removed > 0) {
+            await persistCatalogResource(tx, actor.orgId, enterpriseKey, category.id);
+            await tx.businessAuthorizationState.update({
+              where: { orgId: actor.orgId },
+              data: { version: { increment: 1 } }
+            });
           }
 
           await tx.auditLog.create({

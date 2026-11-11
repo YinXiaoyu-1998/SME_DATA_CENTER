@@ -115,7 +115,7 @@ export function compileStructuredReadScope(
             ? "ar.kind = 'structured' AND CAST(ar.resource_key AS BINARY) = CAST(CONCAT('partition:', structured_partitions.id) AS BINARY)"
             : `ar.kind = 'source_fragment' AND ar.source_document_id = ${target === "row" ? "r" : "ib"}.source_document_id`;
   return {
-    sql: `EXISTS (SELECT 1 FROM business_resources ar JOIN business_categories ac ON ac.org_id = ar.org_id AND ac.id = ar.category_id WHERE ${correlation} AND CAST(ac.\`key\` AS BINARY) = CAST(? AS BINARY) AND (${predicate}))`,
+    sql: `EXISTS (SELECT 1 FROM business_resources ar JOIN business_categories ac ON ac.org_id = ar.org_id AND ac.id = ar.category_id WHERE ${correlation} AND CAST(ac.\`key\` AS BINARY) = CAST(? AS BINARY) AND (${predicate})${target === "catalog" ? " AND ac.retired = FALSE" : ""})`,
     params: [dataset, ...compiled.params]
   };
 }

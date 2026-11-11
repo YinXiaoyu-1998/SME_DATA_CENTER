@@ -127,22 +127,16 @@ dish_catalog_entries
 
 单个数据库事务，顺序固定：
 
-1. 校验请求形状、行数、批内 SKU 唯一、字段类型与长度、`salePrice` 规范化。
-2. 锁企业身份行 `FOR UPDATE`，重查当前账号确为 admin、业务授权 `enabled`、`dish_catalog` 固定类别配置有效（复用 `upsert_store_reviews` 的护栏）。
-3. 精确匹配企业名与已登记企业。
-4. 一次查询解析本批所有 `departmentName`：`(org, enterprise, name IN (...), retired = false)`。0 命中返回行号；>1 命中防御性拒绝；建立 name → departmentId 映射，未提供的行写 `NULL`。
-5. 幂等 upsert 该企业的目录资源与唯一集团 scope（见第 6 节），首次写入时创建，后续写入只递增 `contentVersion`。
-6. 按 `skuId` 读取既有行并 `FOR UPDATE`，逐行比较规范化后的字段值：
-   - 不存在 → `created`，写 `created_at = updated_at = now`；
-   - 存在且任一字段（含 `department_id`）不同 → `updated`，只写 `updated_at`；
-   - 完全相同 → `unchanged`，不写库。
-7. 删除 `removeSkuIds` 中存在的行并计数；不存在的忽略。
-8. 写一条 `AuditLog`：`action = "dish_catalog.upsert"`、操作人、`request_id`、企业、计数、`sourceFileName`、结果。
-9. 提交。任一行失败整批回滚，不留下部分行。
+1. 校验请求形状、行数、字段类型与长度，并规范化 `salePrice`。
+2. 锁定组织授权状态，复核当前账号为有效 admin、业务授权已启用、固定类别可用。按登记原值匹配企业名并锁定企业身份。
+3. 按 SKU 唯一索引使用的 MySQL 排序规则检查批内重复与写删冲突。按部门列排序规则在当前企业的有效部门中解析 `departmentName`，并把无法解析的行号返回给调用方。
+4. 锁定既有 SKU 行并比较内容。插入写入创建及更新时间，更新只刷新更新时间，内容相同则保留既有行。
+5. 删除显式列出的 SKU 并计数，忽略不存在的 SKU。目录发生变化时，在同一事务中维护目录资源及集团 scope，并推进用于游标失效的授权版本。
+6. 记录一条批次审计并提交。相同内容的重放仅增加审计，不刷新行时间、资源版本或查询游标。任一行失败整批回滚。
 
 **值保真**：不 trim、不改写大小写或全半角；`salePrice` 规范化为 canonical decimal 文本后存储，查询侧沿用 `CAST(... AS DECIMAL(20,6))`。
 
-**并发**：行级 last-write-wins；同一 SKU 的并发写由 `FOR UPDATE` 串行化，先提交者生效。不提供 `expectedRevision`。
+**并发**：行级 last-write-wins；同一 SKU 的并发写由事务锁串行化，后提交的内容生效。不提供 `expectedRevision`。
 
 ## 6. 读取授权与目录资源
 
@@ -150,7 +144,7 @@ dish_catalog_entries
 
 - `business_resources`：`kind = "structured"`、`resource_key = "dish-catalog:" + enterpriseKey`、`category_id = dish_catalog`、`valid = true`。
 - `business_resource_scopes`：唯一一条，`ownership = "group"`、`enterprise_key = 企业`、`store_name = NULL`、无维度。
-- 资源由第一次成功写入在同一事务内创建；后续写入只递增 `contentVersion`；删除全部行不删除资源。
+- 首次实际写入菜品时在同一事务内创建资源；后续目录变化推进 `contentVersion`；删除全部行保留资源。
 - 读取新增 correlation target `catalog`：`ar.kind = 'structured' AND ar.org_id = r.org_id AND ar.resource_key = CONCAT('dish-catalog:', r.enterprise_key)`，随后复用既有 resource/scope/grant 谓词。
 - 没有资源、类别未启用或授权不符时**失败关闭**：查询返回 0 行，coverage 返回 0 / null，不回退到文档密级或客户端过滤。
 - 写入需要 admin，不因此获得普通读取权；读取仍需 `dish_catalog` 类别授权与对应企业范围。
@@ -204,63 +198,7 @@ HAVING duplicates > 1;
 
 硬切，不保留过渡期；旧 launcher 在目录上传时得到明确拒绝，不影响其查询与其它数据集上传。
 
-## 11. 任务拆分、subagent 分工与规模
-
-状态：A–C 批次已于 2026-11-11 执行并合并（#338–#344），本节保留用于追溯；D1（双仓 Skill 与 pin）仍需在 launcher 发布并核验后完成。
-
-### 11.1 分工原则
-
-- 每个批次只有一个写权限 owner；同一时间同一 package 只有一个写者。
-- 修改文件的 agent 使用独立 worktree/branch；reviewer 只读，不写文件。
-- 契约先行：`packages/domain` 的 registry/类型和 `packages/mcp-contract` 的 schema 冻结后，下游批次才并行，避免接口反复。
-- 共享文件指定唯一 owner：prisma schema、mcp-contract 工具清单、server 装配、structured-query 路由。其他批次需要改动时提交给 owner，不直接改。
-- 每批完成标准：实现 + 对应测试 + 受影响契约描述 + 自审；不接受“先合并后补测试”。
-- 只在 C1 结束做一次契约检查（类型/字段/SQL 形状），最终做一次合并 review；不逐小批 review。
-- 最终整树只跑一次全量门禁（`format:check`、`lint`、`typecheck`、`test`），失败才重跑。
-
-### 11.2 批次与 owner
-
-| 批次 | 范围（包/模块）                                      | owner 交付物                                                          | 依赖                  | 生产/测试规模         |
-| ---- | ---------------------------------------------------- | --------------------------------------------------------------------- | --------------------- | --------------------- |
-| A1   | `packages/mcp-contract`、`packages/web-api-contract` | 新错误码 `DIRECTORY_DUPLICATE_NAME`、目录工具描述、契约测试           | 无                    | +40 / +50             |
-| A2   | `apps/api` 员工目录服务                              | create/rename 同名校验、首尾空白拒绝、服务测试                        | A1                    | +60 / +80             |
-| A3   | `packages/db`                                        | 部门唯一索引迁移、重复预检、集成测试                                  | 无（schema owner）    | +30 / +60             |
-| A4   | 只读 review                                          | 复核 A1–A3 的授权、事务与迁移                                         | A1–A3                 | —                     |
-| B1   | `SMEDC_FRONTEND`                                     | 部门表单本地校验、409 行内错误、契约再生成、组件测试                  | A 合并                | +80～120 / +60～100   |
-| C1   | `packages/domain`                                    | `current` 元数据、目录字段/校验、查询 join、coverage 类型、编译测试   | A 合并                | +350～450 / +300～380 |
-| C2   | `packages/db`、prisma                                | 新表迁移、写入仓库、目录资源/scope、部门解析、集成测试                | C1、A3                | +300～380 / +250～320 |
-| C3   | `apps/api` 查询/coverage                             | `catalog` 读取授权、coverage 仓库、路由接线、授权测试                 | C2                    | +120～160 / +150～200 |
-| C4   | `apps/api` 写入、`packages/mcp-contract`             | 服务/路由、`upsert_dish_catalog` schema 与描述、server 装配、测试     | C2、C1                | +250～330 / +250～320 |
-| C5   | 旧链路清理                                           | structured-import 拒绝、upload-tools、worker、launcher bump、打包断言 | C4                    | −350～−500 / +80～120 |
-| C6   | 文档                                                 | README、api-contract、data-pipelines、本仓 Skill 章节                 | C5                    | +200～300             |
-| C7   | 只读 review                                          | PR-C 合并 review（授权、事务、SQL、错误码）                           | C1–C6                 | —                     |
-| D1   | `smedc-mcp-skill` + 本仓 pin                         | 双仓 Skill 重写、launcher 核验后更新 pin                              | C 合并、launcher 发布 | +120～180 / 同步测试  |
-
-A 组合计约 +130～180 / +190～240；C 组合计约 +1000～1400 / +800～1100；B、D 单独统计。launcher `0.19.0` bump 同时更新了 `package-lock.json`；服务端与查询实现未新增运行时依赖。
-
-### 11.3 依赖与并行
-
-```text
-A1 ── A2 ─┐
-A3 ───────┼── A4 ── 合并 A ── B1（前端，可与 C1 并行）
-          │
-C1 ── C2 ─┼── C3 ─┐
-          │        ├── C5 ── C6 ── C7 ── 合并 C ── D1
-          └── C4 ──┘
-```
-
-- C3 与 C4 只有在前者不碰 server 装配、后者不碰查询路由时可并行；若共享文件出现冲突，按 C3 → C4 串行。
-- C5 依赖 C4 冻结的契约（上传枚举、错误码），不与 C3/C4 并行修改 `mcp-contract`。
-- D1 必须在 launcher 发布并核验之后，避免 Skill 指向未发布契约。
-
-### 11.4 每批验收
-
-- 通过该批次的最小聚焦测试，并在交接里写明命令与结果。
-- 契约变化同步到 MCP 描述、错误码和文档；不留 TODO、占位符或“稍后补测试”。
-- 自审 diff：只改本批 owner 范围；跨范围改动先交接。
-- C7 已完成合并 review；之后只做部署核验、launcher 发布与 D1 Skill pin，不再改 C 组代码。
-
-## 12. 测试面
+## 11. 测试面
 
 - **domain**：字段/长度/小数/空值语义、批内重复、写删冲突、上限、规范化 decimal；registry 的 `current` 元数据、物理列与部门关联字段；查询编译的 join、默认排序、过滤/分组/聚合。
 - **db（Prisma 集成）**：创建/更新/不变/删除计数；`unchanged` 不刷新时间戳；部门缺失、停用、歧义；企业名不匹配；非 admin；授权未启用；并发同 SKU 写；审计一条；唯一约束冲突；`department_id` 外键拒绝悬空引用。

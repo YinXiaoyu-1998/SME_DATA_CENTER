@@ -325,6 +325,99 @@ suite("dish catalog current-state HTTP seam", () => {
     }
   });
 
+  it("keeps null fields and replayed cursors intact, and hides a retired category", async () => {
+    const { app, orgId, headers } = await fixture();
+    try {
+      const payload = {
+        enterpriseName,
+        rows: [
+          row("SKU-A", { departmentName: null }),
+          row("SKU-B", {
+            departmentName: null,
+            dishAlias: "null"
+          })
+        ]
+      };
+      const upsert = () =>
+        app.inject({
+          method: "POST",
+          url: "/v1/dish-catalog/upsert",
+          headers: headers("admin-token"),
+          payload
+        });
+      const read = (cursor?: string) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/structured/query",
+          headers: headers("reader-token"),
+          payload: {
+            dataset: "dish_catalog",
+            select: ["sku_id", "dish_alias"],
+            page: { limit: 1, cursor }
+          }
+        });
+      expect((await upsert()).statusCode).toBe(200);
+      const first = await read();
+      expect(first.json().rows).toEqual([{ sku_id: "SKU-A", dish_alias: null }]);
+      const cursor = first.json().nextCursor as string;
+      expect(cursor).toEqual(expect.any(String));
+      expect((await upsert()).json()).toMatchObject({ unchanged: 2 });
+      const second = await read(cursor);
+      expect(second.statusCode).toBe(200);
+      expect(second.json().rows).toEqual([{ sku_id: "SKU-B", dish_alias: "null" }]);
+
+      await prisma.businessCategory.update({
+        where: { orgId_id: { orgId, id: "catalog" } },
+        data: { retired: true }
+      });
+      expect((await read()).json().rows).toEqual([]);
+      const coverage = await app.inject({
+        method: "GET",
+        url: "/v1/structured/datasets/dish_catalog/coverage",
+        headers: { authorization: "Bearer reader-token" }
+      });
+      expect(coverage.json()).toMatchObject({ rowCount: 0, lastUpdatedAt: null });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects non-admins, altered enterprise names and null arrays with public errors", async () => {
+    const { app, headers } = await fixture();
+    try {
+      const upsert = (token: string, payload: Record<string, unknown>) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/dish-catalog/upsert",
+          headers: headers(token),
+          payload
+        });
+      const denied = await upsert("reader-token", { enterpriseName, removeSkuIds: ["SKU-A"] });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().error.code).toBe("UPLOAD_ADMIN_REQUIRED");
+      for (const name of [` ${enterpriseName} `, " "]) {
+        const invalid = await upsert("admin-token", {
+          enterpriseName: name,
+          removeSkuIds: ["SKU-A"]
+        });
+        expect(invalid.statusCode).toBe(400);
+        expect(invalid.json().error.code).toBe("DISH_CATALOG_ENTERPRISE_NOT_AVAILABLE");
+      }
+      const invalid = await upsert("admin-token", {
+        enterpriseName,
+        rows: null,
+        removeSkuIds: ["SKU-A"]
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error).toMatchObject({
+        code: "DISH_CATALOG_INVALID_INPUT",
+        details: { field: "rows" }
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("returns specific bounded errors through HTTP and MCP", async () => {
     const { app, headers } = await fixture();
     try {

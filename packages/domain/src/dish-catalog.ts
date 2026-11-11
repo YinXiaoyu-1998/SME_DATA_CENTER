@@ -85,6 +85,11 @@ const ROW_KEYS = new Set([
   "dishAlias",
   "departmentName"
 ]);
+/** Only known request fields may be included in public validation errors. */
+export function isDishCatalogInputField(field: string): boolean {
+  return BATCH_KEYS.has(field) || ROW_KEYS.has(field);
+}
+
 /** Shared decimal-text rule; the service canonicalizes the value and never rounds. */
 export const DISH_CATALOG_SALE_PRICE_PATTERN = /^(\d{1,14})(?:\.(\d{1,6}))?$/;
 
@@ -143,8 +148,8 @@ export function parseDishCatalogBatch(value: unknown): ParsedDishCatalogBatch {
           DISH_CATALOG_LIMITS.sourceFileNameChars,
           true
         );
-  const rawRows = object["rows"] ?? [];
-  const rawRemoveSkuIds = object["removeSkuIds"] ?? [];
+  const rawRows = object["rows"] === undefined ? [] : object["rows"];
+  const rawRemoveSkuIds = object["removeSkuIds"] === undefined ? [] : object["removeSkuIds"];
 
   if (!Array.isArray(rawRows)) throw invalid("rows", "rows must be an array.");
   if (!Array.isArray(rawRemoveSkuIds))

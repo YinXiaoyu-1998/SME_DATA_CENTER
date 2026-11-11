@@ -16,6 +16,7 @@ import {
   PERMISSION_MCP_TOOL_NAMES,
   WORKFLOW_MCP_TOOL_NAMES,
   DIRECTORY_MCP_TOOL_NAMES,
+  dishCatalogValidationErrorToolResult,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -296,6 +297,10 @@ export function registerLauncherTools(
       if (isUpload) {
         const denial = await uploadAuthorizationError(dependencies);
         if (denial) return denial;
+      }
+      if (params.name === "upsert_dish_catalog") {
+        const invalid = dishCatalogValidationErrorToolResult(params.arguments);
+        if (invalid) return invalid;
       }
       const parsed = await tool.inputSchema.safeParseAsync(params.arguments);
       if (!parsed.success) {

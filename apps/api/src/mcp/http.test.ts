@@ -630,6 +630,33 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
     expect(results[1]).toEqual(results[0]);
   });
 
+  it("returns bounded catalog validation details before generic MCP schema errors", async () => {
+    const handler = vi.fn();
+    app = buildCustomMcpTestServer({ upsert_dish_catalog: handler });
+    const response = await postMcp(
+      app,
+      {
+        jsonrpc: "2.0",
+        id: 67,
+        method: "tools/call",
+        params: {
+          name: "upsert_dish_catalog",
+          arguments: { enterpriseName: "合成企业", rows: Array.from({ length: 1001 }, () => ({})) }
+        }
+      },
+      { "mcp-protocol-version": "2025-11-25" }
+    );
+    const result = parseJsonRpc(response.payload).result as {
+      isError: boolean;
+      content: Array<{ text: string }>;
+    };
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      error: { code: "DISH_CATALOG_BATCH_TOO_LARGE", retryable: false }
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("restores the SDK registration method when tool registration throws", () => {
     const instances: Server[] = [];
     const register = vi.spyOn(McpServer.prototype, "registerTool").mockImplementation(function (

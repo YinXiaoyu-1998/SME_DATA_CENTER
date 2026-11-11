@@ -1172,6 +1172,34 @@ it("advertises PDF side effects and validates scope before contacting service", 
   }
 });
 
+it("returns the catalog field error locally for explicit null arrays", async () => {
+  const server = new McpServer({ name: "catalog-contract", version: "0.0.0" });
+  const remote = vi.fn<typeof fetch>();
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "catalog-contract-test", version: "0.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const result = await client.callTool({
+      name: "upsert_dish_catalog",
+      arguments: { enterpriseName: "合成企业", rows: null, removeSkuIds: ["SKU-A"] }
+    });
+    expect(result.isError).toBe(true);
+    const [content] = result.content as Array<{ text: string }>;
+    expect(JSON.parse(content!.text)).toMatchObject({
+      error: { code: "DISH_CATALOG_INVALID_INPUT", details: { field: "rows" } }
+    });
+    expect(remote).not.toHaveBeenCalled();
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
 it("passes SDK cancellation into requestId bundle transfers and rejects mixed scope", async () => {
   const bundle = await import("./partition-bundle.js");
   let observedSignal: AbortSignal | undefined;
