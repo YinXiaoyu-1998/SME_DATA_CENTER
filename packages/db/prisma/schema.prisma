@@ -175,7 +175,7 @@ model Organization {
   costCards              CostCard[]
   structuredPartitions   StructuredPartition[]
   vipRows                VipRow[]
-  dishCatalogRows        DishCatalogRow[]
+  dishCatalogEntries     DishCatalogEntry[]
   deliveryLedgerRows     DeliveryLedgerRow[]
   shelfLifeCatalogEntries ShelfLifeCatalogEntry[]
   supplierCatalogRows    SupplierCatalogRow[]
@@ -255,7 +255,6 @@ model Document {
   costCards             CostCard[]
   importBatch           ImportBatch?
   vipRows               VipRow[]
-  dishCatalogRows       DishCatalogRow[]
   deliveryLedgerRows    DeliveryLedgerRow[]
   supplierCatalogRows   SupplierCatalogRow[]
   quarantineCertificate QuarantineCertificate?
@@ -416,7 +415,6 @@ model ImportBatch {
   costCards            CostCard[]
   windowClaim          ImportWindowClaim?
   vipRows              VipRow[]
-  dishCatalogRows      DishCatalogRow[]
   deliveryLedgerRows   DeliveryLedgerRow[]
   supplierCatalogRows  SupplierCatalogRow[]
 
@@ -568,23 +566,21 @@ model VipRow {
   @@map("vip_rows")
 }
 
-model DishCatalogRow {
-  id               String       @id @default(cuid()) @db.VarChar(32)
-  orgId            String       @map("org_id") @db.VarChar(64)
-  sourceDocumentId String       @map("source_document_id") @db.VarChar(32)
-  importBatchId    String       @map("import_batch_id") @db.VarChar(32)
-  sourceSheetIndex Int          @default(0) @map("source_sheet_index")
-  sourceSheetName  String       @default("Sheet1") @map("source_sheet_name") @db.VarChar(255)
-  sourceRowNumber  Int          @map("source_row_number")
-  payload          Json
-  createdAt        DateTime     @default(now()) @map("created_at")
-  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  sourceDocument   Document     @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
-  importBatch      ImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+model DishCatalogEntry {
+  id            String              @id @default(cuid()) @db.VarChar(32)
+  orgId         String              @map("org_id") @db.VarChar(64)
+  enterpriseKey String              @map("enterprise_key") @db.VarChar(128)
+  skuId         String              @map("sku_id") @db.VarChar(128)
+  departmentId  String?             @map("department_id") @db.VarChar(36)
+  payload       Json
+  createdAt     DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime            @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  organization  Organization        @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  department    BusinessDepartment? @relation(fields: [departmentId], references: [departmentId], onDelete: Restrict)
 
-  @@unique([importBatchId, sourceSheetIndex, sourceRowNumber], map: "dish_catalog_rows_batch_sheet_row_uq")
-  @@index([orgId, importBatchId])
-  @@map("dish_catalog_rows")
+  @@unique([orgId, enterpriseKey, skuId], map: "dish_catalog_entries_org_enterprise_sku_uq")
+  @@index([orgId, enterpriseKey, departmentId], map: "dish_catalog_entries_org_enterprise_department_idx")
+  @@map("dish_catalog_entries")
 }
 
 model ShelfLifeCatalogEntry {
@@ -1199,6 +1195,7 @@ model BusinessDepartment {
   name String @db.VarChar(255)
   retired Boolean @default(false)
   version BigInt @default(0) @db.UnsignedBigInt
+  dishCatalogEntries DishCatalogEntry[]
   @@unique([orgId, enterpriseKey, departmentId], map: "business_departments_org_enterprise_id_uq")
   @@map("business_departments")
 }

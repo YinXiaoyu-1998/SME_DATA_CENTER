@@ -64,18 +64,31 @@ describe("Prisma structured coverage repository", () => {
     expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(compiled.sql, ...compiled.params);
   });
 
-  it("serializes snapshot coverage using the batch start date as snapshotDate", async () => {
+  it("returns current catalog coverage as the row count and last update time", async () => {
     prisma.$queryRawUnsafe.mockResolvedValueOnce([
       {
-        import_batch_id: "batch_catalog",
-        source_document_id: "doc_catalog",
-        source_document_title: "Catalog snapshot",
-        applied_at: "2026-08-20T00:00:00.000Z",
         row_count: BigInt(17),
-        start_date: "2026-08-19",
-        end_date: "2026-08-19"
+        last_updated_at: new Date("2026-08-19T03:04:05.000Z")
       }
     ]);
+    const repository = createPrismaStructuredCoverageRepository("mysql://test");
+    const compiled = compileStructuredCoverageQuery({
+      orgId: "org_1",
+      employee: { clearance: 3 },
+      dataset: "dish_catalog"
+    });
+
+    await expect(repository.list(compiled)).resolves.toEqual({
+      dataset: "dish_catalog",
+      metadataPolicy: "current",
+      rowCount: 17,
+      lastUpdatedAt: "2026-08-19T03:04:05.000Z"
+    });
+    expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(compiled.sql, ...compiled.params);
+  });
+
+  it("returns zero rows and no timestamp for an authorized but empty current catalog", async () => {
+    prisma.$queryRawUnsafe.mockResolvedValueOnce([{ row_count: BigInt(0), last_updated_at: null }]);
     const repository = createPrismaStructuredCoverageRepository("mysql://test");
 
     await expect(
@@ -86,15 +99,11 @@ describe("Prisma structured coverage repository", () => {
           dataset: "dish_catalog"
         })
       )
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       dataset: "dish_catalog",
-      metadataPolicy: "snapshot",
-      sources: [
-        {
-          snapshotDate: "2026-08-19",
-          rowCount: 17
-        }
-      ]
+      metadataPolicy: "current",
+      rowCount: 0,
+      lastUpdatedAt: null
     });
   });
 

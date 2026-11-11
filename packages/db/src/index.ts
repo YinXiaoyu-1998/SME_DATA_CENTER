@@ -25,6 +25,7 @@ export {
 } from "./business-authorization-records.js";
 export { initializeFixedBusinessCategories } from "./fixed-business-categories.js";
 export * from "./store-reviews.js";
+export * from "./dish-catalog.js";
 export * from "./store-review-enterprises.js";
 
 export { resolveFormalStore } from "./formal-store-directory.js";
