@@ -29,6 +29,30 @@ const contractsByName = new Map(
   SMEDC_MCP_TOOL_CONTRACTS.map((contract) => [contract.name, contract])
 );
 
+it("documents department name uniqueness and keeps store name whitespace unchanged", () => {
+  const contract = contractsByName.get("manage_employee_directory")!;
+  expect(contract.description).toContain("DIRECTORY_DUPLICATE_NAME");
+  expect(contract.description).toContain("retired departments");
+  expect(
+    contract.inputSchema.safeParse({
+      request: {
+        action: "manage_store",
+        enterpriseKey: "synthetic",
+        operation: { kind: "create", name: " Store " }
+      }
+    }).success
+  ).toBe(true);
+  expect(
+    contract.inputSchema.safeParse({
+      request: {
+        action: "manage_department",
+        enterpriseKey: "synthetic",
+        operation: { kind: "create", name: " 后厨 " }
+      }
+    }).success
+  ).toBe(false);
+});
+
 it("retains server admin-only upload authorization and explains fixed category authority", () => {
   expect(FILE_UPLOAD_ADMIN_REQUIRED_CODE).toBe("UPLOAD_ADMIN_REQUIRED");
   expect(FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE).toBe("File upload requires the admin role.");

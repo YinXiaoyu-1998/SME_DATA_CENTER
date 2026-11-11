@@ -26,6 +26,7 @@ describe.skipIf(process.env["RUN_DIRECTORY_INTEGRATION"] !== "1")(
       clearance: 3
     };
     const enterpriseKey = "synthetic";
+    const otherEnterpriseKey = "synthetic-other";
     let prisma: PrismaClient;
     let app: ReturnType<typeof buildApiServer>;
     const call = (action: string, body: object) =>
@@ -51,6 +52,9 @@ describe.skipIf(process.env["RUN_DIRECTORY_INTEGRATION"] !== "1")(
       await prisma.businessAuthorizationState.create({ data: { orgId, mode: "enabled" } });
       await prisma.businessEnterpriseIdentity.create({
         data: { orgId, enterpriseKey, enterpriseName: "Synthetic" }
+      });
+      await prisma.businessEnterpriseIdentity.create({
+        data: { orgId, enterpriseKey: otherEnterpriseKey, enterpriseName: "Synthetic Other" }
       });
       await prisma.businessCategory.create({
         data: {
@@ -239,6 +243,175 @@ describe.skipIf(process.env["RUN_DIRECTORY_INTEGRATION"] !== "1")(
         status: "departed",
         scope: { storeName: "门店甲" }
       });
+    });
+
+    it("rejects creating a department whose name already exists in the enterprise", async () => {
+      const created = await call("manage_department", {
+        operation: { kind: "create", name: "烧烤部" }
+      });
+      expect(created.statusCode, created.body).toBe(200);
+
+      const duplicate = await call("manage_department", {
+        operation: { kind: "create", name: "烧烤部" }
+      });
+      expect(duplicate.statusCode, duplicate.body).toBe(409);
+      expect(duplicate.json().error.code).toBe("DIRECTORY_DUPLICATE_NAME");
+      expect(
+        await prisma.businessDepartment.count({ where: { orgId, enterpriseKey, name: "烧烤部" } })
+      ).toBe(1);
+    });
+
+    it("rejects renaming onto another department name but allows an unchanged name", async () => {
+      const first = (
+        await call("manage_department", { operation: { kind: "create", name: "凉菜部" } })
+      ).json();
+      const second = (
+        await call("manage_department", { operation: { kind: "create", name: "面点部" } })
+      ).json();
+
+      const collision = await call("manage_department", {
+        operation: {
+          kind: "rename",
+          departmentId: second.departmentId,
+          expectedVersion: "0",
+          name: "凉菜部"
+        }
+      });
+      expect(collision.statusCode, collision.body).toBe(409);
+      expect(collision.json().error.code).toBe("DIRECTORY_DUPLICATE_NAME");
+      expect(
+        await prisma.businessDepartment.findUniqueOrThrow({
+          where: { departmentId: second.departmentId }
+        })
+      ).toMatchObject({ name: "面点部", version: 0n });
+
+      const unchanged = await call("manage_department", {
+        operation: {
+          kind: "rename",
+          departmentId: first.departmentId,
+          expectedVersion: "0",
+          name: "凉菜部"
+        }
+      });
+      expect(unchanged.statusCode, unchanged.body).toBe(200);
+      expect(unchanged.json().version).toBe("1");
+      expect(
+        await prisma.businessDepartment.findUniqueOrThrow({
+          where: { departmentId: first.departmentId }
+        })
+      ).toMatchObject({ name: "凉菜部", version: 1n });
+    });
+
+    it("rejects department names with leading or trailing whitespace without rewriting them", async () => {
+      const padded = await call("manage_department", {
+        operation: { kind: "create", name: " 甜点部 " }
+      });
+      expect(padded.statusCode, padded.body).toBe(400);
+      expect(padded.json().error.code).toBe("DIRECTORY_INVALID_REQUEST");
+      expect(
+        await prisma.businessDepartment.count({
+          where: { orgId, enterpriseKey, name: { in: [" 甜点部 ", "甜点部"] } }
+        })
+      ).toBe(0);
+
+      const valid = (
+        await call("manage_department", { operation: { kind: "create", name: "合规部" } })
+      ).json();
+      const paddedRename = await call("manage_department", {
+        operation: {
+          kind: "rename",
+          departmentId: valid.departmentId,
+          expectedVersion: "0",
+          name: "合规部 "
+        }
+      });
+      expect(paddedRename.statusCode, paddedRename.body).toBe(400);
+      expect(
+        await prisma.businessDepartment.findUniqueOrThrow({
+          where: { departmentId: valid.departmentId }
+        })
+      ).toMatchObject({ name: "合规部", version: 0n });
+    });
+
+    it("keeps retired department names reserved and enforces the database invariant", async () => {
+      const retired = (
+        await call("manage_department", { operation: { kind: "create", name: "外卖部" } })
+      ).json();
+      expect(
+        (
+          await call("manage_department", {
+            operation: {
+              kind: "retire",
+              departmentId: retired.departmentId,
+              expectedVersion: "0"
+            }
+          })
+        ).statusCode
+      ).toBe(200);
+
+      const duplicateCreate = await call("manage_department", {
+        operation: { kind: "create", name: "外卖部" }
+      });
+      expect(duplicateCreate.statusCode, duplicateCreate.body).toBe(409);
+      expect(duplicateCreate.json().error.code).toBe("DIRECTORY_DUPLICATE_NAME");
+
+      const other = (
+        await call("manage_department", { operation: { kind: "create", name: "夜宵部" } })
+      ).json();
+      const duplicateRename = await call("manage_department", {
+        operation: {
+          kind: "rename",
+          departmentId: other.departmentId,
+          expectedVersion: "0",
+          name: "外卖部"
+        }
+      });
+      expect(duplicateRename.statusCode, duplicateRename.body).toBe(409);
+      expect(duplicateRename.json().error.code).toBe("DIRECTORY_DUPLICATE_NAME");
+      expect(
+        await prisma.businessDepartment.findUniqueOrThrow({
+          where: { departmentId: other.departmentId }
+        })
+      ).toMatchObject({ name: "夜宵部", version: 0n });
+
+      await expect(
+        prisma.businessDepartment.create({
+          data: { orgId, enterpriseKey, departmentId: randomUUID(), name: "夜宵部" }
+        })
+      ).rejects.toMatchObject({ code: "P2002" });
+      expect(
+        await prisma.businessDepartment.count({ where: { orgId, enterpriseKey, name: "夜宵部" } })
+      ).toBe(1);
+    });
+
+    it("allows the same department name in a different enterprise", async () => {
+      const name = "跨企业同名";
+      const first = await call("manage_department", { operation: { kind: "create", name } });
+      expect(first.statusCode, first.body).toBe(200);
+      const second = await call("manage_department", {
+        enterpriseKey: otherEnterpriseKey,
+        operation: { kind: "create", name }
+      });
+      expect(second.statusCode, second.body).toBe(200);
+      expect(
+        await prisma.businessDepartment.count({
+          where: { orgId, enterpriseKey: { in: [enterpriseKey, otherEnterpriseKey] }, name }
+        })
+      ).toBe(2);
+    });
+
+    it("serializes concurrent creates of the same department name", async () => {
+      const name = "并行部";
+      const [first, second] = await Promise.all([
+        call("manage_department", { operation: { kind: "create", name } }),
+        call("manage_department", { operation: { kind: "create", name } })
+      ]);
+      expect([first.statusCode, second.statusCode].sort()).toEqual([200, 409]);
+      const rejected = first.statusCode === 409 ? first : second;
+      expect(rejected.json().error.code).toBe("DIRECTORY_DUPLICATE_NAME");
+      expect(await prisma.businessDepartment.count({ where: { orgId, enterpriseKey, name } })).toBe(
+        1
+      );
     });
   }
 );

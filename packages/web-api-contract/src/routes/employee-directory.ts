@@ -17,6 +17,7 @@ const errors = [
   "DIRECTORY_IN_USE",
   "INTERNAL_ERROR"
 ] as const;
+const departmentErrors = [...errors, "DIRECTORY_DUPLICATE_NAME"] as const;
 const summaries = {
   list_directory: "读取企业门店和部门目录",
   list_employees: "读取授权范围内的员工档案",
@@ -36,7 +37,7 @@ export const employeeDirectoryWebApiRoutes: readonly WebApiRoute[] = Object.free
       params: directoryOrgParams,
       body: directoryInputSchemas[operation],
       response: directoryResponses[operation],
-      errors,
+      errors: operation === "manage_department" ? departmentErrors : errors,
       summary: summaries[operation]
     })
   )
