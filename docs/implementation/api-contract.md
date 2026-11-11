@@ -93,7 +93,7 @@ audit. Backend denials best-effort record `file_upload.denied`, with actor, orga
 request provenance, reason, and transport-level `uploadSurface` only; no upload metadata/content
 is parsed for auditing, and audit failure cannot change the denial.
 
-The published, independently verified Skill pin and source recommendation are 0.18.0; source minimum
+The published, independently verified Skill pin and source recommendation are 0.19.0; source minimum
 compatibility remains 0.12.0. Launcher 0.15.0 bundles this authorization contract; matching service
 rollout and explicit tenant activation remain separate. Launchers below the minimum are rejected
 with `LAUNCHER_UPGRADE_REQUIRED` before OAuth issuance. This release does not backfill historical
@@ -175,7 +175,7 @@ MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly
 current category levels. Callers must not fabricate attributes from content. The
 `archive_quarantine_certificates` MCP tool is the declared admin-only PAO.
 
-The approved launcher 0.18.0 owns business/dishes/in_store_orders/takeaway_orders transfer. Historical 0.14.0 used legacy settled_orders; matching service migration is required. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
+The approved launcher 0.19.0 owns business/dishes/in_store_orders/takeaway_orders transfer. Historical 0.14.0 used legacy settled_orders; matching service migration is required. The source OAuth compatibility floor is 0.12.0; below-minimum or unsupported partition clients receive LAUNCHER_UPGRADE_REQUIRED. Internal partition presigned URLs are never returned through a generic MCP proxy.
 
 MCP and launcher clients must never expose credentials, tokens, or raw service
 infrastructure. Cursor continuation is bound to the current organization, employee, clearance,
@@ -183,7 +183,7 @@ authorization mode/version, query shape, filters, limit, and retrieval configura
 
 ### Versioned enterprise workflows
 
-Published launcher `0.18.0` registers seven enterprise workflow tools through MCP. On a matching
+Published launcher `0.19.0` registers seven enterprise workflow tools through MCP. On a matching
 service, call `query_enterprise_workflows` with `query.mode` set to `list` to discover the current
 capability version and authenticated settings entry. List mode accepts the existing optional
 `enterpriseKey`, `cursor` and `limit`. Detail mode requires `enterpriseKey` and
@@ -194,7 +194,7 @@ query. Live MCP workflow calls require launcher `0.17.0`. Existing installation 
 download receipts produced by launcher `0.16.0` remain eligible under the same readiness and
 evidence checks.
 
-The approved installation pin is the independently verified `0.18.0`. The 52-tool release
+The approved installation pin is the independently verified `0.19.0`. The 53-tool release
 requires matching service and companion versions.
 Tool discovery and installation do not activate a configuration, change tenant authorization,
 migrate host tasks or confirm order-source scope. Follow the
@@ -213,8 +213,8 @@ no arbitrary HTTP/SQL proxy. `get_my_permissions` reads live state on every call
 inspect complete configuration for themselves and any same-organization account even without
 content grants. Management/status outputs have no signed content links.
 
-The consolidated permission operations are available in published launcher `0.18.0` and its
-matching service. The account path and field names below require launcher `0.18.0` and its matching service. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
+The consolidated permission operations are available in published launcher `0.19.0` and its
+matching service. The account path and field names below require launcher `0.18.0` or later and a matching service. See the [official permission reference](../../skills/smedc-mcp/references/business-authorization.md)
 for the inputs and release gate.
 
 | MCP tool                                                         | HTTP operation                                                                                   |
@@ -249,7 +249,7 @@ optional name. `ENTERPRISE_NAME_REQUIRED` and `ENTERPRISE_NAME_CONFLICT` return 
 partial changes. Review grants cannot be saved against an unregistered enterprise. Registration
 and store configuration never grant content access or set a category level or tenant mode.
 
-### Employee and business directories (published 0.18.0)
+### Employee and business directories (introduced in 0.18.0)
 
 All operations take the registered `enterpriseKey`. HTTP uses `POST /v1/directory/{action}`;
 browser routes under `/api/web/v1/orgs/:orgId/directory` use the signed-in session and CSRF
@@ -270,7 +270,7 @@ for operation shapes and the rollout gate.
 interfaces in published, independently verified launcher `0.15.0`. It replaces the legacy
 `settled_orders` name used by published `0.14.0`. MCP upload requires `0.15.0+` and otherwise returns
 `LAUNCHER_UPGRADE_REQUIRED`; current public schemas accept only the canonical new name. The OAuth
-floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version are `0.18.0`.
+floor stays `0.12.0`, approved pin/recommendation and official manual-acceptance version are `0.19.0`.
 Use requires verified compatible client publication, coordinated service migration and current
 category grants. [The forward migration guide](in-store-order-design.md) covers retained category
 IDs/grants/CSV objects, expired old ZIP requests and unchanged historical request fingerprints.
@@ -298,7 +298,7 @@ and [the core Skill order reference](../../skills/smedc-mcp/references/in-store-
 
 `takeaway_orders` is a fixed store-level `partition_extract` category implemented through the
 existing upload/status/coverage/manifest/range and optional ZIP interfaces. Launcher
-`0.15.0` is published and independently verified; installation pin and source recommendation are `0.18.0`, and the OAuth
+`0.15.0` is published and independently verified; installation pin and source recommendation are `0.19.0`, and the OAuth
 floor remains `0.12.0`. MCP uploads from older launchers return `LAUNCHER_UPGRADE_REQUIRED`.
 Employee use requires independent compatible-client publication verification, matching service
 rollout including `20261030010000_takeaway_orders`, and explicit current tenant category grants.
@@ -320,9 +320,9 @@ See [partition semantics](structured-partitions.md) and the [takeaway workflow](
 
 ### Filtered partition extracts and asynchronous bundles
 
-The approved launcher 0.18.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
+The approved launcher 0.19.0 supports filtered ranges and optional prepared bundles. Both require matching service support; confirm the ZIP path before selecting bundle mode. Range is the default;
 tools/list alone cannot establish server availability. After ZIP rollback regenerate saved
-plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.18.0`. This contract is not
+plans in range mode; do not bypass authentication, integrity or source-scope failures. The approved installation pin is published, independently verified `0.19.0`. This contract is not
 evidence of service deployment or tenant activation.
 
 For `business`/`dishes`/`in_store_orders`/`takeaway_orders`, manifests and bundle preparation accept `dataset`, `enterpriseName`,
@@ -447,7 +447,7 @@ timeout and signed-link TTL apply; read operations never generate PDFs.
 
 ## Cost Cards (Published Launcher, Separate Service Gate)
 
-Launcher `0.18.0` is published and independently verified and is the approved install pin
+Launcher `0.19.0` is published and independently verified and is the approved install pin
 and source recommendation. Cost-card service rollout and explicit tenant configuration remain
 separate gates; publication does not prove live deployment or acceptance. See [the usage contract](../../skills/smedc-mcp/references/cost-cards.md).
 
@@ -563,25 +563,25 @@ readers can receive validation locations and ignored/source-summary arrays; owne
 receives safe progress/errorCode, and revoked access returns 404. No raw storage key or original-file
 read permission is exposed. Launcher 0.15.0 is published and independently verified; service rollout and tenant authorization remain separate.
 
-## Dish catalog (current state; source implemented, launcher publication pending)
+## Dish catalog (current state)
 
 `dish_catalog` is one current catalog per business enterprise: `(organization, enterprise, SKU)`
 unique, one row per SKU. There is no dated snapshot, `snapshot_date`, date-ordered history, archive
 step, or cross-snapshot diff, and the service never parses or stores a catalog file. The calling
-agent reads the employee's local file and submits structured rows. Source launcher `0.19.0`
-registers `upsert_dish_catalog`; publication and the approved Skill pin are separate release steps.
+agent reads the employee's local file and submits structured rows. Published launcher `0.19.0`
+registers `upsert_dish_catalog` and is the approved installation pin.
 The legacy upload is retired (see below).
 
 | HTTP                           | MCP                   | Input / result                                                                                                 |
 | ------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `POST /v1/dish-catalog/upsert` | `upsert_dish_catalog` | `{enterpriseName, rows?, removeSkuIds?, sourceFileName?}` → `{received, created, updated, unchanged, removed}` |
 
-| Input field      | Type     | Required | Rules                                                                                                |
-| ---------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `enterpriseName` | string   | yes      | ≤255; matches one registered enterprise of the current organization by shared identity normalization |
-| `rows`           | array    | no       | Rows to create or replace; rows plus removals total 1–1000 entries                                   |
-| `removeSkuIds`   | string[] | no       | SKUs to permanently delete; each ≤128; same total limit; no duplicates                               |
-| `sourceFileName` | string   | no       | ≤255; audit record only; the server reads no file                                                    |
+| Input field      | Type     | Required | Rules                                                                  |
+| ---------------- | -------- | -------- | ---------------------------------------------------------------------- |
+| `enterpriseName` | string   | yes      | ≤255; exact registered enterprise name of the current organization     |
+| `rows`           | array    | no       | Rows to create or replace; rows plus removals total 1–1000 entries     |
+| `removeSkuIds`   | string[] | no       | SKUs to permanently delete; each ≤128; same total limit; no duplicates |
+| `sourceFileName` | string   | no       | ≤255; audit record only; the server reads no file                      |
 
 `rows` objects are strict and reject unknown keys:
 
@@ -682,8 +682,8 @@ before destructive changes.
 
 ## Store reviews (published 0.13.0)
 
-Launcher `0.18.0` is published and independently verified, and is the approved installation pin.
-The service source recommends `0.18.0` and requires at least `0.12.0` for OAuth issuance and refresh.
+Launcher `0.19.0` is published and independently verified, and is the approved installation pin.
+The service source recommends `0.19.0` and requires at least `0.12.0` for OAuth issuance and refresh.
 See [staging readiness](staging-readiness.md) for verified live policy and deployment evidence; publication and installation do not
 configure categories/grants or activate a tenant.
 

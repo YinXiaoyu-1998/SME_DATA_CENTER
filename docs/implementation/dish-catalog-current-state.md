@@ -1,6 +1,6 @@
 # 菜品目录当前状态与部门名称唯一
 
-状态：2026-11-11 源码已实现并通过聚焦测试，**未部署、未激活真实企业**。规格（权威入口）：[Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)。决策记录见 [ADR 0029](../adr/0029-dish-catalog-current-state.md) 与 [ADR 0030](../adr/0030-department-name-uniqueness.md)。本文件是实现边界与验收依据，不表示已经部署或可用于真实企业。
+状态：2026-11-11 已在 staging 部署并核实两条迁移，发行的 Launcher 0.19.0 已独立核验。最新环境证据见[staging 状态](staging-readiness.md)。真实企业需按授权单独启用与验收。规格见 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，决策见 [ADR 0029](../adr/0029-dish-catalog-current-state.md) 与 [ADR 0030](../adr/0030-department-name-uniqueness.md)。
 
 ## 1. 范围
 
