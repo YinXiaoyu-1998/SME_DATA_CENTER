@@ -1,9 +1,9 @@
 # Ledger PDF MCP Contracts
 
-Launcher **0.19.0 is published and independently verified**. The approved installation pin is
-`smedc-mcp-launcher@0.19.0`; use the core Skill's approved installation flow. The local bundle
-tool is implemented in the 0.20.0 candidate and requires the verified launcher release, matching
-service deployment, and the tool in the host's local `smedc` integration before use. Verify that
+Launcher **0.20.0 is published and independently verified**. The approved installation pin is
+`smedc-mcp-launcher@0.20.0`; use the core Skill's approved installation flow. For local bundle
+delivery, verify matching service deployment and discover the tool in the host's local `smedc`
+integration. Verify that
 service archive delivery is enabled. On `LEDGER_PDF_NOT_ENABLED`, report that archive delivery is
 unavailable. Do not generate PDFs locally or change service flags.
 

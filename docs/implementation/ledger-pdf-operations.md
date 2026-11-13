@@ -18,7 +18,7 @@ ZIP 提交固定精确清单和内容引用，清单重排可幂等重试，改�
 
 ## MCP 本地取件
 
-本地取件在 launcher 0.20.0 候选版中实现，待发布验证及匹配的服务端上线。只有本地 stdio launcher 注册 `download_ledger_pdf_bundle`。Launcher 用当前令牌领取 ZIP 短链和校验信息，下载后校验字节数与 SHA-256，再解压到 `smedc-ledger-extracts/extract-*`。工具返回目录、文件数和相对路径，不返回签名链接。单次调用预算 600 秒，最多 5000 个 PDF，PDF 合计上限 1 GiB，ZIP 封装开销单独计入；解压成功即删除 ZIP，失败或取消时整目录回滚。
+本地取件需要已发布并独立验证的 launcher 0.20.0 和匹配的服务端。只有本地 stdio launcher 注册 `download_ledger_pdf_bundle`。Launcher 用当前令牌领取 ZIP 短链和校验信息，下载后校验字节数与 SHA-256，再解压到 `smedc-ledger-extracts/extract-*`。工具返回目录、文件数和相对路径，不返回签名链接。单次调用预算 600 秒，最多 5000 个 PDF，PDF 合计上限 1 GiB，ZIP 封装开销单独计入；解压成功即删除 ZIP，失败或取消时整目录回滚。
 
 ZIP 内条目固定为 `<门店>/<YYYY-MM-DD>/食品经营单位进货台帐_<门店>_<YYYY-MM-DD>.pdf`；压缩方式为 STORE，条目名、路径与压缩属性均在解压前校验，出现目录穿越、重复、非 PDF 或非本表命名时整包拒绝。解压后的 PDF 是普通交付物：员工可以打开、转发或继续加工，launcher 不再限制其后续用途。
 

@@ -192,7 +192,7 @@ MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登�
 
 旧的文件上传已停用。`upload_structured_dataset` 与 `POST /v1/structured/imports` 会在创建文档、
 导入批次、范围声明、存储对象或审计记录之前，以 `DATASET_UPLOAD_RETIRED` 拒绝 `dish_catalog`。
-源码 launcher `0.19.0` 增加写入工具；发布与批准的 Skill pin 是独立的发布步骤。
+已批准的 launcher 支持菜品目录写入。
 
 ## 常用 MCP Tools
 
