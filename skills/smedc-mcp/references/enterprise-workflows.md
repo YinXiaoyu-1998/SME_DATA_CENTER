@@ -23,6 +23,13 @@ then verify live service capability and current administrator authorization befo
 If capability is unavailable, report that service gap. Do not substitute `latest`, raw JSON-RPC
 or a separate credentialed HTTP client.
 
+DeepSeek Harness workflow registration additionally requires the matching service to advertise
+`capability.dshMinimumLauncherVersion` and an independently verified, core-approved launcher
+meeting that minimum. The current approved launcher supports the existing Codex workflow path.
+Do not register a DSH session as Codex or change the approval pin. After the DSH version is
+approved, follow the companion's DSH installation procedure; its browser and SMTP configuration
+remain on the employee's host.
+
 The service capability version and companion package revision are separate. The v1 service
 supports stable `1.0.x` workflow packages; other minor/major lines and prereleases require a
 compatibility update. Register the actual package version. Each run remains pinned to its exact

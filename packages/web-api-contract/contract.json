@@ -5441,6 +5441,9 @@
               },
               "minimumLauncherVersion": {
                 "type": "string"
+              },
+              "dshMinimumLauncherVersion": {
+                "type": "string"
               }
             },
             "required": [
@@ -6409,6 +6412,9 @@
               },
               "minimumLauncherVersion": {
                 "type": "string"
+              },
+              "dshMinimumLauncherVersion": {
+                "type": "string"
               }
             },
             "required": [
@@ -6910,7 +6916,10 @@
                       "properties": {
                         "host": {
                           "type": "string",
-                          "const": "codex"
+                          "enum": [
+                            "codex",
+                            "dsh"
+                          ]
                         },
                         "platform": {
                           "type": "string",
@@ -6997,6 +7006,7 @@
                               "dependencies",
                               "email_identity",
                               "sent_mail_lookup",
+                              "smtp_submission",
                               "host_schedule",
                               "host_timezone",
                               "host_model",
@@ -8533,6 +8543,9 @@
               },
               "minimumLauncherVersion": {
                 "type": "string"
+              },
+              "dshMinimumLauncherVersion": {
+                "type": "string"
               }
             },
             "required": [
@@ -9201,23 +9214,19 @@
                           "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema9"
                         },
                         "host": {
-                          "type": "string",
-                          "const": "codex"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema57"
                         },
                         "platform": {
-                          "type": "string",
-                          "const": "macos"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema58"
                         },
                         "launcherVersion": {
-                          "type": "string",
-                          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema59"
                         },
                         "workflowPackageVersion": {
-                          "type": "string",
-                          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema60"
                         },
                         "hostSnapshot": {
-                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema56"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema61"
                         }
                       },
                       "required": [
@@ -9251,7 +9260,7 @@
                       "maxItems": 100,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema57"
+                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema63"
                       }
                     },
                     "firstRunVerification": {
@@ -9283,7 +9292,7 @@
                       "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema0"
                     },
                     "hostSnapshot": {
-                      "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema56"
+                      "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema62"
                     }
                   },
                   "required": [
@@ -9404,10 +9413,10 @@
                           "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema1"
                         },
                         "integration": {
-                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema58"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema64"
                         },
                         "workflows": {
-                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema67"
+                          "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema73"
                         }
                       },
                       "required": [
@@ -9494,10 +9503,10 @@
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema3"
                 },
                 "unresolved": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema41"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema42"
                 },
                 "recoveryItems": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema47"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema48"
                 }
               },
               "required": [
@@ -9936,6 +9945,9 @@
                 },
                 "providerReadback": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema40"
+                },
+                "smtpAcceptance": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema41"
                 }
               },
               "required": [
@@ -9960,6 +9972,7 @@
                 "service_status",
                 "launcher_transfer",
                 "provider_readback",
+                "smtp_accepted",
                 "smedc_readback",
                 "manual_resolution",
                 "request_rejected",
@@ -10132,29 +10145,58 @@
               "additionalProperties": false
             },
             "b_workflows_manageWorkflowInstallation___schema41": {
+              "type": "object",
+              "properties": {
+                "identityHash": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema5"
+                },
+                "artifactHash": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema5"
+                },
+                "correlationMarker": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema0"
+                },
+                "messageId": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema9"
+                },
+                "responseCode": {
+                  "type": "number",
+                  "const": 250
+                }
+              },
+              "required": [
+                "identityHash",
+                "artifactHash",
+                "correlationMarker",
+                "messageId",
+                "responseCode"
+              ],
+              "additionalProperties": false
+            },
+            "b_workflows_manageWorkflowInstallation___schema42": {
               "maxItems": 100,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema42"
+                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema43"
               }
             },
-            "b_workflows_manageWorkflowInstallation___schema42": {
+            "b_workflows_manageWorkflowInstallation___schema43": {
               "type": "object",
               "properties": {
                 "code": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema43"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema44"
                 },
                 "sourceRef": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema0"
                 },
                 "evidenceHash": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema44"
-                },
-                "intent": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema45"
                 },
-                "receipt": {
+                "intent": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema46"
+                },
+                "receipt": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema47"
                 }
               },
               "required": [
@@ -10163,7 +10205,7 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema43": {
+            "b_workflows_manageWorkflowInstallation___schema44": {
               "type": "string",
               "enum": [
                 "source_conflict",
@@ -10172,48 +10214,48 @@
                 "missing_local_evidence"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema44": {
+            "b_workflows_manageWorkflowInstallation___schema45": {
               "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema5"
             },
-            "b_workflows_manageWorkflowInstallation___schema45": {
+            "b_workflows_manageWorkflowInstallation___schema46": {
               "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema6"
             },
-            "b_workflows_manageWorkflowInstallation___schema46": {
+            "b_workflows_manageWorkflowInstallation___schema47": {
               "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema30"
             },
-            "b_workflows_manageWorkflowInstallation___schema47": {
+            "b_workflows_manageWorkflowInstallation___schema48": {
               "maxItems": 100,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema48"
+                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema49"
               }
             },
-            "b_workflows_manageWorkflowInstallation___schema48": {
+            "b_workflows_manageWorkflowInstallation___schema49": {
               "type": "object",
               "properties": {
                 "itemId": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema0"
                 },
                 "kind": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema49"
-                },
-                "disposition": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema50"
                 },
-                "stage": {
+                "disposition": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema51"
                 },
-                "scope": {
+                "stage": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema52"
                 },
-                "evidenceRef": {
+                "scope": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema53"
                 },
-                "evidenceHash": {
+                "evidenceRef": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema54"
                 },
-                "resolutionReason": {
+                "evidenceHash": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema55"
+                },
+                "resolutionReason": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema56"
                 }
               },
               "required": [
@@ -10225,14 +10267,14 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema49": {
+            "b_workflows_manageWorkflowInstallation___schema50": {
               "type": "string",
               "enum": [
                 "business",
                 "evidence"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema50": {
+            "b_workflows_manageWorkflowInstallation___schema51": {
               "type": "string",
               "enum": [
                 "open",
@@ -10240,7 +10282,7 @@
                 "resolved"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema51": {
+            "b_workflows_manageWorkflowInstallation___schema52": {
               "type": "string",
               "enum": [
                 "preparing",
@@ -10253,7 +10295,7 @@
                 "finished"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema52": {
+            "b_workflows_manageWorkflowInstallation___schema53": {
               "oneOf": [
                 {
                   "type": "object",
@@ -10360,23 +10402,44 @@
                 }
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema53": {
+            "b_workflows_manageWorkflowInstallation___schema54": {
               "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema0"
             },
-            "b_workflows_manageWorkflowInstallation___schema54": {
+            "b_workflows_manageWorkflowInstallation___schema55": {
               "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema5"
             },
-            "b_workflows_manageWorkflowInstallation___schema55": {
+            "b_workflows_manageWorkflowInstallation___schema56": {
               "type": "string",
               "minLength": 1,
               "maxLength": 2000
             },
-            "b_workflows_manageWorkflowInstallation___schema56": {
+            "b_workflows_manageWorkflowInstallation___schema57": {
+              "type": "string",
+              "enum": [
+                "codex",
+                "dsh"
+              ]
+            },
+            "b_workflows_manageWorkflowInstallation___schema58": {
+              "type": "string",
+              "const": "macos"
+            },
+            "b_workflows_manageWorkflowInstallation___schema59": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+$"
+            },
+            "b_workflows_manageWorkflowInstallation___schema60": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+$"
+            },
+            "b_workflows_manageWorkflowInstallation___schema61": {
+              "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema62"
+            },
+            "b_workflows_manageWorkflowInstallation___schema62": {
               "type": "object",
               "properties": {
                 "host": {
-                  "type": "string",
-                  "const": "codex"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema57"
                 },
                 "platform": {
                   "type": "string",
@@ -10439,7 +10502,7 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema57": {
+            "b_workflows_manageWorkflowInstallation___schema63": {
               "type": "object",
               "properties": {
                 "capability": {
@@ -10454,6 +10517,7 @@
                     "dependencies",
                     "email_identity",
                     "sent_mail_lookup",
+                    "smtp_submission",
                     "host_schedule",
                     "host_timezone",
                     "host_model",
@@ -10498,23 +10562,23 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema58": {
+            "b_workflows_manageWorkflowInstallation___schema64": {
               "type": "object",
               "properties": {
                 "schemaVersion": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema59"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema65"
                 },
                 "timezone": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema60"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema66"
                 },
                 "sourceAccounts": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema61"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema67"
                 },
                 "storeMappings": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema63"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema69"
                 },
                 "exclusions": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema65"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema71"
                 }
               },
               "required": [
@@ -10526,22 +10590,22 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema59": {
+            "b_workflows_manageWorkflowInstallation___schema65": {
               "type": "number",
               "const": 1
             },
-            "b_workflows_manageWorkflowInstallation___schema60": {
+            "b_workflows_manageWorkflowInstallation___schema66": {
               "type": "string",
               "const": "Asia/Shanghai"
             },
-            "b_workflows_manageWorkflowInstallation___schema61": {
+            "b_workflows_manageWorkflowInstallation___schema67": {
               "maxItems": 100,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema62"
+                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema68"
               }
             },
-            "b_workflows_manageWorkflowInstallation___schema62": {
+            "b_workflows_manageWorkflowInstallation___schema68": {
               "type": "object",
               "properties": {
                 "product": {
@@ -10572,14 +10636,14 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema63": {
+            "b_workflows_manageWorkflowInstallation___schema69": {
               "maxItems": 2000,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema64"
+                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema70"
               }
             },
-            "b_workflows_manageWorkflowInstallation___schema64": {
+            "b_workflows_manageWorkflowInstallation___schema70": {
               "type": "object",
               "properties": {
                 "source": {
@@ -10595,14 +10659,14 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema65": {
+            "b_workflows_manageWorkflowInstallation___schema71": {
               "maxItems": 2000,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema66"
+                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema72"
               }
             },
-            "b_workflows_manageWorkflowInstallation___schema66": {
+            "b_workflows_manageWorkflowInstallation___schema72": {
               "type": "object",
               "properties": {
                 "source": {
@@ -10620,15 +10684,15 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema67": {
+            "b_workflows_manageWorkflowInstallation___schema73": {
               "minItems": 1,
               "maxItems": 3,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema68"
+                "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema74"
               }
             },
-            "b_workflows_manageWorkflowInstallation___schema68": {
+            "b_workflows_manageWorkflowInstallation___schema74": {
               "type": "object",
               "properties": {
                 "workflowId": {
@@ -10637,13 +10701,13 @@
                 "configuration": {
                   "oneOf": [
                     {
-                      "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema69"
-                    },
-                    {
-                      "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema73"
+                      "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema75"
                     },
                     {
                       "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema79"
+                    },
+                    {
+                      "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema85"
                     }
                   ]
                 },
@@ -10651,20 +10715,20 @@
                   "maxItems": 20,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema81"
+                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema87"
                   }
                 },
                 "hostSnapshot": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema56"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema62"
                 },
                 "completedActions": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema3"
                 },
                 "recoveryItems": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema47"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema48"
                 },
                 "unresolved": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema41"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema42"
                 }
               },
               "required": [
@@ -10677,17 +10741,17 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema69": {
+            "b_workflows_manageWorkflowInstallation___schema75": {
               "type": "object",
               "properties": {
                 "schemaVersion": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema70"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema76"
                 },
                 "storeNames": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema8"
                 },
                 "notificationPolicy": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema71"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema77"
                 },
                 "type": {
                   "type": "string",
@@ -10698,7 +10762,7 @@
                   "maxItems": 5,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema72"
+                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema78"
                   }
                 },
                 "orderScope": {
@@ -10721,15 +10785,15 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema70": {
+            "b_workflows_manageWorkflowInstallation___schema76": {
               "type": "number",
               "const": 1
             },
-            "b_workflows_manageWorkflowInstallation___schema71": {
+            "b_workflows_manageWorkflowInstallation___schema77": {
               "type": "string",
               "const": "action_required"
             },
-            "b_workflows_manageWorkflowInstallation___schema72": {
+            "b_workflows_manageWorkflowInstallation___schema78": {
               "type": "string",
               "enum": [
                 "business",
@@ -10739,17 +10803,17 @@
                 "delivery_ledger"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema73": {
+            "b_workflows_manageWorkflowInstallation___schema79": {
               "type": "object",
               "properties": {
                 "schemaVersion": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema70"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema76"
                 },
                 "storeNames": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema8"
                 },
                 "notificationPolicy": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema71"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema77"
                 },
                 "type": {
                   "type": "string",
@@ -10778,7 +10842,7 @@
                   "maxItems": 2000,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema74"
+                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema80"
                   }
                 },
                 "channels": {
@@ -10786,7 +10850,7 @@
                   "maxItems": 2,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema75"
+                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema81"
                   }
                 },
                 "publication": {
@@ -10818,7 +10882,7 @@
                   "maxLength": 2000
                 },
                 "draftNotification": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema76"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema82"
                 },
                 "cleanupPolicy": {
                   "type": "string",
@@ -10841,7 +10905,7 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema74": {
+            "b_workflows_manageWorkflowInstallation___schema80": {
               "type": "object",
               "properties": {
                 "source": {
@@ -10868,24 +10932,24 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema75": {
+            "b_workflows_manageWorkflowInstallation___schema81": {
               "type": "string",
               "enum": [
                 "meituan",
                 "dianping"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema76": {
+            "b_workflows_manageWorkflowInstallation___schema82": {
               "type": "object",
               "properties": {
                 "enabled": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema77"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema83"
                 },
                 "recipients": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema24"
                 },
                 "allowedSender": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema78"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema84"
                 }
               },
               "required": [
@@ -10894,26 +10958,26 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema77": {
+            "b_workflows_manageWorkflowInstallation___schema83": {
               "type": "boolean"
             },
-            "b_workflows_manageWorkflowInstallation___schema78": {
+            "b_workflows_manageWorkflowInstallation___schema84": {
               "type": "string",
               "maxLength": 254,
               "format": "email",
               "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
             },
-            "b_workflows_manageWorkflowInstallation___schema79": {
+            "b_workflows_manageWorkflowInstallation___schema85": {
               "type": "object",
               "properties": {
                 "schemaVersion": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema70"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema76"
                 },
                 "storeNames": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema8"
                 },
                 "notificationPolicy": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema71"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema77"
                 },
                 "type": {
                   "type": "string",
@@ -10923,11 +10987,11 @@
                   "maxItems": 100,
                   "type": "array",
                   "items": {
-                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema80"
+                    "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema86"
                   }
                 },
                 "delivery": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema76"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema82"
                 },
                 "cleanupPolicy": {
                   "type": "string",
@@ -10945,7 +11009,7 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema80": {
+            "b_workflows_manageWorkflowInstallation___schema86": {
               "type": "object",
               "properties": {
                 "name": {
@@ -10961,7 +11025,7 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowInstallation___schema81": {
+            "b_workflows_manageWorkflowInstallation___schema87": {
               "oneOf": [
                 {
                   "type": "object",
@@ -10975,7 +11039,7 @@
                       "maxItems": 5,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema82"
+                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema88"
                       }
                     },
                     "storeNames": {
@@ -11001,7 +11065,7 @@
                       "maxItems": 4,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema83"
+                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema89"
                       }
                     },
                     "storeNames": {
@@ -11027,7 +11091,7 @@
                       "maxItems": 2,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema84"
+                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema90"
                       }
                     },
                     "storeNames": {
@@ -11053,7 +11117,7 @@
                       "maxItems": 2,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema85"
+                        "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema91"
                       }
                     },
                     "storeNames": {
@@ -11110,7 +11174,7 @@
                 }
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema82": {
+            "b_workflows_manageWorkflowInstallation___schema88": {
               "type": "string",
               "enum": [
                 "business",
@@ -11120,7 +11184,7 @@
                 "delivery_ledger"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema83": {
+            "b_workflows_manageWorkflowInstallation___schema89": {
               "type": "string",
               "enum": [
                 "business",
@@ -11129,14 +11193,14 @@
                 "takeaway_orders"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema84": {
+            "b_workflows_manageWorkflowInstallation___schema90": {
               "type": "string",
               "enum": [
                 "meituan",
                 "dianping"
               ]
             },
-            "b_workflows_manageWorkflowInstallation___schema85": {
+            "b_workflows_manageWorkflowInstallation___schema91": {
               "type": "string",
               "enum": [
                 "meituan",
@@ -11182,34 +11246,34 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
               },
               "createdBy": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema92"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
               },
               "createdAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
-              },
-              "updatedAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
-              },
-              "sealedAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
               },
-              "chunkCount": {
+              "updatedAt": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
+              },
+              "sealedAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema95"
               },
-              "recordCount": {
+              "chunkCount": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema96"
               },
-              "chunksDigest": {
+              "recordCount": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema97"
               },
-              "importedChunks": {
+              "chunksDigest": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema98"
               },
-              "validatedChunks": {
+              "importedChunks": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema99"
               },
-              "targetVersions": {
+              "validatedChunks": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema100"
+              },
+              "targetVersions": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema101"
               },
               "chunks": {
                 "type": "array",
@@ -11226,7 +11290,7 @@
                       "maxItems": 3,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema101"
+                        "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema102"
                       }
                     },
                     "chunkHash": {
@@ -11240,7 +11304,7 @@
                     "importedAt": {
                       "anyOf": [
                         {
-                          "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
+                          "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
                         },
                         {
                           "type": "null"
@@ -11331,34 +11395,34 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
               },
               "createdBy": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema92"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
               },
               "createdAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
-              },
-              "updatedAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
-              },
-              "sealedAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
               },
-              "chunkCount": {
+              "updatedAt": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
+              },
+              "sealedAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema95"
               },
-              "recordCount": {
+              "chunkCount": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema96"
               },
-              "chunksDigest": {
+              "recordCount": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema97"
               },
-              "importedChunks": {
+              "chunksDigest": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema98"
               },
-              "validatedChunks": {
+              "importedChunks": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema99"
               },
-              "targetVersions": {
+              "validatedChunks": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema100"
+              },
+              "targetVersions": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema101"
               },
               "complete": {
                 "type": "boolean"
@@ -11456,7 +11520,7 @@
               "leaseExpiresAt": {
                 "anyOf": [
                   {
-                    "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
+                    "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
                   },
                   {
                     "type": "null"
@@ -11555,34 +11619,34 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
               },
               "createdBy": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema92"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
               },
               "createdAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
-              },
-              "updatedAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
-              },
-              "sealedAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
               },
-              "chunkCount": {
+              "updatedAt": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
+              },
+              "sealedAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema95"
               },
-              "recordCount": {
+              "chunkCount": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema96"
               },
-              "chunksDigest": {
+              "recordCount": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema97"
               },
-              "importedChunks": {
+              "chunksDigest": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema98"
               },
-              "validatedChunks": {
+              "importedChunks": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema99"
               },
-              "targetVersions": {
+              "validatedChunks": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema100"
+              },
+              "targetVersions": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema101"
               }
             },
             "required": [
@@ -11683,6 +11747,7 @@
                             "dependencies",
                             "email_identity",
                             "sent_mail_lookup",
+                            "smtp_submission",
                             "host_schedule",
                             "host_timezone",
                             "host_model",
@@ -11739,7 +11804,7 @@
               "lastCheckedAt": {
                 "anyOf": [
                   {
-                    "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
+                    "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
                   },
                   {
                     "type": "null"
@@ -11747,10 +11812,10 @@
                 ]
               },
               "createdAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
               },
               "updatedAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
               }
             },
             "required": [
@@ -12054,10 +12119,10 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema49"
               },
               "recoveryItems": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema77"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema78"
               },
               "unresolved": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema86"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema87"
               }
             },
             "required": [
@@ -12571,7 +12636,10 @@
             "properties": {
               "host": {
                 "type": "string",
-                "const": "codex"
+                "enum": [
+                  "codex",
+                  "dsh"
+                ]
               },
               "platform": {
                 "type": "string",
@@ -12985,6 +13053,9 @@
               },
               "providerReadback": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema76"
+              },
+              "smtpAcceptance": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema77"
               }
             },
             "required": [
@@ -13009,6 +13080,7 @@
               "service_status",
               "launcher_transfer",
               "provider_readback",
+              "smtp_accepted",
               "smedc_readback",
               "manual_resolution",
               "request_rejected",
@@ -13181,38 +13253,67 @@
             "additionalProperties": false
           },
           "r_workflows_manageWorkflowInstallation___schema77": {
+            "type": "object",
+            "properties": {
+              "identityHash": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
+              },
+              "artifactHash": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
+              },
+              "correlationMarker": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema26"
+              },
+              "messageId": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema15"
+              },
+              "responseCode": {
+                "type": "number",
+                "const": 250
+              }
+            },
+            "required": [
+              "identityHash",
+              "artifactHash",
+              "correlationMarker",
+              "messageId",
+              "responseCode"
+            ],
+            "additionalProperties": false
+          },
+          "r_workflows_manageWorkflowInstallation___schema78": {
             "maxItems": 100,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema78"
+              "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema79"
             }
           },
-          "r_workflows_manageWorkflowInstallation___schema78": {
+          "r_workflows_manageWorkflowInstallation___schema79": {
             "type": "object",
             "properties": {
               "itemId": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema26"
               },
               "kind": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema79"
-              },
-              "disposition": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema80"
               },
-              "stage": {
+              "disposition": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema81"
               },
-              "scope": {
+              "stage": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema82"
               },
-              "evidenceRef": {
+              "scope": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema83"
               },
-              "evidenceHash": {
+              "evidenceRef": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema84"
               },
-              "resolutionReason": {
+              "evidenceHash": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema85"
+              },
+              "resolutionReason": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema86"
               }
             },
             "required": [
@@ -13224,14 +13325,14 @@
             ],
             "additionalProperties": false
           },
-          "r_workflows_manageWorkflowInstallation___schema79": {
+          "r_workflows_manageWorkflowInstallation___schema80": {
             "type": "string",
             "enum": [
               "business",
               "evidence"
             ]
           },
-          "r_workflows_manageWorkflowInstallation___schema80": {
+          "r_workflows_manageWorkflowInstallation___schema81": {
             "type": "string",
             "enum": [
               "open",
@@ -13239,7 +13340,7 @@
               "resolved"
             ]
           },
-          "r_workflows_manageWorkflowInstallation___schema81": {
+          "r_workflows_manageWorkflowInstallation___schema82": {
             "type": "string",
             "enum": [
               "preparing",
@@ -13252,7 +13353,7 @@
               "finished"
             ]
           },
-          "r_workflows_manageWorkflowInstallation___schema82": {
+          "r_workflows_manageWorkflowInstallation___schema83": {
             "oneOf": [
               {
                 "type": "object",
@@ -13359,41 +13460,41 @@
               }
             ]
           },
-          "r_workflows_manageWorkflowInstallation___schema83": {
+          "r_workflows_manageWorkflowInstallation___schema84": {
             "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema26"
           },
-          "r_workflows_manageWorkflowInstallation___schema84": {
+          "r_workflows_manageWorkflowInstallation___schema85": {
             "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
           },
-          "r_workflows_manageWorkflowInstallation___schema85": {
+          "r_workflows_manageWorkflowInstallation___schema86": {
             "type": "string",
             "minLength": 1,
             "maxLength": 2000
           },
-          "r_workflows_manageWorkflowInstallation___schema86": {
+          "r_workflows_manageWorkflowInstallation___schema87": {
             "maxItems": 100,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema87"
+              "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema88"
             }
           },
-          "r_workflows_manageWorkflowInstallation___schema87": {
+          "r_workflows_manageWorkflowInstallation___schema88": {
             "type": "object",
             "properties": {
               "code": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema88"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema89"
               },
               "sourceRef": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema26"
               },
               "evidenceHash": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema89"
-              },
-              "intent": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema90"
               },
-              "receipt": {
+              "intent": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema91"
+              },
+              "receipt": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema92"
               }
             },
             "required": [
@@ -13402,7 +13503,7 @@
             ],
             "additionalProperties": false
           },
-          "r_workflows_manageWorkflowInstallation___schema88": {
+          "r_workflows_manageWorkflowInstallation___schema89": {
             "type": "string",
             "enum": [
               "source_conflict",
@@ -13411,37 +13512,32 @@
               "missing_local_evidence"
             ]
           },
-          "r_workflows_manageWorkflowInstallation___schema89": {
+          "r_workflows_manageWorkflowInstallation___schema90": {
             "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
           },
-          "r_workflows_manageWorkflowInstallation___schema90": {
+          "r_workflows_manageWorkflowInstallation___schema91": {
             "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema51"
           },
-          "r_workflows_manageWorkflowInstallation___schema91": {
+          "r_workflows_manageWorkflowInstallation___schema92": {
             "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema66"
           },
-          "r_workflows_manageWorkflowInstallation___schema92": {
+          "r_workflows_manageWorkflowInstallation___schema93": {
             "type": "string"
           },
-          "r_workflows_manageWorkflowInstallation___schema93": {
+          "r_workflows_manageWorkflowInstallation___schema94": {
             "type": "string",
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
           },
-          "r_workflows_manageWorkflowInstallation___schema94": {
+          "r_workflows_manageWorkflowInstallation___schema95": {
             "anyOf": [
               {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema93"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema94"
               },
               {
                 "type": "null"
               }
             ]
-          },
-          "r_workflows_manageWorkflowInstallation___schema95": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
           },
           "r_workflows_manageWorkflowInstallation___schema96": {
             "type": "integer",
@@ -13449,6 +13545,11 @@
             "maximum": 9007199254740991
           },
           "r_workflows_manageWorkflowInstallation___schema97": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "r_workflows_manageWorkflowInstallation___schema98": {
             "anyOf": [
               {
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema4"
@@ -13458,17 +13559,17 @@
               }
             ]
           },
-          "r_workflows_manageWorkflowInstallation___schema98": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
           "r_workflows_manageWorkflowInstallation___schema99": {
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
           "r_workflows_manageWorkflowInstallation___schema100": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "r_workflows_manageWorkflowInstallation___schema101": {
             "type": "array",
             "items": {
               "type": "object",
@@ -13501,7 +13602,7 @@
               "additionalProperties": false
             }
           },
-          "r_workflows_manageWorkflowInstallation___schema101": {
+          "r_workflows_manageWorkflowInstallation___schema102": {
             "type": "object",
             "properties": {
               "workflowId": {
@@ -13511,10 +13612,10 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema49"
               },
               "unresolved": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema86"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema87"
               },
               "recoveryItems": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema77"
+                "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema78"
               }
             },
             "required": [
@@ -17786,6 +17887,9 @@
                 },
                 "providerReadback": {
                   "$ref": "#/$defs/b_workflows_recordWorkflowAction___schema35"
+                },
+                "smtpAcceptance": {
+                  "$ref": "#/$defs/b_workflows_recordWorkflowAction___schema36"
                 }
               },
               "required": [
@@ -17810,6 +17914,7 @@
                 "service_status",
                 "launcher_transfer",
                 "provider_readback",
+                "smtp_accepted",
                 "smedc_readback",
                 "manual_resolution",
                 "request_rejected",
@@ -17978,6 +18083,35 @@
                 "providerReceiptId",
                 "observedAt",
                 "outcome"
+              ],
+              "additionalProperties": false
+            },
+            "b_workflows_recordWorkflowAction___schema36": {
+              "type": "object",
+              "properties": {
+                "identityHash": {
+                  "$ref": "#/$defs/b_workflows_recordWorkflowAction___schema11"
+                },
+                "artifactHash": {
+                  "$ref": "#/$defs/b_workflows_recordWorkflowAction___schema11"
+                },
+                "correlationMarker": {
+                  "$ref": "#/$defs/b_workflows_recordWorkflowAction___schema0"
+                },
+                "messageId": {
+                  "$ref": "#/$defs/b_workflows_recordWorkflowAction___schema5"
+                },
+                "responseCode": {
+                  "type": "number",
+                  "const": 250
+                }
+              },
+              "required": [
+                "identityHash",
+                "artifactHash",
+                "correlationMarker",
+                "messageId",
+                "responseCode"
               ],
               "additionalProperties": false
             }
@@ -18492,6 +18626,9 @@
               },
               "providerReadback": {
                 "$ref": "#/$defs/r_workflows_recordWorkflowAction___schema31"
+              },
+              "smtpAcceptance": {
+                "$ref": "#/$defs/r_workflows_recordWorkflowAction___schema32"
               }
             },
             "required": [
@@ -18522,6 +18659,7 @@
               "service_status",
               "launcher_transfer",
               "provider_readback",
+              "smtp_accepted",
               "smedc_readback",
               "manual_resolution",
               "request_rejected",
@@ -18692,6 +18830,35 @@
               "outcome"
             ],
             "additionalProperties": false
+          },
+          "r_workflows_recordWorkflowAction___schema32": {
+            "type": "object",
+            "properties": {
+              "identityHash": {
+                "$ref": "#/$defs/r_workflows_recordWorkflowAction___schema7"
+              },
+              "artifactHash": {
+                "$ref": "#/$defs/r_workflows_recordWorkflowAction___schema7"
+              },
+              "correlationMarker": {
+                "$ref": "#/$defs/r_workflows_recordWorkflowAction___schema21"
+              },
+              "messageId": {
+                "$ref": "#/$defs/r_workflows_recordWorkflowAction___schema1"
+              },
+              "responseCode": {
+                "type": "number",
+                "const": 250
+              }
+            },
+            "required": [
+              "identityHash",
+              "artifactHash",
+              "correlationMarker",
+              "messageId",
+              "responseCode"
+            ],
+            "additionalProperties": false
           }
         }
       },
@@ -18808,6 +18975,9 @@
                 "maximum": 9007199254740991
               },
               "minimumLauncherVersion": {
+                "type": "string"
+              },
+              "dshMinimumLauncherVersion": {
                 "type": "string"
               }
             },

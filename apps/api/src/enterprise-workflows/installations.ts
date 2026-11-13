@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  WORKFLOW_DSH_MINIMUM_LAUNCHER_VERSION,
   WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION,
   workflowReadinessCheckSchema,
   workflowHostSnapshotSchema
@@ -76,12 +77,18 @@ export async function requireReady(
     (await integration(tx, workflow)).configuration
   );
   if (
-    !launcherVersionAtLeast(row.launcherVersion, WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION) ||
+    !launcherVersionAtLeast(
+      row.launcherVersion,
+      row.host === "dsh"
+        ? WORKFLOW_DSH_MINIMUM_LAUNCHER_VERSION
+        : WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION
+    ) ||
     !supportsWorkflowPackageVersion(row.workflowPackageVersion)
   )
     fail("WORKFLOW_VERSION_INCOMPATIBLE");
   if (!row.hostSnapshot) fail("WORKFLOW_SOURCE_UNAVAILABLE");
-  workflowHostSnapshotSchema.parse(row.hostSnapshot);
+  if (workflowHostSnapshotSchema.parse(row.hostSnapshot).host !== row.host)
+    fail("WORKFLOW_INSTALLATION_MISMATCH");
   const checks = z.array(workflowReadinessCheckSchema).parse(row.readinessChecks ?? []);
   const required = [
     "configuration",
@@ -128,7 +135,8 @@ export async function installOperation(
         }
       }
     });
-    if (old && old.userAccountId !== actor.id) fail("WORKFLOW_INSTALLATION_MISMATCH");
+    if (old && (old.userAccountId !== actor.id || old.host !== op.installation.host))
+      fail("WORKFLOW_INSTALLATION_MISMATCH");
     const { hostSnapshot, ...data } = op.installation;
     const same =
       old &&
@@ -173,6 +181,8 @@ export async function installOperation(
       new Set(op.checks.map((c) => c.capability)).size !== op.checks.length
     )
       fail("WORKFLOW_SOURCE_UNAVAILABLE");
+    if (op.kind === "record_host" && op.hostSnapshot.host !== old.host)
+      fail("WORKFLOW_INSTALLATION_MISMATCH");
     if (op.kind === "record_checks" && op.firstRunVerification === "verified") {
       const verifiedRun = await tx.workflowRun.findFirst({
         where: {

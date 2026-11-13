@@ -526,12 +526,16 @@ export async function actionOperation(
           .array(workflowReadinessCheckSchema)
           .parse(bound.installation.readinessChecks ?? []);
         if (
-          ["email_identity", "sent_mail_lookup"].some(
+          [
+            "email_identity",
+            bound.installation.host === "dsh" ? "smtp_submission" : "sent_mail_lookup"
+          ].some(
             (capability) =>
               !checks.some(
                 (c) =>
                   c.capability === capability &&
                   c.status === "ready" &&
+                  Date.parse(c.checkedAt) <= now.getTime() + 60000 &&
                   Date.parse(c.checkedAt) > now.getTime() - 86400000
               )
           )
@@ -740,6 +744,30 @@ export async function actionOperation(
         (receipt.state === "confirmed"
           ? proof.outcome !== (identity.kind === "email" ? "sent" : "published")
           : receipt.state !== "failed" || proof.outcome !== "not_executed")
+      )
+        fail("WORKFLOW_ACTION_UNKNOWN");
+    }
+    if (receipt.evidence === "smtp_accepted") {
+      const proof = receipt.smtpAcceptance;
+      const senderInstallation = await tx.workflowInstallation.findUnique({
+        where: {
+          orgId_workflowId_installationId: {
+            orgId: actor.orgId,
+            workflowId: workflow.id,
+            installationId: run.installationId
+          }
+        }
+      });
+      if (
+        !original ||
+        action.runId !== run.id ||
+        senderInstallation?.host !== "dsh" ||
+        identity.kind !== "email" ||
+        !proof ||
+        proof.identityHash !== hash(action.identity) ||
+        proof.artifactHash !== action.artifactHash ||
+        proof.correlationMarker !== action.correlationMarker ||
+        Date.parse(receipt.verifiedAt) < action.createdAt.getTime() - 60000
       )
         fail("WORKFLOW_ACTION_UNKNOWN");
     }

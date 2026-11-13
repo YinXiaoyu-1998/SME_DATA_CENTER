@@ -288,3 +288,74 @@ it("carries bounded typed recovery metadata without turning waived work into an 
     ).success
   ).toBe(false);
 });
+
+it("registers a DSH installation without accepting a mismatched host snapshot", () => {
+  const schema = tool("manage_workflow_installation").inputSchema;
+  const hostSnapshot = {
+    host: "dsh",
+    platform: "macos",
+    taskId: "schedule-test",
+    projectRef: "session-test",
+    cron: "DTSTART;TZID=Asia/Shanghai:20261203T090000\nRRULE:FREQ=DAILY",
+    timezone: "Asia/Shanghai",
+    model: "deepseek-flash",
+    reasoningEffort: "high",
+    state: "paused",
+    verifiedAt: "2026-11-13T13:00:00Z"
+  };
+  const installation = {
+    installationId: "installation-test",
+    deviceAlias: "synthetic",
+    host: "dsh",
+    platform: "macos",
+    launcherVersion: "0.20.1",
+    workflowPackageVersion: "1.0.7",
+    hostSnapshot
+  };
+  const input = {
+    workflowId: "workflow-test",
+    operation: { kind: "register", installation }
+  };
+  expect(schema.safeParse(input).success).toBe(true);
+  expect(
+    schema.safeParse({
+      ...input,
+      operation: { ...input.operation, installation: { ...installation, host: "codex" } }
+    }).success
+  ).toBe(false);
+});
+
+it("accepts an SMTP receipt only with matching acceptance evidence", () => {
+  const schema = tool("record_workflow_action").inputSchema;
+  const messageId = "<smedc-test@example.test>";
+  const receipt = {
+    actionId: "action-test",
+    state: "confirmed",
+    evidence: "smtp_accepted",
+    receiptId: messageId,
+    verifiedAt: "2026-11-13T13:00:00Z",
+    smtpAcceptance: {
+      identityHash: "a".repeat(64),
+      artifactHash: "b".repeat(64),
+      correlationMarker: "marker",
+      messageId,
+      responseCode: 250
+    }
+  };
+  const operation = {
+    kind: "record_receipts",
+    installationId: "installation-test",
+    runId: "run-test",
+    assignmentEpoch: 1,
+    controlVersion: 1
+  };
+  const parse = (value: unknown) =>
+    schema.safeParse({
+      workflowId: "workflow-test",
+      operation: { ...operation, receipts: [value] }
+    }).success;
+  expect(parse(receipt)).toBe(true);
+  expect(parse({ ...receipt, smtpAcceptance: undefined })).toBe(false);
+  expect(parse({ ...receipt, state: "unknown" })).toBe(false);
+  expect(parse({ ...receipt, receiptId: "different-message" })).toBe(false);
+});

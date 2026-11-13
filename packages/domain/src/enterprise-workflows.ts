@@ -6,11 +6,13 @@ export const WORKFLOW_CAPABILITY_VERSION = "1.0.0";
 export const WORKFLOW_MINIMUM_LAUNCHER_VERSION = "0.17.0";
 // Installation readiness records and transfer proofs retain the version at which they were recorded.
 export const WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION = "0.16.0";
+export const WORKFLOW_DSH_MINIMUM_LAUNCHER_VERSION = "0.20.1";
 export const ENTERPRISE_WORKFLOW_CAPABILITY = Object.freeze({
   id: "enterprise-workflows-v1",
   version: WORKFLOW_CAPABILITY_VERSION,
   configurationSchemaVersion: WORKFLOW_SCHEMA_VERSION,
-  minimumLauncherVersion: WORKFLOW_MINIMUM_LAUNCHER_VERSION
+  minimumLauncherVersion: WORKFLOW_MINIMUM_LAUNCHER_VERSION,
+  dshMinimumLauncherVersion: WORKFLOW_DSH_MINIMUM_LAUNCHER_VERSION
 });
 export const WORKFLOW_TYPES = [
   "meituan-daily-ingestion",
@@ -431,6 +433,7 @@ export const workflowReadinessCheckSchema = z
       "dependencies",
       "email_identity",
       "sent_mail_lookup",
+      "smtp_submission",
       "host_schedule",
       "host_timezone",
       "host_model",
@@ -443,9 +446,10 @@ export const workflowReadinessCheckSchema = z
     sampleStatus: z.enum(["verified", "no_sample", "not_checked"]).optional()
   })
   .strict();
+const workflowHostSchema = z.enum(["codex", "dsh"]);
 export const workflowHostSnapshotSchema = z
   .object({
-    host: z.literal("codex"),
+    host: workflowHostSchema,
     platform: z.literal("macos"),
     taskId: workflowIdSchema,
     projectRef: workflowIdSchema,
@@ -461,13 +465,17 @@ export const workflowInstallationSchema = z
   .object({
     installationId: workflowIdSchema,
     deviceAlias: workflowNameSchema,
-    host: z.literal("codex"),
+    host: workflowHostSchema,
     platform: z.literal("macos"),
     launcherVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     workflowPackageVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     hostSnapshot: workflowHostSnapshotSchema.optional()
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) => !v.hostSnapshot || v.hostSnapshot.host === v.host,
+    "Host snapshot must match installation."
+  );
 export type WorkflowInstallation = z.infer<typeof workflowInstallationSchema>;
 export const WORKFLOW_RUN_PHASES = [
   "preparing",
@@ -620,6 +628,7 @@ export const workflowActionReceiptSchema = z
       "service_status",
       "launcher_transfer",
       "provider_readback",
+      "smtp_accepted",
       "smedc_readback",
       "manual_resolution",
       "request_rejected",
@@ -672,6 +681,16 @@ export const workflowActionReceiptSchema = z
         outcome: z.enum(["published", "sent", "not_executed"])
       })
       .strict()
+      .optional(),
+    smtpAcceptance: z
+      .object({
+        identityHash: workflowHashSchema,
+        artifactHash: workflowHashSchema,
+        correlationMarker: workflowIdSchema,
+        messageId: workflowNameSchema,
+        responseCode: z.literal(250)
+      })
+      .strict()
       .optional()
   })
   .strict()
@@ -682,6 +701,7 @@ export const workflowActionReceiptSchema = z
         "service_status",
         "launcher_transfer",
         "provider_readback",
+        "smtp_accepted",
         "smedc_readback",
         "manual_resolution"
       ].includes(v.evidence) ||
@@ -697,6 +717,15 @@ export const workflowActionReceiptSchema = z
       c.addIssue({
         code: "custom",
         message: "Transport uncertainty cannot establish a terminal result."
+      });
+    if (
+      v.evidence === "smtp_accepted"
+        ? v.state !== "confirmed" || !v.smtpAcceptance || v.receiptId !== v.smtpAcceptance.messageId
+        : v.smtpAcceptance !== undefined
+    )
+      c.addIssue({
+        code: "custom",
+        message: "SMTP acceptance requires a matching message receipt."
       });
   });
 export type WorkflowActionReceipt = z.infer<typeof workflowActionReceiptSchema>;

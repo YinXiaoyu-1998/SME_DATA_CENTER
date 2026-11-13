@@ -46,7 +46,8 @@ const capability = z
     id: z.string(),
     version: z.string(),
     configurationSchemaVersion: z.number().int(),
-    minimumLauncherVersion: z.string()
+    minimumLauncherVersion: z.string(),
+    dshMinimumLauncherVersion: z.string().optional()
   })
   .strict();
 const integrationRow = z
