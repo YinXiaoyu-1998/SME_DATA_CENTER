@@ -23,6 +23,7 @@ import {
   getStructuredRegistry,
   COST_CARD_DIRECTORY_REGISTRY,
   PHASE3_ERROR_CODES,
+  LEDGER_STORE_NAME_MAX_CHARS,
   storeReviewTextFits,
   STORE_REVIEW_LIMITS,
   STORE_REVIEW_SOURCES,
@@ -659,7 +660,7 @@ const ledgerPdfStoreNames = z
     z
       .string()
       .min(1)
-      .max(512)
+      .max(LEDGER_STORE_NAME_MAX_CHARS)
       .refine((name) => name.trim().length > 0)
   )
   .min(1)
@@ -1084,8 +1085,8 @@ export interface McpToolInputField {
   description: string;
 }
 
-export interface SmedcMcpToolContract {
-  name: SmedcMcpToolName;
+export interface SmedcMcpToolContract<Name extends string = SmedcMcpToolName> {
+  name: Name;
   title: string;
   description: string;
   inputSchema: z.ZodObject<z.ZodRawShape>;
@@ -1653,7 +1654,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_ledger_pdf_request_status",
     title: "Get ledger PDF request status",
     description:
-      "Poll an authorized ledger PDF ZIP request by requestId. Use the cursor for more scope details. Once ready, call get_ledger_pdf_download_url.",
+      "Poll an authorized ledger PDF ZIP request by requestId. Use the cursor for more scope details. When ready, use the launcher-local download_ledger_pdf_bundle if available for local files, or get_ledger_pdf_download_url to give the employee a link.",
     inputSchema: ledgerPdfRequestStatusInputSchema,
     inputFields: [
       { name: "requestId", required: true, description: "Service-issued ledger PDF request ID." },
@@ -1671,7 +1672,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "prepare_ledger_pdf_download",
     title: "Prepare ledger PDF ZIP download",
     description:
-      "Submit an idempotent ZIP request using POST /v1/ledger-pdfs/downloads for existing authorized PDFs in explicit stores/dates, at most 5,000 actual partitions. A 202 queued requestId must be polled with get_ledger_pdf_request_status. Preparation never invokes the renderer. Missing or stale PDFs must wait for the service's daily 03:00 Asia/Shanghai generation; employee agents cannot trigger generation. After ready, call get_ledger_pdf_download_url.",
+      "Submit an idempotent ZIP request using POST /v1/ledger-pdfs/downloads for existing authorized PDFs in explicit stores/dates, at most 5,000 actual partitions. Poll the queued requestId with get_ledger_pdf_request_status. Preparation never invokes the renderer. Missing or stale PDFs must wait for the service's daily 03:00 Asia/Shanghai generation; employee agents cannot trigger generation.",
     inputSchema: ledgerPdfActionInputSchema,
     inputFields: [
       ...ledgerPdfScopeFields,
@@ -1684,7 +1685,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_ledger_pdf_download_url",
     title: "Get ledger PDF ZIP download URL",
     description:
-      "Get a short-lived service-signed ZIP link using POST /v1/ledger-pdfs/requests/:requestId/download-url. The service reauthorizes current access on every call. Returns a link only; no PDF base64, binary content, local file generation, or renderer invocation.",
+      "Get a short-lived service-signed ZIP link using POST /v1/ledger-pdfs/requests/:requestId/download-url. The service reauthorizes current access on every call. Give the link to the employee to open. Agents must not fetch or extract the ZIP from the link. Use the launcher-local download_ledger_pdf_bundle for local files when available.",
     inputSchema: ledgerPdfDownloadUrlInputSchema,
     inputFields: [{ name: "requestId", required: true, description: "Ready ZIP request ID." }],
     resultShape: ["requestId", "downloadUrl", "expiresAt"],
@@ -1790,6 +1791,23 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     });
   })
 ] as const satisfies readonly SmedcMcpToolContract[];
+
+// Only stdio can write into the employee's local filesystem.
+export const LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT = defineToolContract({
+  name: "download_ledger_pdf_bundle",
+  title: "Download a prepared ledger PDF bundle",
+  description:
+    "Download a prepared ledger PDF ZIP through the launcher, verify its byte size and SHA-256, extract the daily PDFs, and return the managed local directory. The launcher consumes the signed URL internally. Extracted files may be opened, forwarded, or further processed. Requires launcher 0.20.0+ and matching service archive support.",
+  inputSchema: ledgerPdfDownloadUrlInputSchema,
+  inputFields: [{ name: "requestId", required: true, description: "Succeeded ZIP request ID." }],
+  resultShape: [
+    "localDirectory",
+    "requestId",
+    "fileCount",
+    "files[]: relative <store>/<purchaseDate>/<pdf> paths; manifest.json is in localDirectory"
+  ],
+  annotations: ledgerPdfReadAnnotations
+});
 
 export const mcpToolContractSchema = z
   .object({
@@ -2228,9 +2246,9 @@ function hasAsciiControlCharacter(value: string): boolean {
   return false;
 }
 
-function defineToolContract(
-  contract: Omit<SmedcMcpToolContract, "inputShape">
-): SmedcMcpToolContract {
+function defineToolContract<Name extends string>(
+  contract: Omit<SmedcMcpToolContract<Name>, "inputShape">
+): SmedcMcpToolContract<Name> {
   return {
     ...contract,
     inputShape: contract.inputSchema.shape

@@ -15,8 +15,14 @@ import {
 } from "./api-delegation.js";
 import type { McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
+import { z } from "zod";
 
 const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.5.0";
+const ledgerDownloadLinkSchema = z.object({
+  requestId: z.string(),
+  downloadUrl: z.url(),
+  expiresAt: z.string()
+});
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
   "smedc_get_current_user",
@@ -167,7 +173,8 @@ function routeForReadOnlyTool(
     case "get_ledger_pdf_download_url":
       return {
         method: "POST",
-        path: `/v1/ledger-pdfs/requests/${encodeURIComponent(String(input["requestId"]))}/download-url`
+        path: `/v1/ledger-pdfs/requests/${encodeURIComponent(String(input["requestId"]))}/download-url`,
+        mapSuccess: (value) => ledgerDownloadLinkSchema.parse(value)
       };
     case "smedc_get_current_user":
       return {

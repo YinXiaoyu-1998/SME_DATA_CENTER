@@ -1030,6 +1030,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       );
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
       expect(toolNames).not.toContain("refresh_ledger_pdfs");
+      expect(toolNames).not.toContain("download_ledger_pdf_bundle");
       const removed = await postMcp(
         app,
         {

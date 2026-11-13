@@ -43,10 +43,19 @@ function createCapturingDelegate(
                   clearance: 1
                 }
               }
-            : {
-                ok: true,
-                role: request.headers.authorization === "Bearer admin-token" ? "admin" : "employee"
-              }
+            : request.url === "/v1/ledger-pdfs/requests/req%2F1/download-url"
+              ? {
+                  requestId: "req/1",
+                  downloadUrl: "https://signed.invalid/download",
+                  expiresAt: "2099-01-01T00:00:00Z",
+                  byteSize: 10,
+                  checksumSha256: "a".repeat(64)
+                }
+              : {
+                  ok: true,
+                  role:
+                    request.headers.authorization === "Bearer admin-token" ? "admin" : "employee"
+                }
         )
       };
     }
@@ -548,7 +557,12 @@ it("delegates ledger PDF reads and signed ZIP issuance without local output", as
     { requestId: "req/1", cursor: "page-2" },
     {} as never
   );
-  await handlers.get_ledger_pdf_download_url?.({ requestId: "req/1" }, {} as never);
+  const link = await handlers.get_ledger_pdf_download_url!({ requestId: "req/1" }, {} as never);
+  expect(parseToolResult(link)).toEqual({
+    requestId: "req/1",
+    downloadUrl: "https://signed.invalid/download",
+    expiresAt: "2099-01-01T00:00:00Z"
+  });
   expect(calls.map(({ method, url, query, payload }) => ({ method, url, query, payload }))).toEqual(
     [
       {

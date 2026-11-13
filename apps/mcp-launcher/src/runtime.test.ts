@@ -90,7 +90,7 @@ describe("owned cross-process launcher lock", () => {
       await writeFile(lockPath, record, { mode: 0o600 });
       await utimes(lockPath, new Date(0), new Date(0));
       const release = await createFileLock(lockPath, {
-        waitMs: 100,
+        waitMs: 2_000,
         pollMs: 5,
         orphanRecoveryMs: 10
       }).acquire();

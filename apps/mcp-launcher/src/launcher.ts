@@ -13,6 +13,7 @@ import {
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
+  LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT,
   PERMISSION_MCP_TOOL_NAMES,
   WORKFLOW_MCP_TOOL_NAMES,
   DIRECTORY_MCP_TOOL_NAMES,
@@ -29,10 +30,12 @@ import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
 import { downloadPartitionBundle } from "./partition-bundle.js";
 import { downloadCostCards } from "./cost-card-transfer.js";
+import { LedgerPdfTransferError, downloadLedgerPdfBundle } from "./ledger-pdf-transfer.js";
 import {
   apiJson,
   abortable,
   transferDeadline,
+  PartitionDownloadError,
   downloadPartitionDataset,
   uploadPartitionDataset,
   type PartitionTransferContext
@@ -77,6 +80,7 @@ export type LauncherBusinessToolName =
   | "get_ledger_pdf_request_status"
   | "prepare_ledger_pdf_download"
   | "get_ledger_pdf_download_url"
+  | "download_ledger_pdf_bundle"
   | "get_my_permissions"
   | "query_account_permissions"
   | "update_account_permissions"
@@ -285,6 +289,17 @@ export function registerLauncherTools(
       },
       createLauncherToolHandler(tool.name, dependencies)
     );
+  const localLedgerDownload = LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT;
+  registerTool(
+    localLedgerDownload.name,
+    {
+      title: localLedgerDownload.title,
+      description: localLedgerDownload.description,
+      annotations: localLedgerDownload.annotations,
+      inputSchema: localLedgerDownload.inputSchema
+    },
+    createLauncherToolHandler(localLedgerDownload.name, dependencies)
+  );
 
   // McpServer's default tools/call handler validates tool arguments before calling
   // the registered callback. Own this request boundary so upload authorization
@@ -343,6 +358,8 @@ export function createLauncherToolHandler(
     return (input, extra) => proxyPartitionDownload(input, dependencies, extra?.signal);
   if (toolName === "download_cost_cards")
     return (input, extra) => proxyCostCardDownload(input, dependencies, extra?.signal);
+  if (toolName === "download_ledger_pdf_bundle")
+    return (input, extra) => proxyLedgerBundleDownload(input, dependencies, extra?.signal);
   if (LOCAL_PATH_UPLOAD_TOOL_NAMES.has(toolName as LauncherBusinessToolName))
     return (input, extra) =>
       preflightUpload(toolName as LauncherBusinessToolName, input, dependencies, extra?.signal);
@@ -587,6 +604,55 @@ async function proxyCostCardDownload(
     if (mapMcpError(error).code === "AUTHENTICATION_REQUIRED") await dependencies.auth.invalidate();
     return partitionTransferError(error);
   }
+}
+
+async function proxyLedgerBundleDownload(
+  input: unknown,
+  dependencies: LauncherToolDependencies,
+  signal?: AbortSignal
+): Promise<LauncherToolResult> {
+  const parsed = LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT.inputSchema.safeParse(input);
+  if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
+  try {
+    const authDeadline = transferDeadline(signal, 30_000);
+    let accessToken: string;
+    try {
+      accessToken = await abortable(dependencies.auth.accessToken(), authDeadline.signal);
+    } finally {
+      authDeadline.dispose();
+    }
+    const result = await downloadLedgerPdfBundle({
+      context: partitionTransferContext(dependencies, accessToken, signal),
+      requestId: (parsed.data as { requestId: string }).requestId
+    });
+    return jsonToolResult(result);
+  } catch (error) {
+    if (mapMcpError(error).code === "AUTHENTICATION_REQUIRED") await dependencies.auth.invalidate();
+    return ledgerTransferError(error);
+  }
+}
+
+function ledgerTransferError(error: unknown): LauncherToolResult {
+  if (typeof error === "object" && error !== null && "body" in error) {
+    const body = (error as { body?: { error?: { code?: string; message?: string } } }).body;
+    if (body?.error?.code) return apiErrorToolResult(body);
+  }
+  if (error instanceof LedgerPdfTransferError) {
+    return errorToolResult(error.code, error.message, undefined, {
+      retryable: error.code === "LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT"
+    });
+  }
+  if (error instanceof PartitionDownloadError) {
+    if (error.status === 403 || error.status === 404)
+      return errorToolResult(
+        "LEDGER_PDF_BUNDLE_STALE",
+        "The signed archive link is no longer valid; recheck coverage and prepare again."
+      );
+    return errorToolResult("SERVICE_UNAVAILABLE", "SMEDC archive download failed.", undefined, {
+      retryable: error.status >= 500
+    });
+  }
+  return typedToolError(mapMcpError(error));
 }
 
 function partitionTransferContext(

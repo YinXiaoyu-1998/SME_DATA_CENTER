@@ -278,9 +278,10 @@ export function registerLedgerWebRoutes(
 
   dataRoute("ledger.requests.downloadUrl", async ({ body, params }, employee) => {
     if (body !== undefined) throw new LedgerDeliveryError("LEDGER_REQUEST_INVALID");
-    return options.delivery().issueLedgerBundleUrl({
+    const { requestId, downloadUrl, expiresAt } = await options.delivery().issueLedgerBundleUrl({
       employee,
       requestId: (params as LedgerRequestParams).requestId
     });
+    return { requestId, downloadUrl, expiresAt };
   });
 }

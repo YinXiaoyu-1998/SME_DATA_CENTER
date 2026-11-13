@@ -379,19 +379,24 @@ current employee and enforce tenant, employee state and current finished-PDF cat
 authorization on the backend. Upstream source permissions do not grant or block finished-PDF access. Disabled endpoints return `LEDGER_PDF_NOT_ENABLED`;
 request IDs and cursors cannot grant access across organizations.
 
-| Method | Route                                              | Behavior                                                                   |
-| ------ | -------------------------------------------------- | -------------------------------------------------------------------------- |
-| POST   | `/v1/ledger-pdfs/coverage`                         | Read authorized store/day PDF states, at most 200 per page                 |
-| POST   | `/v1/ledger-pdfs/downloads`                        | Queue an authorized ZIP; requires idempotencyKey                           |
-| GET    | `/v1/ledger-pdfs/requests/:requestId`              | Read authorized status with optional cursor                                |
-| POST   | `/v1/ledger-pdfs/requests/:requestId/download-url` | Recheck permission and current PDF pointers before issuing a 15-minute URL |
+| Method | Route                                              | Behavior                                                                                                                    |
+| ------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/v1/ledger-pdfs/coverage`                         | Read authorized store/day PDF states, at most 200 per page                                                                  |
+| POST   | `/v1/ledger-pdfs/downloads`                        | Queue an authorized ZIP; requires idempotencyKey                                                                            |
+| GET    | `/v1/ledger-pdfs/requests/:requestId`              | Read authorized status with optional cursor                                                                                 |
+| POST   | `/v1/ledger-pdfs/requests/:requestId/download-url` | Recheck permission and current PDF pointers before issuing a 15-minute URL with the archive `byteSize` and `checksumSha256` |
 
 Coverage/download bodies use `storeNames` and either `dates` or inclusive
 `startDate`/`endDate`, with real `YYYY-MM-DD` calendar dates. Public limits are 50
 exact store names, 366 dates and 5000 actual partitions. The coverage body may
 include `cursor`; action bodies include `idempotencyKey`. Caller-supplied orgId
-and unknown fields are rejected. ZIP limits are 5000 PDFs/1 GiB/10 minutes with
+and unknown fields are rejected. ZIP preparation limits are 5000 PDFs, 1 GiB of PDF content plus
+ZIP container overhead, and 10 minutes, with
 24-hour retention. Status and URL issuance do not accept arbitrary scope changes.
+
+The launcher 0.20.0 candidate uses the REST signing response to verify and extract the ZIP via the
+stdio-only `download_ledger_pdf_bundle` tool. The web download center and the explicit
+`get_ledger_pdf_download_url` MCP tool return only `requestId`, `downloadUrl`, and `expiresAt`.
 
 Raw Delivery Ledger detail, aggregate, coverage and original-file URL issuance are closed
 regardless of the old feature flag or client version. Finished archived PDFs are the public

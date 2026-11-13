@@ -1,8 +1,9 @@
+import { LEDGER_STORE_NAME_MAX_CHARS } from "@smedc/domain";
 import type { LedgerScope } from "./types.js";
 
 export const LEDGER_SCOPE_MAX_STORES = 50;
 export const LEDGER_SCOPE_MAX_DATES = 366;
-export const LEDGER_SCOPE_MAX_PARTITIONS = 5_000;
+export { LEDGER_SCOPE_MAX_PARTITIONS } from "@smedc/domain";
 export const LEDGER_PAGE_SIZE = 200;
 
 export function assertLedgerDate(value: unknown): asserts value is string {
@@ -35,7 +36,7 @@ export function parseLedgerScope(input: unknown): LedgerScope {
       (name) =>
         typeof name !== "string" ||
         name.length === 0 ||
-        name.length > 512 ||
+        name.length > LEDGER_STORE_NAME_MAX_CHARS ||
         name.trim().length === 0
     )
   )
