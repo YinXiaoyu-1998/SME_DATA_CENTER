@@ -518,7 +518,11 @@ describe("ledger download center browser boundary", () => {
     bundle.zipExpiresAt = new Date(Date.now() + 600000);
     const link = await post("requests/" + task.requestId + "/download-url");
     expect(link.statusCode).toBe(200);
-    expect(link.json()).toHaveProperty("downloadUrl", "https://signed.invalid/download");
+    expect(link.json()).toEqual({
+      requestId: task.requestId,
+      downloadUrl: "https://signed.invalid/download",
+      expiresAt: expect.any(String)
+    });
     expectContract("ledger.requests.downloadUrl", link.json());
 
     f.revokeRead();

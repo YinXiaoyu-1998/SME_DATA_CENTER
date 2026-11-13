@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { LEDGER_BUNDLE_LIMITS, LEDGER_BUNDLE_MAX_ZIP_BYTES } from "@smedc/domain";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { downloadLedgerPdfBundle } from "./ledger-pdf-transfer.js";
@@ -163,6 +164,40 @@ describe("ledger PDF bundle download", () => {
         requestId: "req_1"
       })
     ).rejects.toMatchObject({ code: "LEDGER_PDF_BUNDLE_VERIFY_FAILED" });
+  });
+
+  it("maps ZIP parser failures to verification errors and removes the output", async () => {
+    const before = await extractDirectories();
+    for (const bytes of [Buffer.from("not a ZIP"), await archive([[`../${entryName}`, pdf]])]) {
+      await expect(
+        downloadLedgerPdfBundle({
+          context: context(fetcher(linkFor(bytes), bytes)),
+          requestId: "req_1"
+        })
+      ).rejects.toMatchObject({ code: "LEDGER_PDF_BUNDLE_VERIFY_FAILED" });
+    }
+    expect(await extractDirectories()).toEqual(before);
+  });
+
+  it("allows ZIP overhead above the PDF size limit but rejects oversized metadata before transfer", async () => {
+    const bytes = await archive([[entryName, pdf]]);
+    const withinBudget = fetcher(
+      linkFor(bytes, { byteSize: LEDGER_BUNDLE_LIMITS.bytes + 1 }),
+      bytes
+    );
+    await expect(
+      downloadLedgerPdfBundle({ context: context(withinBudget), requestId: "req_1" })
+    ).rejects.toMatchObject({ code: "LEDGER_PDF_BUNDLE_VERIFY_FAILED" });
+    expect(withinBudget).toHaveBeenCalledTimes(2); // ZIP fetch happened; the fixture is shorter than declared.
+
+    const overBudget = fetcher(
+      linkFor(bytes, { byteSize: LEDGER_BUNDLE_MAX_ZIP_BYTES + 1 }),
+      bytes
+    );
+    await expect(
+      downloadLedgerPdfBundle({ context: context(overBudget), requestId: "req_1" })
+    ).rejects.toMatchObject({ code: "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED" });
+    expect(overBudget).toHaveBeenCalledOnce();
   });
 
   it("propagates caller cancellation and removes partial output", async () => {

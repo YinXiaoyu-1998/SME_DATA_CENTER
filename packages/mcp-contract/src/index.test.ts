@@ -258,7 +258,6 @@ const validInputs = {
     idempotencyKey: "zip-1"
   },
   get_ledger_pdf_download_url: { requestId: "request-1" },
-  download_ledger_pdf_bundle: { requestId: "request-1" },
   download_structured_partitions: {
     dataset: "business",
     enterpriseName: "Synthetic",
@@ -754,8 +753,7 @@ const invalidInputCases = [
       "describe_ledger_pdf_coverage",
       "get_ledger_pdf_request_status",
       "prepare_ledger_pdf_download",
-      "get_ledger_pdf_download_url",
-      "download_ledger_pdf_bundle"
+      "get_ledger_pdf_download_url"
     ] as const
   ).map((tool) => ({
     tool,
@@ -891,7 +889,6 @@ describe("SMEDC MCP contract", () => {
       "get_ledger_pdf_request_status",
       "prepare_ledger_pdf_download",
       "get_ledger_pdf_download_url",
-      "download_ledger_pdf_bundle",
       "get_my_permissions",
       "query_account_permissions",
       "update_account_permissions",

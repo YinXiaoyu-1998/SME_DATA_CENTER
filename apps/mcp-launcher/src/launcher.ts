@@ -13,6 +13,7 @@ import {
   FILE_UPLOAD_ADMIN_REQUIRED_MESSAGE,
   SMEDC_MCP_TOOL_CONTRACTS,
   SMEDC_MCP_TOOL_NAMES,
+  LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT,
   PERMISSION_MCP_TOOL_NAMES,
   WORKFLOW_MCP_TOOL_NAMES,
   DIRECTORY_MCP_TOOL_NAMES,
@@ -112,8 +113,7 @@ const LEDGER_PDF_TOOL_NAMES = new Set<LauncherBusinessToolName>([
   "describe_ledger_pdf_coverage",
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
-  "get_ledger_pdf_download_url",
-  "download_ledger_pdf_bundle"
+  "get_ledger_pdf_download_url"
 ]);
 
 const LOCAL_PATH_UPLOAD_TOOL_NAMES = new Set<LauncherBusinessToolName>([
@@ -289,6 +289,17 @@ export function registerLauncherTools(
       },
       createLauncherToolHandler(tool.name, dependencies)
     );
+  const localLedgerDownload = LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT;
+  registerTool(
+    localLedgerDownload.name,
+    {
+      title: localLedgerDownload.title,
+      description: localLedgerDownload.description,
+      annotations: localLedgerDownload.annotations,
+      inputSchema: localLedgerDownload.inputSchema
+    },
+    createLauncherToolHandler(localLedgerDownload.name, dependencies)
+  );
 
   // McpServer's default tools/call handler validates tool arguments before calling
   // the registered callback. Own this request boundary so upload authorization
@@ -600,10 +611,7 @@ async function proxyLedgerBundleDownload(
   dependencies: LauncherToolDependencies,
   signal?: AbortSignal
 ): Promise<LauncherToolResult> {
-  const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
-    (tool) => tool.name === "download_ledger_pdf_bundle"
-  )!;
-  const parsed = contract.inputSchema.safeParse(input);
+  const parsed = LAUNCHER_LEDGER_PDF_DOWNLOAD_CONTRACT.inputSchema.safeParse(input);
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   try {
     const authDeadline = transferDeadline(signal, 30_000);
@@ -617,7 +625,7 @@ async function proxyLedgerBundleDownload(
       context: partitionTransferContext(dependencies, accessToken, signal),
       requestId: (parsed.data as { requestId: string }).requestId
     });
-    return jsonToolResult(result as unknown as Record<string, unknown>);
+    return jsonToolResult(result);
   } catch (error) {
     if (mapMcpError(error).code === "AUTHENTICATION_REQUIRED") await dependencies.auth.invalidate();
     return ledgerTransferError(error);

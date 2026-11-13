@@ -18,11 +18,11 @@ ZIP 提交固定精确清单和内容引用，清单重排可幂等重试，改�
 
 ## MCP 本地取件
 
-Launcher 0.20.0 起，MCP 侧新增 `download_ledger_pdf_bundle`：launcher 用当前令牌领取 ZIP 短链（服务端同时返回 `byteSize` 与 `checksumSha256`），自行下载并校验字节数与 SHA-256，解压到 `smedc-ledger-extracts/extract-*` 后返回 `localDirectory`、`fileCount` 和相对路径清单；签名链接不进入工具结果。单次调用预算 600 秒，ZIP 上限 1 GiB，最多 5000 个 PDF；解压成功即删除 ZIP，失败或取消时整目录回滚。
+本地取件在 launcher 0.20.0 候选版中实现，待发布验证及匹配的服务端上线。只有本地 stdio launcher 注册 `download_ledger_pdf_bundle`。Launcher 用当前令牌领取 ZIP 短链和校验信息，下载后校验字节数与 SHA-256，再解压到 `smedc-ledger-extracts/extract-*`。工具返回目录、文件数和相对路径，不返回签名链接。单次调用预算 600 秒，最多 5000 个 PDF，PDF 合计上限 1 GiB，ZIP 封装开销单独计入；解压成功即删除 ZIP，失败或取消时整目录回滚。
 
 ZIP 内条目固定为 `<门店>/<YYYY-MM-DD>/食品经营单位进货台帐_<门店>_<YYYY-MM-DD>.pdf`；压缩方式为 STORE，条目名、路径与压缩属性均在解压前校验，出现目录穿越、重复、非 PDF 或非本表命名时整包拒绝。解压后的 PDF 是普通交付物：员工可以打开、转发或继续加工，launcher 不再限制其后续用途。
 
-原有 `get_ledger_pdf_download_url` 保留为「员工要自己点链接下载」的兜底；旧 launcher 没有新工具时仍按该链接流程走。失败语义：`LEDGER_PDF_BUNDLE_URL_INVALID`（链接缺失/过期/不匹配）、`LEDGER_PDF_BUNDLE_VERIFY_FAILED`（大小、校验和或 ZIP 结构不符）、`LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT`（超时），服务端错误码原样透传。
+要提供链接时，调用 `get_ledger_pdf_download_url`，把短链交给员工打开。Agent 不自行下载或解压链接里的 ZIP。网页与远程 MCP 的领链接结果保持原来的三个字段。失败语义：`LEDGER_PDF_BUNDLE_URL_INVALID`（链接缺失、过期或不匹配）、`LEDGER_PDF_BUNDLE_VERIFY_FAILED`（大小、校验和或 ZIP 结构不符）、`LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED`（超限，缩小门店或日期范围）、`LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT`（超时），服务端错误码原样透传。
 
 ## 环境、依赖与开关
 

@@ -8,6 +8,7 @@ import { pipeline, finished } from "node:stream/promises";
 import JSZip from "jszip";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { enqueueStorageGarbage, storageGarbageKeyHash } from "@smedc/db";
+import { ledgerBundleZipOverhead } from "@smedc/domain";
 import type { StorageAdapter } from "@smedc/storage";
 import {
   ledgerBundleContentCurrent,
@@ -101,7 +102,11 @@ export async function processLedgerBundle({
       // STORE preserves input bytes. Budget the local/central headers, descriptors and
       // UTF-8 filename extras separately so a full 1 GiB of PDFs remains valid.
       const outputByteLimit =
-        limits.bytes + 22 + names.reduce((sum, name) => sum + 128 + 4 * Buffer.byteLength(name), 0);
+        limits.bytes +
+        ledgerBundleZipOverhead(
+          names.length,
+          names.reduce((sum, name) => sum + Buffer.byteLength(name), 0)
+        );
       if (new Set(names).size !== names.length) error("LEDGER_BUNDLE_DUPLICATE_ENTRY");
       const key = `org/${encodeURIComponent(record.orgId)}/ledger_bundles/${record.requestId}/${lease.attemptNumber}-${randomBytes(12).toString("hex")}.zip`;
       if (!(await bounded(() => archive.registerCandidate({ record, lease, key }))))

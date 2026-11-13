@@ -154,8 +154,16 @@ describe("published launcher artifact", () => {
       expect(client.getServerVersion()?.version).toBe("0.20.0");
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(53);
-      expect(new Set(names).size).toBe(53);
+      expect(names).toHaveLength(54);
+      expect(new Set(names).size).toBe(54);
+      expect(tools.tools.find((tool) => tool.name === "download_ledger_pdf_bundle")).toMatchObject({
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["requestId"]
+        }
+      });
       const retiredNames = [
         "list_account_permissions",
         "get_account_permissions",

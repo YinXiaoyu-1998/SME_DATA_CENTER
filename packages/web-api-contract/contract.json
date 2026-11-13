@@ -1640,23 +1640,12 @@
           "expiresAt": {
             "type": "string",
             "minLength": 1
-          },
-          "byteSize": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "checksumSha256": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
           }
         },
         "required": [
           "requestId",
           "downloadUrl",
-          "expiresAt",
-          "byteSize",
-          "checksumSha256"
+          "expiresAt"
         ],
         "additionalProperties": false
       },

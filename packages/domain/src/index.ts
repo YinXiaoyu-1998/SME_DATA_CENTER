@@ -176,5 +176,6 @@ export * from "./store-review-query.js";
 export * from "./enterprise-workflows.js";
 
 export * from "./order-scope.js";
+export * from "./ledger-pdf-bundle.js";
 
 export * from "./workflow-live-policy.js";

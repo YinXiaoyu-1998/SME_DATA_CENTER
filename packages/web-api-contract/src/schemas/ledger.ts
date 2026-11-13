@@ -173,9 +173,7 @@ export const ledgerDownloadUrlResponseSchema = z
   .object({
     requestId: z.string().min(1),
     downloadUrl: z.url(),
-    expiresAt: z.string().min(1),
-    byteSize: z.number().int().min(1),
-    checksumSha256: z.string().regex(/^[a-f0-9]{64}$/)
+    expiresAt: z.string().min(1)
   })
   .strict();
 

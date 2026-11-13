@@ -5,9 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import {
+  LEDGER_BUNDLE_LIMITS,
+  LEDGER_BUNDLE_MAX_ZIP_BYTES,
+  decodeLedgerStoreFileSegment,
+  ledgerPdfNameForSegment
+} from "@smedc/domain";
 import { z } from "zod";
 import {
-  PartitionDownloadError,
   TransferVerificationError,
   abortable,
   apiJson,
@@ -43,18 +48,14 @@ const yauzl = createRequire(import.meta.url)("yauzl") as {
   ): void;
 };
 
-export const LEDGER_BUNDLE_MAX_BYTES = 1_073_741_824;
-export const LEDGER_BUNDLE_MAX_FILES = 5_000;
-export const LEDGER_BUNDLE_DOWNLOAD_TIMEOUT_MS = 600_000;
 const LEDGER_EXTRACTS_ROOT = "smedc-ledger-extracts";
-const LEDGER_PDF_PREFIX = "食品经营单位进货台帐_";
 
 const signedLinkSchema = z
   .object({
     requestId: z.string().min(1).max(128),
     downloadUrl: z.url(),
     expiresAt: z.iso.datetime({ offset: true }),
-    byteSize: z.number().int().min(1).max(LEDGER_BUNDLE_MAX_BYTES),
+    byteSize: z.number().int(),
     checksumSha256: z.string().regex(/^[a-f0-9]{64}$/)
   })
   .strict();
@@ -64,7 +65,8 @@ export class LedgerPdfTransferError extends Error {
     readonly code:
       | "LEDGER_PDF_BUNDLE_URL_INVALID"
       | "LEDGER_PDF_BUNDLE_VERIFY_FAILED"
-      | "LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT",
+      | "LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT"
+      | "LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED",
     message: string
   ) {
     super(message);
@@ -99,7 +101,7 @@ export function downloadLedgerPdfBundle(input: {
   return boundedInvocation(
     input.context,
     (context) => downloadLedgerPdfBundleInternal({ context, requestId: input.requestId }),
-    LEDGER_BUNDLE_DOWNLOAD_TIMEOUT_MS
+    LEDGER_BUNDLE_LIMITS.deadlineMs
   );
 }
 
@@ -129,6 +131,10 @@ async function downloadLedgerPdfBundleInternal(input: {
         "Ledger PDF link is missing, mismatched, or expired."
       );
     }
+    if (link.data.byteSize < 1 || link.data.byteSize > LEDGER_BUNDLE_MAX_ZIP_BYTES)
+      throw bundleLimit(
+        "Ledger PDF ZIP exceeds its allowed size range. Select fewer stores or dates."
+      );
     const archive = path.join(directory, "bundle.zip");
     try {
       await downloadVerified(
@@ -139,7 +145,9 @@ async function downloadLedgerPdfBundleInternal(input: {
         link.data.checksumSha256
       );
     } catch (error) {
-      throw mapArchiveTransferError(error);
+      if (error instanceof TransferVerificationError)
+        throw new LedgerPdfTransferError("LEDGER_PDF_BUNDLE_VERIFY_FAILED", error.message);
+      throw error;
     }
     const files = await extractArchive(archive, directory, context.signal!);
     await rm(archive, { force: true });
@@ -168,25 +176,15 @@ async function downloadLedgerPdfBundleInternal(input: {
     };
   } catch (error) {
     await rm(directory, { recursive: true, force: true }).catch(() => undefined);
-    if (isTimeout(error)) {
+    if (isTimeout(context.signal?.reason) || isTimeout(error)) {
       throw new LedgerPdfTransferError(
         "LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT",
         "Ledger PDF bundle download exceeded its time limit."
       );
     }
+    context.signal?.throwIfAborted();
     throw error;
   }
-}
-
-function mapArchiveTransferError(error: unknown): unknown {
-  if (error instanceof TransferVerificationError) {
-    return new LedgerPdfTransferError(
-      "LEDGER_PDF_BUNDLE_VERIFY_FAILED",
-      "Ledger PDF archive size or checksum did not match its signed metadata."
-    );
-  }
-  if (error instanceof PartitionDownloadError) return error;
-  return error;
 }
 
 function isTimeout(error: unknown): boolean {
@@ -207,39 +205,34 @@ async function extractArchive(
     yauzl.open(
       archive,
       { lazyEntries: true, autoClose: false, strictFileNames: true, validateEntrySizes: true },
-      (error, reader) => (error ? reject(error) : resolve(reader))
+      (error, reader) => (error ? reject(invalidZip()) : resolve(reader))
     )
   );
   let activeStream: Readable | undefined;
   const stop = () => {
-    activeStream?.destroy(new Error("Ledger PDF extraction cancelled."));
+    activeStream?.destroy();
     zip.close();
   };
   signal.addEventListener("abort", stop, { once: true });
   try {
     signal.throwIfAborted();
-    if (zip.entryCount < 1 || zip.entryCount > LEDGER_BUNDLE_MAX_FILES) {
-      throw new LedgerPdfTransferError(
-        "LEDGER_PDF_BUNDLE_VERIFY_FAILED",
-        "Ledger PDF archive is empty or exceeds its file limit."
-      );
-    }
+    if (zip.entryCount < 1) throw unsafeEntry("empty archive");
+    if (zip.entryCount > LEDGER_BUNDLE_LIMITS.files)
+      throw bundleLimit("Ledger PDF ZIP contains too many PDFs. Select fewer stores or dates.");
     const entries = await abortable(
       new Promise<Map<string, ZipEntry>>((resolve, reject) => {
         const found = new Map<string, ZipEntry>();
         let bytes = 0;
-        zip.on("error", reject);
+        zip.on("error", () => reject(invalidZip()));
         zip.on("entry", (entry) => {
           try {
             validateEntry(entry);
             if (found.has(entry.fileName)) throw unsafeEntry("duplicate entry");
             bytes += entry.uncompressedSize;
-            if (!Number.isSafeInteger(bytes) || bytes > LEDGER_BUNDLE_MAX_BYTES) {
-              throw new LedgerPdfTransferError(
-                "LEDGER_PDF_BUNDLE_VERIFY_FAILED",
-                "Ledger PDF archive uncompressed bytes exceed the limit."
+            if (!Number.isSafeInteger(bytes) || bytes > LEDGER_BUNDLE_LIMITS.bytes)
+              throw bundleLimit(
+                "Ledger PDF content exceeds its size limit. Select fewer stores or dates."
               );
-            }
             found.set(entry.fileName, entry);
             zip.readEntry();
           } catch (error) {
@@ -259,14 +252,16 @@ async function extractArchive(
         throw unsafeEntry("path traversal");
       await mkdir(path.dirname(target), { recursive: true });
       activeStream = await new Promise<Readable>((resolve, reject) =>
-        zip.openReadStream(entry, (error, stream) => (error ? reject(error) : resolve(stream)))
+        zip.openReadStream(entry, (error, stream) =>
+          error ? reject(invalidZip()) : resolve(stream)
+        )
       );
       await pipeline(activeStream, createWriteStream(target, { flags: "wx" }), { signal });
-      const [storeSegment, purchaseDate] = name.split("/");
+      const [storeSegment, purchaseDate, fileName] = name.split("/");
       files.push({
-        storeName: decodeStoreSegment(storeSegment!),
+        storeName: decodeLedgerStoreFileSegment(storeSegment!),
         purchaseDate: purchaseDate!,
-        fileName: name.split("/")[2]!,
+        fileName: fileName!,
         relativePath: name,
         byteSize: entry.uncompressedSize
       });
@@ -302,7 +297,7 @@ function validateEntry(entry: ZipEntry): void {
   const parts = name.split("/");
   if (parts.length !== 3 || !/^\d{4}-\d{2}-\d{2}$/.test(parts[1]!))
     throw unsafeEntry("unexpected layout");
-  if (parts[2] !== `${LEDGER_PDF_PREFIX}${parts[0]}_${parts[1]}.pdf`)
+  if (parts[2] !== ledgerPdfNameForSegment(parts[0]!, parts[1]!))
     throw unsafeEntry("unexpected file name");
 }
 
@@ -313,10 +308,13 @@ function unsafeEntry(reason: string): LedgerPdfTransferError {
   );
 }
 
-// The service escapes reserved characters in the store segment; decoding is exact for
-// the escaped output and keeps the manifest readable for the employee.
-function decodeStoreSegment(segment: string): string {
-  return segment.replace(/%([0-9A-F]{2})/g, (_match, hex: string) =>
-    String.fromCharCode(Number.parseInt(hex, 16))
+function invalidZip(): LedgerPdfTransferError {
+  return new LedgerPdfTransferError(
+    "LEDGER_PDF_BUNDLE_VERIFY_FAILED",
+    "Ledger PDF ZIP is malformed or contains an unsafe path."
   );
+}
+
+function bundleLimit(message: string): LedgerPdfTransferError {
+  return new LedgerPdfTransferError("LEDGER_PDF_BUNDLE_LIMIT_EXCEEDED", message);
 }

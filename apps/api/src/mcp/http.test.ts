@@ -1014,7 +1014,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       const toolNames = (
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
-      expect(new Set(toolNames).size).toBe(51);
+      expect(new Set(toolNames).size).toBe(50);
       expect(toolNames).toEqual(
         expect.arrayContaining([
           "query_account_permissions",
@@ -1030,6 +1030,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       );
       expect(toolNames.sort()).toEqual([...SMEDC_MCP_TOOL_NAMES].sort());
       expect(toolNames).not.toContain("refresh_ledger_pdfs");
+      expect(toolNames).not.toContain("download_ledger_pdf_bundle");
       const removed = await postMcp(
         app,
         {

@@ -507,7 +507,11 @@ describe("official launcher bootstrap tools", () => {
       "smedc_auth_status"
     ]);
     expect(registered.map(({ name }) => name).sort()).toEqual(
-      [...LAUNCHER_BOOTSTRAP_TOOL_NAMES, ...SMEDC_MCP_TOOL_NAMES].sort()
+      [
+        ...LAUNCHER_BOOTSTRAP_TOOL_NAMES,
+        ...SMEDC_MCP_TOOL_NAMES,
+        "download_ledger_pdf_bundle"
+      ].sort()
     );
     for (const bootstrap of registered.slice(0, 3))
       expect(Object.keys(bootstrap.shape)).toEqual([]);

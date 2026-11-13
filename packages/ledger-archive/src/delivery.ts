@@ -2,7 +2,12 @@ import { ledgerStoreKeySql } from "./store-identity.js";
 import { Readable } from "node:stream";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type { AuthorizationSnapshot } from "@smedc/domain";
+import {
+  LEDGER_BUNDLE_LIMITS,
+  ledgerPdfNameForSegment,
+  ledgerStoreFileSegment,
+  type AuthorizationSnapshot
+} from "@smedc/domain";
 import { canReadLedgerPdf, currentLedgerAuthorization } from "./pdf-authorization.js";
 import type { StorageAdapter } from "@smedc/storage";
 import { createPrismaLedgerArtifactAccess } from "./access.js";
@@ -33,29 +38,13 @@ import type {
   LedgerRequestRef
 } from "./types.js";
 
-export const LEDGER_BUNDLE_LIMITS = {
-  files: LEDGER_SCOPE_MAX_PARTITIONS,
-  bytes: 1073741824,
-  deadlineMs: 600000,
-  retentionMs: 86400000
-} as const;
+export { LEDGER_BUNDLE_LIMITS } from "@smedc/domain";
 
-function ledgerStoreFileSegment(storeName: string): string {
-  // Percent itself is escaped, making the segment reversible and preventing collisions/traversal.
-  const store = [...storeName]
-    .map((character, index, characters) =>
-      '%./\\<>:"|?*'.includes(character) ||
-      character.codePointAt(0)! < 32 ||
-      character.codePointAt(0) === 127 ||
-      (character === " " && index === characters.length - 1)
-        ? `%${character.codePointAt(0)!.toString(16).toUpperCase().padStart(2, "0")}`
-        : character
-    )
-    .join("");
-  return store;
-}
 export function ledgerPdfFileName(selection: LedgerPdfSelectionItem): string {
-  return `食品经营单位进货台帐_${ledgerStoreFileSegment(selection.storeName)}_${selection.purchaseDate}.pdf`;
+  return ledgerPdfNameForSegment(
+    ledgerStoreFileSegment(selection.storeName),
+    selection.purchaseDate
+  );
 }
 export function ledgerBundleEntryName(entry: LedgerBundleEntry): string {
   return `${ledgerStoreFileSegment(entry.key.storeName)}/${entry.key.purchaseDate}/${ledgerPdfFileName(entry.key)}`;
