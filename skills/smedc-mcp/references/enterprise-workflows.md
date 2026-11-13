@@ -17,7 +17,7 @@ passwords in chat or create accounts/roles through a workaround. Current admin i
 workflow configuration, installation and runs; business content still needs its own grants.
 
 The versioned workflow feature requires the companion manifest's compatible launcher/service.
-Launcher `0.19.0` is published, independently verified and approved for installation, including
+Launcher `0.20.0` is published, independently verified and approved for installation, including
 workflow tools and explicit order scope. Install it through this core skill's exact-pin procedure;
 then verify live service capability and current administrator authorization before workflow setup.
 If capability is unavailable, report that service gap. Do not substitute `latest`, raw JSON-RPC
@@ -30,7 +30,7 @@ package revision, including resume; never report `1.0.0` to bypass an incompatib
 
 Choose the configuration query according to the
 [core release boundary](../SKILL.md#business-permission-tools-and-release-boundary).
-Use the approved launcher `0.19.0` with the matching service:
+Use the approved launcher `0.20.0` with the matching service:
 
 - Call `query_enterprise_workflows { query: { mode: "list" } }` to verify live capability/version and
   retrieve the authenticated enterprise catalog and official settings entry. The list branch accepts
@@ -63,7 +63,7 @@ remain non-replayable after local state loss. Durable action history may outlive
 detail, but it does not authorize resuming an expired or finished run.
 
 This inventory is an additive server response on the existing strict input contract;
-the approved launcher `0.19.0` forwards it without a new tool or transport. Verify the
+the approved launcher `0.20.0` forwards it without a new tool or transport. Verify the
 matching service response before relying on it. It carries no original files, review bodies,
 report content or credentials, and does not grant ordinary business reads.
 
