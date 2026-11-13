@@ -167,7 +167,7 @@ async function fixture(overrides: { ledgerPdfDeliveryEnabled?: boolean } = {}) {
       return Readable.from([pdf]);
     },
     async headObject() {
-      return { state: "found", size: pdf.length };
+      return { state: "found", size: pdf.length, hash: "c".repeat(64) };
     },
     async createDownloadUrl() {
       return "https://signed.invalid/download";

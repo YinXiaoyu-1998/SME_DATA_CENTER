@@ -37,7 +37,9 @@ function fixture(enabled = true, role: "employee" | "admin" = "employee") {
     issueLedgerBundleUrl: vi.fn(async () => ({
       requestId: "b",
       downloadUrl: "https://signed.invalid",
-      expiresAt: "2026-10-04"
+      expiresAt: "2026-10-04",
+      byteSize: 1024,
+      checksumSha256: "a".repeat(64)
     }))
   } satisfies LedgerPdfDelivery;
   const app = Fastify();

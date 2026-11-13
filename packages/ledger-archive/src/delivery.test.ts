@@ -56,7 +56,7 @@ function fixture() {
     request: vi.fn(async () => null)
   };
   const storage = {
-    headObject: vi.fn(async () => ({ state: "found", size: 10 })),
+    headObject: vi.fn(async () => ({ state: "found", size: 10, hash: "a".repeat(64) })),
     createDownloadUrl: vi.fn(async () => "https://signed.invalid/fresh")
   } as unknown as StorageAdapter;
   return {
@@ -412,6 +412,59 @@ describe("authorized ledger PDF delivery", () => {
       status: "succeeded"
     });
     expect(f.storage.createDownloadUrl).toHaveBeenCalledTimes(1);
+  });
+  it("returns the stored archive byte size and checksum so a launcher can verify a local download", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "download",
+      status: "succeeded",
+      scope,
+      items: [],
+      bundle: {
+        requestId: "download",
+        orgId: "org",
+        userAccountId: employee.id,
+        status: "succeeded",
+        manifest: { version: 1, scope, entries: [entry()] },
+        zipObjectKey: "bundle.zip",
+        zipExpiresAt: new Date("2026-10-05"),
+        errorCode: null
+      }
+    });
+    await expect(
+      f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
+    ).resolves.toMatchObject({ byteSize: 10, checksumSha256: "a".repeat(64) });
+  });
+  it("refuses to sign a bundle whose stored archive has no usable checksum", async () => {
+    const f = fixture();
+    vi.mocked(f.repository.request).mockResolvedValue({
+      kind: "download",
+      status: "succeeded",
+      scope,
+      items: [],
+      bundle: {
+        requestId: "download",
+        orgId: "org",
+        userAccountId: employee.id,
+        status: "succeeded",
+        manifest: { version: 1, scope, entries: [entry()] },
+        zipObjectKey: "bundle.zip",
+        zipExpiresAt: new Date("2026-10-05"),
+        errorCode: null
+      }
+    });
+    for (const archive of [
+      { state: "found" as const, size: 10 },
+      { state: "found" as const, size: 10, hash: "not-a-checksum" },
+      { state: "found" as const, size: 0, hash: "a".repeat(64) },
+      { state: "not_found" as const }
+    ]) {
+      vi.mocked(f.storage.headObject).mockResolvedValue(archive);
+      await expect(
+        f.delivery.issueLedgerBundleUrl({ employee, requestId: "download" })
+      ).rejects.toThrow("LEDGER_PDF_BUNDLE_STALE");
+    }
+    expect(f.storage.createDownloadUrl).not.toHaveBeenCalled();
   });
   it("exposes owner task outcomes independently of current resource visibility", async () => {
     const f = fixture();

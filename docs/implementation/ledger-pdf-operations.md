@@ -16,6 +16,14 @@ ZIP 固定包含准备时捕获的精确门店/日期分区；可选取这些分
 
 ZIP 提交固定精确清单和内容引用，清单重排可幂等重试，改项须新幂等键。仅发起人可读下载任务的安全状态；制作期间撤权不取消内部打包，领取链接时重新检查全部目标，任一无权则拒绝整包链接，成功任务仍保持成功。恢复完整权限后可重新领链。既有已发链接按原 TTL 到期，扩权不会增加旧包内容。网页/API 入口及限额见 [API 契约](api-contract.md#ledger-pdf-browser-download-center)。
 
+## MCP 本地取件
+
+Launcher 0.20.0 起，MCP 侧新增 `download_ledger_pdf_bundle`：launcher 用当前令牌领取 ZIP 短链（服务端同时返回 `byteSize` 与 `checksumSha256`），自行下载并校验字节数与 SHA-256，解压到 `smedc-ledger-extracts/extract-*` 后返回 `localDirectory`、`fileCount` 和相对路径清单；签名链接不进入工具结果。单次调用预算 600 秒，ZIP 上限 1 GiB，最多 5000 个 PDF；解压成功即删除 ZIP，失败或取消时整目录回滚。
+
+ZIP 内条目固定为 `<门店>/<YYYY-MM-DD>/食品经营单位进货台帐_<门店>_<YYYY-MM-DD>.pdf`；压缩方式为 STORE，条目名、路径与压缩属性均在解压前校验，出现目录穿越、重复、非 PDF 或非本表命名时整包拒绝。解压后的 PDF 是普通交付物：员工可以打开、转发或继续加工，launcher 不再限制其后续用途。
+
+原有 `get_ledger_pdf_download_url` 保留为「员工要自己点链接下载」的兜底；旧 launcher 没有新工具时仍按该链接流程走。失败语义：`LEDGER_PDF_BUNDLE_URL_INVALID`（链接缺失/过期/不匹配）、`LEDGER_PDF_BUNDLE_VERIFY_FAILED`（大小、校验和或 ZIP 结构不符）、`LEDGER_PDF_BUNDLE_DOWNLOAD_TIMEOUT`（超时），服务端错误码原样透传。
+
 ## 环境、依赖与开关
 
 API、worker 和 release-ops 使用同一目标企业所在的 `DATABASE_URL`、存储配置与真实 OSS `AWS_S3_PREFIX`。命令先输出不含凭证的 host/database/企业环境信息。不要在命令、日志或版本库里放数据库密码和 OSS 密钥。CLI 对远程数据库默认拒绝，明确检查目标后才使用 `--allow-remote`。

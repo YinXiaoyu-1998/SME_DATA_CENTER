@@ -17,6 +17,7 @@ import type { McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 
 const PARTITION_TRANSFER_LAUNCHER_VERSION = "0.5.0";
+const LEDGER_BUNDLE_LAUNCHER_VERSION = "0.20.0";
 
 export const READ_ONLY_MCP_TOOL_NAMES = [
   "smedc_get_current_user",
@@ -38,6 +39,7 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "describe_ledger_pdf_coverage",
   "get_ledger_pdf_request_status",
   "get_ledger_pdf_download_url",
+  "download_ledger_pdf_bundle",
   "get_my_permissions",
   "query_account_permissions",
   "get_permission_directory",
@@ -75,6 +77,17 @@ export function createReadOnlyMcpToolHandlers(context: ApiDelegationContext): Sm
             undefined,
             { requestId: mcpContext.audit?.requestId ?? context.audit.requestId }
           );
+        if (
+          toolName === "download_ledger_pdf_bundle" &&
+          !launcherVersionAtLeast(mcpContext.audit.launcherVersion, LEDGER_BUNDLE_LAUNCHER_VERSION)
+        ) {
+          return errorToolResult(
+            "LAUNCHER_UPGRADE_REQUIRED",
+            "Update the SMEDC launcher before downloading ledger bundles locally.",
+            undefined,
+            { requestId: mcpContext.audit.requestId }
+          );
+        }
         if (
           ["get_partition_import_status", "download_structured_partitions"].includes(toolName) &&
           !launcherVersionAtLeast(
@@ -276,6 +289,11 @@ function routeForReadOnlyTool(
           storeNameContains: input["storeNameContains"],
           idempotencyKey: input["idempotencyKey"]
         }
+      };
+    case "download_ledger_pdf_bundle":
+      return {
+        method: "POST",
+        path: `/v1/ledger-pdfs/requests/${encodeURIComponent(String(input["requestId"]))}/download-url`
       };
     case "download_structured_partitions":
       if (input["requestId"] !== undefined)

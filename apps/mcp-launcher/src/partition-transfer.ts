@@ -487,7 +487,7 @@ export async function downloadVerified(
           idle.reset();
           size += chunk.length;
           if (size > expectedSize) {
-            callback(new Error("Downloaded partition size exceeded its manifest."));
+            callback(new TransferVerificationError("Downloaded archive exceeded its signed size."));
             return;
           }
           hash.update(chunk);
@@ -496,7 +496,9 @@ export async function downloadVerified(
       });
       await pipeline(source, verify, createWriteStream(target), { signal: idle.signal });
       if (size !== expectedSize || hash.digest("hex") !== expectedHash)
-        throw new Error("Downloaded partition size or checksum did not match its manifest.");
+        throw new TransferVerificationError(
+          "Downloaded archive size or checksum did not match its signed metadata."
+        );
       context.diagnostic?.({
         stage: "transfer",
         elapsedMs: Date.now() - started,
@@ -511,6 +513,13 @@ export async function downloadVerified(
       idle.dispose();
     }
   });
+}
+
+export class TransferVerificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TransferVerificationError";
+  }
 }
 
 export class PartitionDownloadError extends Error {
@@ -600,9 +609,10 @@ async function retryTransfer<T>(
 
 export async function boundedInvocation<T>(
   context: PartitionTransferContext,
-  operation: (context: PartitionTransferContext) => Promise<T>
+  operation: (context: PartitionTransferContext) => Promise<T>,
+  timeoutMs = 240_000
 ): Promise<T> {
-  const deadline = transferDeadline(context.signal, 240_000);
+  const deadline = transferDeadline(context.signal, timeoutMs);
   try {
     return await operation({ ...context, signal: deadline.signal });
   } finally {

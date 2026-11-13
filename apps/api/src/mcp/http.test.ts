@@ -1014,7 +1014,7 @@ describe("stateless /mcp streamable HTTP endpoint", () => {
       const toolNames = (
         parseJsonRpc(toolsList.payload).result?.["tools"] as Array<{ name: string }>
       ).map((tool) => tool.name);
-      expect(new Set(toolNames).size).toBe(50);
+      expect(new Set(toolNames).size).toBe(51);
       expect(toolNames).toEqual(
         expect.arrayContaining([
           "query_account_permissions",

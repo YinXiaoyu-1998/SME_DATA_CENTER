@@ -1071,6 +1071,7 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_ledger_pdf_request_status",
   "prepare_ledger_pdf_download",
   "get_ledger_pdf_download_url",
+  "download_ledger_pdf_bundle",
   ...PERMISSION_MCP_TOOL_NAMES,
   ...WORKFLOW_MCP_TOOL_NAMES,
   ...DIRECTORY_MCP_TOOL_NAMES
@@ -1684,10 +1685,25 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_ledger_pdf_download_url",
     title: "Get ledger PDF ZIP download URL",
     description:
-      "Get a short-lived service-signed ZIP link using POST /v1/ledger-pdfs/requests/:requestId/download-url. The service reauthorizes current access on every call. Returns a link only; no PDF base64, binary content, local file generation, or renderer invocation.",
+      "Get a short-lived service-signed ZIP link using POST /v1/ledger-pdfs/requests/:requestId/download-url. The service reauthorizes current access on every call. Use this only when the employee wants to open the link on their own device; to bring the files into the conversation use download_ledger_pdf_bundle instead. Returns a link only; no PDF base64 or renderer invocation.",
     inputSchema: ledgerPdfDownloadUrlInputSchema,
     inputFields: [{ name: "requestId", required: true, description: "Ready ZIP request ID." }],
-    resultShape: ["requestId", "downloadUrl", "expiresAt"],
+    resultShape: ["requestId", "downloadUrl", "expiresAt", "byteSize", "checksumSha256"],
+    annotations: ledgerPdfReadAnnotations
+  }),
+  defineToolContract({
+    name: "download_ledger_pdf_bundle",
+    title: "Download a prepared ledger PDF bundle",
+    description:
+      "Download a prepared ledger PDF ZIP through the launcher into a managed local directory, verify the archive byte size and SHA-256 returned with the signed link, extract the daily PDFs, and return the local directory. The signed URL is consumed by the launcher and never returned. Extracted files are ordinary deliverables: the employee may open, inspect, forward, or further process them. Requires launcher 0.20.0+ and the service archive capability.",
+    inputSchema: ledgerPdfDownloadUrlInputSchema,
+    inputFields: [{ name: "requestId", required: true, description: "Succeeded ZIP request ID." }],
+    resultShape: [
+      "localDirectory",
+      "requestId",
+      "fileCount",
+      "files[]: relative <store>/<purchaseDate>/<pdf> paths; manifest.json is in localDirectory"
+    ],
     annotations: ledgerPdfReadAnnotations
   }),
   defineToolContract({

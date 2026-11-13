@@ -625,7 +625,14 @@ export function createLedgerPdfDelivery({
         const entries = readyCapturedLedgerBundleEntries(facts, bundle.manifest.entries);
         if (!ledgerBundleEntriesEqual(entries, bundle.manifest.entries))
           return fail("LEDGER_PDF_BUNDLE_STALE");
-        if ((await storage.headObject(bundle.zipObjectKey)).state !== "found")
+        const archive = await storage.headObject(bundle.zipObjectKey);
+        if (
+          archive.state !== "found" ||
+          !archive.hash ||
+          !/^[a-f0-9]{64}$/.test(archive.hash) ||
+          !Number.isSafeInteger(archive.size) ||
+          archive.size < 1
+        )
           return fail("LEDGER_PDF_BUNDLE_STALE");
         const expiresInSeconds = Math.min(
           900,
@@ -655,7 +662,9 @@ export function createLedgerPdfDelivery({
           downloadUrl,
           expiresAt: new Date(
             Math.min(now().getTime() + expiresInSeconds * 1000, bundle.zipExpiresAt.getTime())
-          ).toISOString()
+          ).toISOString(),
+          byteSize: archive.size,
+          checksumSha256: archive.hash
         };
         return repository.commitDownloadIssue
           ? repository.commitDownloadIssue(current, result)

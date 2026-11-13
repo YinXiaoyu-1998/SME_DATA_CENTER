@@ -88,7 +88,7 @@ packages/web-api-contract/src/
 
 - `apps/admin-web/**`（3,869 行）、`apps/api/src/admin-permissions/routes.ts` 的页面路由、`apps/api/src/ledger-web/routes.ts` 的页面路由与登录路由、权限页与台账页各自的登录/登出表单路由。
 - 工作区条目、lockfile、`packages/testing/src/workspace-smoke.test.ts` 相关断言、发布构建里的 admin-web 引用。
-- 文档中描述页面渲染实现的段落（`admin-permissions-ui-design.md`、`ledger-pdf-download-center-implementation.md` 等）。
+- 文档中描述页面渲染实现的段落（`admin-permissions-ui-design.md` 等）。
 
 ## 5. 前端应用
 

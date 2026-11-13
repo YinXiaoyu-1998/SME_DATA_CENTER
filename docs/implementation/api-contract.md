@@ -379,12 +379,12 @@ current employee and enforce tenant, employee state and current finished-PDF cat
 authorization on the backend. Upstream source permissions do not grant or block finished-PDF access. Disabled endpoints return `LEDGER_PDF_NOT_ENABLED`;
 request IDs and cursors cannot grant access across organizations.
 
-| Method | Route                                              | Behavior                                                                   |
-| ------ | -------------------------------------------------- | -------------------------------------------------------------------------- |
-| POST   | `/v1/ledger-pdfs/coverage`                         | Read authorized store/day PDF states, at most 200 per page                 |
-| POST   | `/v1/ledger-pdfs/downloads`                        | Queue an authorized ZIP; requires idempotencyKey                           |
-| GET    | `/v1/ledger-pdfs/requests/:requestId`              | Read authorized status with optional cursor                                |
-| POST   | `/v1/ledger-pdfs/requests/:requestId/download-url` | Recheck permission and current PDF pointers before issuing a 15-minute URL |
+| Method | Route                                              | Behavior                                                                                                                    |
+| ------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/v1/ledger-pdfs/coverage`                         | Read authorized store/day PDF states, at most 200 per page                                                                  |
+| POST   | `/v1/ledger-pdfs/downloads`                        | Queue an authorized ZIP; requires idempotencyKey                                                                            |
+| GET    | `/v1/ledger-pdfs/requests/:requestId`              | Read authorized status with optional cursor                                                                                 |
+| POST   | `/v1/ledger-pdfs/requests/:requestId/download-url` | Recheck permission and current PDF pointers before issuing a 15-minute URL with the archive `byteSize` and `checksumSha256` |
 
 Coverage/download bodies use `storeNames` and either `dates` or inclusive
 `startDate`/`endDate`, with real `YYYY-MM-DD` calendar dates. Public limits are 50

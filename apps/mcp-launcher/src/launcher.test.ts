@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.19.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.20.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1513,6 +1513,22 @@ it("advertises strict cost-card selectors and rejects unknown selectors at the S
     await client.close();
     await server.close();
   }
+});
+
+it("maps a ledger bundle signing failure instead of returning a signed link", async () => {
+  const auth = fakeAuth({ profile: employeeProfile });
+  const remote = vi.fn<typeof fetch>(async () =>
+    Response.json(
+      { error: { code: "LEDGER_PDF_BUNDLE_STALE", message: "The bundle is stale." } },
+      { status: 409 }
+    )
+  );
+  const result = await createLauncherToolHandler(
+    "download_ledger_pdf_bundle",
+    createLauncherToolDependencies({ config, auth, fetchImplementation: remote })
+  )({ requestId: "req_1" });
+  expect(body(result)).toMatchObject({ error: { code: "LEDGER_PDF_BUNDLE_STALE" } });
+  expect(JSON.stringify(body(result))).not.toContain("downloadUrl");
 });
 
 it("proxies review tools through MCP with null, missing fields and arbitrary dimensions intact", async () => {
