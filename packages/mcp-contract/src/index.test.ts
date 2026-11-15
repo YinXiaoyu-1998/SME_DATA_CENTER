@@ -693,7 +693,17 @@ const invalidInputCases = [
     tool: "get_import_status",
     cases: [
       { label: "missing import batch id", input: {} },
-      { label: "empty import batch id", input: { importBatchId: "" } }
+      { label: "empty import batch id", input: { importBatchId: "" } },
+      { label: "receipt lookup missing enterprise", input: { receiptId: "R1" } },
+      { label: "blank receipt", input: { receiptId: " ", enterpriseName: "Synthetic" } },
+      {
+        label: "mixed selectors",
+        input: { importBatchId: "imp_1", receiptId: "R1", enterpriseName: "Synthetic" }
+      },
+      {
+        label: "client-selected organization",
+        input: { receiptId: "R1", enterpriseName: "Synthetic", orgId: "org_2" }
+      }
     ]
   },
   {
@@ -954,6 +964,9 @@ describe("SMEDC MCP contract", () => {
     expect(structuredUpload?.description).toContain("202");
     expect(structuredUpload?.description).toContain("queued");
     expect(importStatus?.description).toContain("terminal");
+    expect(
+      importStatus?.inputSchema.parse({ receiptId: " R1 ", enterpriseName: "Synthetic" })
+    ).toEqual({ receiptId: "R1", enterpriseName: "Synthetic" });
     expect(importStatus?.resultShape).toEqual(["document", "processing", "importBatch"]);
   });
 

@@ -150,6 +150,15 @@ export interface MarkStructuredImportStorageFailureInput {
   errorSummary: string;
 }
 
+export interface DeliveryReceiptImportStatus {
+  importBatchId: string;
+  receiptId: string;
+  status: ImportBatchStatusName;
+  ledgerPartition?: Pick<LedgerPartitionKey, "storeName" | "purchaseDate"> & {
+    officialStoreName?: string;
+  };
+}
+
 export interface StructuredImportRepository {
   reserveStructuredImport(input: ReserveStructuredImportInput): Promise<{
     state: "created" | "resumable" | "existing";
@@ -170,6 +179,12 @@ export interface StructuredImportRepository {
     orgId: string,
     importBatchId: string
   ): Promise<StructuredImportBatchRecord | null>;
+  findOwnedDeliveryReceiptImport(input: {
+    orgId: string;
+    uploaderId: string;
+    enterpriseKey: string;
+    receiptId: string;
+  }): Promise<DeliveryReceiptImportStatus | null>;
   disconnect?(): Promise<void>;
 }
 
@@ -442,6 +457,66 @@ export function createPrismaStructuredImportRepository(options: {
   }
 
   return {
+    async findOwnedDeliveryReceiptImport(input) {
+      const batch = await prisma.importBatch.findUnique({
+        where: {
+          orgId_dataset_naturalKey: {
+            orgId: input.orgId,
+            dataset: "delivery_ledger",
+            naturalKey: input.receiptId
+          },
+          archivedAt: null,
+          sourceDocument: {
+            archivedAt: null,
+            uploaderId: input.uploaderId,
+            orgId: input.orgId,
+            sourceMetadata: { path: "$.enterpriseKey", equals: input.enterpriseKey }
+          }
+        },
+        include: importBatchInclude
+      });
+      if (
+        !batch ||
+        batch.naturalKey !== input.receiptId ||
+        batch.status === ImportBatchStatus.archived ||
+        batch.sourceDocument.status === DocumentStatus.archived
+      )
+        return null;
+
+      const result: DeliveryReceiptImportStatus = {
+        importBatchId: batch.id,
+        receiptId: batch.naturalKey,
+        status: batch.status
+      };
+      if (batch.status !== ImportBatchStatus.applied) return result;
+
+      if (batch.sourceDocument.status !== DocumentStatus.active) return null;
+      const { affectedLedgerPartitions } = await recordWithPartitions(batch);
+      if (affectedLedgerPartitions?.length !== 1) return null;
+      const { storeName, purchaseDate } = affectedLedgerPartitions[0]!;
+      const directoryStore = await prisma.businessStore.findUnique({
+        where: {
+          orgId_enterpriseKey_name: {
+            orgId: input.orgId,
+            enterpriseKey: input.enterpriseKey,
+            name: storeName
+          }
+        },
+        select: { name: true, officialName: true, confirmation: true }
+      });
+      return {
+        ...result,
+        ledgerPartition: {
+          storeName,
+          purchaseDate,
+          ...(directoryStore?.name === storeName &&
+          directoryStore.confirmation === "confirmed" &&
+          directoryStore.officialName !== storeName
+            ? { officialStoreName: directoryStore.officialName }
+            : {})
+        }
+      };
+    },
     async findImportBatch(orgId, importBatchId) {
       const batch = await prisma.importBatch.findFirst({
         where: {

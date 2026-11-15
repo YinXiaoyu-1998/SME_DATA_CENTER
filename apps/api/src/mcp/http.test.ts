@@ -258,6 +258,9 @@ function fakeStructuredImportRepository(): StructuredImportRepository {
     },
     async findImportBatch(orgId, importBatchId) {
       return importBatchId === importBatch.id && orgId === importBatch.orgId ? importBatch : null;
+    },
+    async findOwnedDeliveryReceiptImport() {
+      return null;
     }
   };
 }

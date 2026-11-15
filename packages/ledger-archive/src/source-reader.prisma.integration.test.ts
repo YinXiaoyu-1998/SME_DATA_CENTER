@@ -339,6 +339,20 @@ if (enabled) {
     await expect(
       imports.reserveStructuredImport({ ...reservation, requestFingerprint: "b".repeat(64) })
     ).rejects.toMatchObject({ code: "RECEIPT_ID_CONFLICT" });
+    const lookup = { orgId, uploaderId: actor.id, enterpriseKey: "synthetic", receiptId: "R1" };
+    expect(await imports.findOwnedDeliveryReceiptImport(lookup)).toEqual({
+      importBatchId: replay.importBatch.id,
+      receiptId: "R1",
+      status: "applied",
+      ledgerPartition: { storeName: key.storeName, purchaseDate: key.purchaseDate }
+    });
+    expect(
+      await imports.findOwnedDeliveryReceiptImport({ ...lookup, uploaderId: low.id })
+    ).toBeNull();
+    expect(
+      await imports.findOwnedDeliveryReceiptImport({ ...lookup, enterpriseKey: "other" })
+    ).toBeNull();
+    expect(await imports.findOwnedDeliveryReceiptImport({ ...lookup, orgId: "other" })).toBeNull();
     expect((await reader.readLedgerSnapshot(key)).dataRevision).toBe(7);
   });
 

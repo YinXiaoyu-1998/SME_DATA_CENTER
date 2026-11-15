@@ -528,6 +528,48 @@ describe("structured imports", () => {
     expect(eventLog).toEqual(["profile", "reservation", "storage", "profile", "reservation"]);
   });
 
+  it("binds delivery receipt lookup to the current authenticated admin", async () => {
+    const { app, structuredImportRepository } = await buildStructuredImportTestServer([
+      adminEmployee,
+      baoliEmployee,
+      orgBAdminEmployee
+    ]);
+    const batch = {
+      importBatchId: "imp_synthetic",
+      receiptId: "R1",
+      status: "applied" as const,
+      ledgerPartition: { storeName: "保利店", purchaseDate: "2026-08-26" }
+    };
+    const lookup = vi
+      .spyOn(
+        structuredImportRepository as unknown as StructuredImportRepository,
+        "findOwnedDeliveryReceiptImport"
+      )
+      .mockImplementation(async (input) => (input.uploaderId === adminEmployee.id ? batch : null));
+    const request = async (employee: AuthenticatedEmployee, url?: string) =>
+      app.inject({
+        method: "GET",
+        url: url ?? "/v1/structured/imports?receiptId=R1&enterpriseName=Synthetic",
+        headers: { authorization: `Bearer ${await accessTokenFor(employee)}` }
+      });
+    expect((await request(adminEmployee)).json()).toEqual({ importBatch: batch });
+    expect(lookup).toHaveBeenLastCalledWith({
+      orgId: adminEmployee.orgId,
+      uploaderId: adminEmployee.id,
+      receiptId: "R1",
+      enterpriseKey: "synthetic"
+    });
+    expect((await request(baoliEmployee)).statusCode).toBe(404);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect((await request(orgBAdminEmployee)).statusCode).toBe(404);
+    expect(lookup).toHaveBeenLastCalledWith(
+      expect.objectContaining({ orgId: orgBAdminEmployee.orgId })
+    );
+    expect((await request(adminEmployee, "/v1/structured/imports?receiptId=R1")).statusCode).toBe(
+      400
+    );
+  });
+
   it("accepts a maximum-expansion receipt without a storage-key overflow or 500", async () => {
     const { app, storagePutCalls } = await buildStructuredImportTestServer();
     const response = await postStructuredImport(app, {

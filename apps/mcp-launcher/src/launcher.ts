@@ -276,6 +276,7 @@ export function registerLauncherTools(
               ) ||
               [
                 "prepare_order_scope_transition",
+                "get_import_status",
                 "download_cost_cards",
                 "archive_cost_card",
                 "upsert_store_reviews",

@@ -151,6 +151,10 @@ describe("read-only MCP tool handlers", () => {
     )["describe_structured_dataset_coverage"]?.({ dataset: "dish_catalog" }, {} as never);
     await handlers.get_evidence_document_status?.({ documentId: "doc/1" }, {} as never);
     await handlers.get_import_status?.({ importBatchId: "imp/1" }, {} as never);
+    await handlers.get_import_status?.(
+      { receiptId: "R&1", enterpriseName: "甲 企业" },
+      {} as never
+    );
     await handlers.query_quarantine_certificates?.(
       { receiptIds: ["SH2608250117", "SH2608260003"] },
       {} as never
@@ -213,6 +217,12 @@ describe("read-only MCP tool handlers", () => {
       {
         method: "GET",
         url: "/v1/structured/imports/imp%2F1",
+        query: undefined,
+        payload: undefined
+      },
+      {
+        method: "GET",
+        url: "/v1/structured/imports?receiptId=R%261&enterpriseName=%E7%94%B2+%E4%BC%81%E4%B8%9A",
         query: undefined,
         payload: undefined
       },

@@ -596,13 +596,34 @@ const evidenceDocumentStatusInputSchema = z
   })
   .strict();
 
-const importStatusInputSchema = z
-  .object({
-    importBatchId: z.string().min(1).describe("Structured import batch id.")
-  })
-  .strict();
-
 const receiptId = z.string().min(1).max(255);
+
+export const deliveryReceiptImportLookupSchema = z.strictObject({
+  receiptId: receiptId.trim().min(1).describe("Exact delivery receipt number."),
+  enterpriseName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(PUBLIC_INPUT_LIMITS.enterpriseNameChars)
+    .describe("Enterprise name from the original delivery receipt upload.")
+});
+
+const importStatusInputSchema = z
+  .strictObject({
+    importBatchId: z
+      .string()
+      .min(1)
+      .describe("Structured import batch id. Use by itself.")
+      .optional(),
+    ...deliveryReceiptImportLookupSchema.partial().shape
+  })
+  .refine(
+    ({ importBatchId, receiptId, enterpriseName }) =>
+      importBatchId !== undefined
+        ? receiptId === undefined && enterpriseName === undefined
+        : receiptId !== undefined && enterpriseName !== undefined,
+    "Provide importBatchId alone, or receiptId and enterpriseName together."
+  );
 
 const uploadQuarantineCertificateInputSchema = z
   .object({
@@ -1628,12 +1649,27 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_import_status",
     title: "Get SMEDC structured import status",
     description:
-      "Poll a structured row import by importBatchId until terminal. For cost_cards, current read authorization exposes the applied publication summary with counts, bounded changes and changesTruncated. Upload ownership exposes safe progress. For a partitionImportJobId, use get_partition_import_status.",
+      "Poll a structured row import by importBatchId until terminal, or look up a delivery ledger import using receiptId and enterpriseName. Receipt lookup returns minimal status for an active admin's own uploads. For cost_cards, authorized readers get the applied publication summary. Use get_partition_import_status for a partitionImportJobId.",
     inputSchema: importStatusInputSchema,
     inputFields: [
-      { name: "importBatchId", required: true, description: "Structured import batch id." }
+      {
+        name: "importBatchId",
+        required: false,
+        description: "Structured import batch id. Use by itself."
+      },
+      {
+        name: "receiptId",
+        required: false,
+        description: "Exact delivery receipt number. Requires enterpriseName."
+      },
+      {
+        name: "enterpriseName",
+        required: false,
+        description: "Enterprise name from the delivery receipt upload. Requires receiptId."
+      }
     ],
-    resultShape: ["document", "processing", "importBatch"]
+    resultShape: ["document", "processing", "importBatch"],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({
     name: "describe_ledger_pdf_coverage",

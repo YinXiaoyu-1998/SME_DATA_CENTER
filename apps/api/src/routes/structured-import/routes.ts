@@ -7,7 +7,8 @@ import {
   type UploadAuthorizationAuditRepository
 } from "../../file-upload-authorization.js";
 import { performance } from "node:perf_hooks";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { deliveryReceiptImportLookupSchema } from "@smedc/mcp-contract";
 import { databaseErrorDetails, type DatabaseRetryEvent } from "@smedc/db";
 import {
   PHASE3_ERROR_CODES,
@@ -138,6 +139,23 @@ function parseConfidentialityLevel(upload: ParsedStructuredImportUpload): number
     return null;
   }
   return Number(upload.confidentialityLevel);
+}
+
+async function importStatusSnapshot(
+  auth: RequestAuth,
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  if (!(await auth.authenticate(request, reply))) return;
+  try {
+    const snapshot = await auth.authorization(request);
+    if (!snapshot.disabled) return snapshot;
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "AUTHORIZATION_ADMIN_REQUIRED") throw error;
+  }
+  await reply
+    .code(403)
+    .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
 }
 
 export function registerStructuredImportRoutes(
@@ -560,30 +578,39 @@ export function registerStructuredImportRoutes(
     }
   });
 
+  app.get("/v1/structured/imports", async (request, reply) => {
+    const snapshot = await importStatusSnapshot(dependencies.auth, request, reply);
+    if (!snapshot) return;
+    const employee = dependencies.auth.employee(request);
+    const parsed = deliveryReceiptImportLookupSchema.safeParse(request.query);
+    if (!parsed.success)
+      return validationError(reply, "VALIDATION_ERROR", "Provide receiptId and enterpriseName.");
+
+    const batch =
+      snapshot.role === "admin" &&
+      snapshot.mode !== "suspended" &&
+      snapshot.orgId === employee.orgId &&
+      snapshot.userAccountId === employee.id
+        ? await dependencies.structuredImports().findOwnedDeliveryReceiptImport({
+            orgId: snapshot.orgId,
+            uploaderId: snapshot.userAccountId,
+            enterpriseKey: normalizeEnterpriseIdentity(parsed.data.enterpriseName).enterpriseKey,
+            receiptId: parsed.data.receiptId
+          })
+        : null;
+    if (!batch)
+      return reply
+        .code(404)
+        .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
+    return { importBatch: batch };
+  });
+
   app.get<{ Params: { importBatchId: string } }>(
     "/v1/structured/imports/:importBatchId",
     async (request, reply) => {
-      const authenticated = await dependencies.auth.authenticate(request, reply);
-
-      if (!authenticated) {
-        return;
-      }
-
+      const snapshot = await importStatusSnapshot(dependencies.auth, request, reply);
+      if (!snapshot) return;
       const employee = dependencies.auth.employee(request);
-      let snapshot;
-      try {
-        snapshot = await dependencies.auth.authorization(request);
-      } catch (error) {
-        if (!(error instanceof Error) || error.message !== "AUTHORIZATION_ADMIN_REQUIRED")
-          throw error;
-        return reply
-          .code(403)
-          .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
-      }
-      if (snapshot.disabled)
-        return reply
-          .code(403)
-          .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
       const importBatch = await dependencies
         .structuredImports()
         .findImportBatch(snapshot.orgId, request.params.importBatchId);

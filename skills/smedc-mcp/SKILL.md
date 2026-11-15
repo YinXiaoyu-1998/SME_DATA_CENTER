@@ -598,6 +598,12 @@ Do not send `startDate` or `endDate`.
   existing receipts. The service fills shelf life on new receipt imports from the enterprise's
   catalog by exact item name; unmatched items stay empty. Later catalog changes leave existing
   receipts unchanged. Shelf-life catalog upload is not currently exposed.
+- With a compatible service and launcher exposing the receipt selector, call
+  `get_import_status({receiptId, enterpriseName})` for a receipt conflict. Use the original
+  upload's enterprise name. The response contains `importBatch.importBatchId`, `receiptId`,
+  `status`, and for an applied receipt its `ledgerPartition` (store and purchase date).
+  The current admin can look up their own uploads. Only matching applied results establish
+  that a receipt is already in SMEDC. Treat `IMPORT_BATCH_NOT_FOUND` as unavailable.
 - Raw `delivery_ledger` details, aggregates, coverage and original CSV/XLSX links are unavailable,
   including for admins and older clients. Use the finished PDF workflow only; do not try old
   aggregate selectors or feature flags. Read

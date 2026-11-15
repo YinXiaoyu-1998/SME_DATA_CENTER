@@ -256,6 +256,13 @@ function routeForReadOnlyTool(
         path: `/v1/documents/evidence/${encodeURIComponent(String(input["documentId"]))}/status`
       };
     case "get_import_status":
+      if (typeof input["receiptId"] === "string" && typeof input["enterpriseName"] === "string") {
+        const query = new URLSearchParams({
+          receiptId: input["receiptId"],
+          enterpriseName: input["enterpriseName"]
+        });
+        return { method: "GET", path: `/v1/structured/imports?${query}` };
+      }
       return {
         method: "GET",
         path: `/v1/structured/imports/${encodeURIComponent(String(input["importBatchId"]))}`
