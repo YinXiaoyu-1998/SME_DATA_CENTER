@@ -11,11 +11,19 @@ passing a standalone self-check is not completion.
   discoverable current-user SMEDC integrations to the approved pin, reconnecting their hosts and
   removing superseded SMEDC processes, installations and entries. A skill-only request follows
   [update-skill.md](update-skill.md) and does not change launcher installations or MCP sessions.
+- A general SMEDC upgrade also covers existing official scheduled workflows on this computer,
+  including paused tasks. Use the [companion workflow upgrade procedure](https://github.com/YinXiaoyu-1998/smedc-companion-skills/blob/main/skills/smedc-workflows/references/installation.md#升级本机定时任务).
+  Before switching the launcher, inventory the actual tasks and pause future triggers for
+  affected enabled tasks while in-flight work is reconciled. After native MCP reconnection,
+  update the installed workflow packages, dependencies and existing task IDs, then verify
+  scheduler readback and central installation records. Honor explicit scope limits, such as
+  a launcher-only or skill-only request.
 - Another host using an old version is part of the upgrade, regardless of which host or earlier
   agent created its process or configuration. Naming Codex or dsh does not by itself exclude the
   other discovered integrations; honor an explicit user exclusion. Migrate existing entries,
-  remove duplicates and update or disable verified obsolete SMEDC-only autostarts. Do not install
-  new hosts or companion skills, or alter another OS user's processes.
+  remove duplicates and update or disable verified obsolete SMEDC-only autostarts. Leave new
+  host installations and new workflow selections to explicit installation requests.
+  Preserve other OS users' processes.
 - First fetch and verify the official default-branch skill revision. Its exact launcher pin is
   the target. “Latest” never means npm `latest` or a version inferred from server metadata. If
   the official source is unavailable, or its pin conflicts with a known newer official install
@@ -109,9 +117,10 @@ it must run the same native-connection verification before claiming completion.
 Before yielding, leave a short, non-secret continuation record: host and approved version,
 official skill revision and installed path, completed checks, remaining verification/cleanup,
 and exact recovery-file paths outside discovery roots. Do not include configuration contents,
-credentials or business records. After restart, inspect the current state first rather than
-reinstalling, rewriting the entry, or repeating login. Continue the original user request after
-verification, then remove old files and recovery material under step 5.
+credentials or business records. For scheduled workflows, retain the scoped task IDs, original
+states and pending update steps in that record. After restart, inspect the current state first.
+Continue the original user request after verification, then remove old files and recovery
+material under step 5.
 
 ## 4. Prove The Host Uses The New Version
 
@@ -165,6 +174,9 @@ Repeat the scoped inventory after cleanup. Report the official skill commit and 
 approved launcher version, host connection evidence, removed old versions/entries/processes,
 and remaining blockers. Claim **complete** only when the in-scope hosts load the verified skill
 and launcher, no old launcher processes or effective entries remain, and superseded files and
-update-created temporary backups are removed. State the inspected scope. Any inaccessible host,
-remaining old installation, required restart, or unverified skill reload means **incomplete**,
+update-created temporary backups are removed. For an upgrade covering scheduled workflows,
+report each task's verified package and launcher versions, host state and central registration.
+An in-scope task awaiting an update or readback leaves the upgrade incomplete. State the
+inspected scope. Any inaccessible host, remaining old installation, required restart,
+or unverified skill reload means **incomplete**,
 with the exact next action; do not silently widen permissions or report “no remnants” without proof.

@@ -79,8 +79,8 @@ or changes an account's clearance. Launcher 0.21.0 includes the permission tools
 For a skill-only request, finish after the skill refresh and report the launcher separately as
 unchanged. If the employee also requested a launcher update, use the exact version approved in
 the newly verified skill and its Official Install Or Update procedure, then finish
-[upgrade, restart, and cleanup](upgrade-cleanup.md). This also applies to a general SMEDC update
-or a request to keep only the latest version; do not stop after a successful standalone self-check.
+[upgrade, restart, and cleanup](upgrade-cleanup.md). A general SMEDC update or request to keep
+only the latest version also enters that procedure's existing scheduled workflow scope.
 If the server still recommends a version beyond that official pin, report the mismatch and
 defer that unsupported launcher upgrade; do not invent a pin or use npm `latest`.
 
