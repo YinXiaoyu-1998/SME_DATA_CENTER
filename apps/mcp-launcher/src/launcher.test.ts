@@ -1404,6 +1404,7 @@ it("preserves cost-card archive revisions and publication summaries through MCP"
     ],
     [
       "get_import_status",
+      "query_jobs",
       { importBatchId: "batch_a" },
       {
         importBatch: {

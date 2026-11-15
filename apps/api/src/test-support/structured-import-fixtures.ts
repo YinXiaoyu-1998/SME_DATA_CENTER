@@ -180,9 +180,6 @@ export function createInMemoryStructuredImportRepository(
   return {
     batches,
     rows,
-    async findOwnedDeliveryReceiptImport() {
-      return null;
-    },
     failNextApply(message = "simulated apply failure") {
       nextApplyFailure = new Error(message);
     },

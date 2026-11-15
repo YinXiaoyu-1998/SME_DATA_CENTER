@@ -154,15 +154,11 @@ describe("published launcher artifact", () => {
       expect(client.getServerVersion()?.version).toBe("0.21.0");
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(54);
-      expect(new Set(names).size).toBe(54);
-      expect(tools.tools.find((tool) => tool.name === "get_import_status")).toMatchObject({
+      expect(names).toHaveLength(55);
+      expect(new Set(names).size).toBe(55);
+      expect(tools.tools.find((tool) => tool.name === "query_jobs")).toMatchObject({
         annotations: { readOnlyHint: true },
-        inputSchema: {
-          type: "object",
-          additionalProperties: false,
-          properties: { importBatchId: {}, receiptId: {}, enterpriseName: {} }
-        }
+        inputSchema: { type: "object", additionalProperties: false, required: ["query"] }
       });
       expect(tools.tools.find((tool) => tool.name === "download_ledger_pdf_bundle")).toMatchObject({
         annotations: { readOnlyHint: true },

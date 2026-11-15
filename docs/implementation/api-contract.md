@@ -120,7 +120,6 @@ employee-callable upload boundary.
 | `POST`         | `/v1/quarantine-certificates/archive`               | Current-admin archive by source ID or receipt ID                                                                                              |
 | `POST`         | `/v1/source-documents/:documentId/download-url`     | Issue a readable source-file download URL                                                                                                     |
 | `POST`         | `/v1/structured/imports`                            | Upload row-query datasets (`vip`, `supplier_catalog`, `delivery_ledger`, `cost_cards`); rejects partition datasets and retired `dish_catalog` |
-| `GET`          | `/v1/structured/imports`                            | Read a delivery receipt's import status for its current admin uploader                                                                        |
 | `GET`          | `/v1/structured/imports/:importBatchId`             | Safe uploader progress or authorized complete import metadata                                                                                 |
 | `POST`         | `/v1/structured/partition-uploads`                  | Create a multipart partition-dataset upload session                                                                                           |
 | `GET`          | `/v1/structured/partition-uploads/:jobId/parts`     | Get a bounded page of multipart part URLs                                                                                                     |
@@ -147,15 +146,8 @@ In `enabled` mode ordinary full metadata requires every retained source requirem
 current lifecycle, complete scopes and category clearance; raw delivery-receipt metadata remains
 unavailable. `legacy`/`preparing` explicitly retain the existing upload-clearance metadata rule;
 `suspended` never uses that rule. There is no implicit admin content bypass or new management API.
-`get_import_status({importBatchId})` delegates to the batch-ID route. Its alternate
-`{receiptId, enterpriseName}` selector delegates to the scoped receipt lookup. The service
-requires the current active admin uploader in the same organization and the original upload's
-enterprise. Missing, inaccessible and archived results return `IMPORT_BATCH_NOT_FOUND`.
-Receipt lookup is unavailable in suspended mode. It returns only
-`importBatch: {importBatchId, receiptId, status, ledgerPartition?}`. The applied receipt's
-`ledgerPartition` contains its stable store name and purchase date, and the current confirmed official store name
-if it differs. The receipt selector is compatible
-with launcher 0.21.0 and matching service code.
+`get_import_status` delegates to the batch-ID route. Central lookup by receipt,
+idempotency key or workflow action is described in [Job history](job-history.md).
 
 ## Upload fields and limits
 

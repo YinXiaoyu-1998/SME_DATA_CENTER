@@ -9,7 +9,8 @@ import {
   jsonToolResult,
   validationErrorToolResult,
   type SmedcMcpToolName,
-  type McpJsonToolResult
+  type McpJsonToolResult,
+  type WorkflowUploadBinding
 } from "@smedc/mcp-contract";
 import type { SmedcMcpToolHandlers, McpRequestContext } from "./tool-handlers.js";
 import { launcherVersionAtLeast, type RequestAuditContext } from "../request-audit-context.js";
@@ -34,6 +35,7 @@ interface InlineUploadFile {
 }
 
 interface UploadStructuredDatasetInput {
+  workflowAction?: WorkflowUploadBinding;
   file: InlineUploadFile;
   dataset: StructuredDatasetName;
   enterpriseName: string;
@@ -227,6 +229,12 @@ async function uploadStructuredDataset(
     { type: "field", name: "idempotencyKey", value: uploadInput.idempotencyKey }
   ];
   appendStructuredMetadataParts(parts, uploadInput);
+  if (uploadInput.workflowAction)
+    parts.push({
+      type: "field",
+      name: "workflowAction",
+      value: JSON.stringify(uploadInput.workflowAction)
+    });
   appendConfidentialityLevelPart(parts, uploadInput.confidentialityLevel);
   if (uploadInput.historicalSupplementReason)
     parts.push({

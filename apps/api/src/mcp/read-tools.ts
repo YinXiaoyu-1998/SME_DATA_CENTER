@@ -35,6 +35,7 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "get_source_document_download_url",
   "get_evidence_document_status",
   "get_import_status",
+  "query_jobs",
   "get_partition_import_status",
   "download_structured_partitions",
   "download_cost_cards",
@@ -135,6 +136,8 @@ function routeForReadOnlyTool(
   input: Record<string, unknown>
 ): DelegateJsonApiRequest {
   switch (toolName) {
+    case "query_jobs":
+      return { method: "POST", path: "/v1/jobs/query", body: input };
     case "query_store_reviews":
       return { method: "POST", path: "/v1/store-reviews/query", body: input };
     case "download_cost_cards":
@@ -256,13 +259,6 @@ function routeForReadOnlyTool(
         path: `/v1/documents/evidence/${encodeURIComponent(String(input["documentId"]))}/status`
       };
     case "get_import_status":
-      if (typeof input["receiptId"] === "string" && typeof input["enterpriseName"] === "string") {
-        const query = new URLSearchParams({
-          receiptId: input["receiptId"],
-          enterpriseName: input["enterpriseName"]
-        });
-        return { method: "GET", path: `/v1/structured/imports?${query}` };
-      }
       return {
         method: "GET",
         path: `/v1/structured/imports/${encodeURIComponent(String(input["importBatchId"]))}`

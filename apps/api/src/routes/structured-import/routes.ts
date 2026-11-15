@@ -7,8 +7,9 @@ import {
   type UploadAuthorizationAuditRepository
 } from "../../file-upload-authorization.js";
 import { performance } from "node:perf_hooks";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { deliveryReceiptImportLookupSchema } from "@smedc/mcp-contract";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { workflowUploadBindingSchema } from "@smedc/mcp-contract";
+import { workflowUploadError, workflowUploadLink } from "../../enterprise-workflows/job-uploads.js";
 import { databaseErrorDetails, type DatabaseRetryEvent } from "@smedc/db";
 import {
   PHASE3_ERROR_CODES,
@@ -84,6 +85,10 @@ async function parseStructuredImportUpload(
     if (part.fieldname === "orderScope" || part.fieldname === "orderScopeTransition")
       throw new ResourceAttributesError("INVALID_ORDER_SCOPE");
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "workflowAction") {
+      upload.workflowAction = upload.workflowAction === undefined ? value : "";
+      continue;
+    }
     if (part.fieldname === "historicalSupplementReason") {
       if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
         throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
@@ -139,23 +144,6 @@ function parseConfidentialityLevel(upload: ParsedStructuredImportUpload): number
     return null;
   }
   return Number(upload.confidentialityLevel);
-}
-
-async function importStatusSnapshot(
-  auth: RequestAuth,
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
-  if (!(await auth.authenticate(request, reply))) return;
-  try {
-    const snapshot = await auth.authorization(request);
-    if (!snapshot.disabled) return snapshot;
-  } catch (error) {
-    if (!(error instanceof Error) || error.message !== "AUTHORIZATION_ADMIN_REQUIRED") throw error;
-  }
-  await reply
-    .code(403)
-    .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
 }
 
 export function registerStructuredImportRoutes(
@@ -363,6 +351,7 @@ export function registerStructuredImportRoutes(
     }
 
     let naturalKey: string | undefined;
+    let receiptStoreName: string | undefined;
     if (registry.metadataPolicy === "derived_receipt") {
       try {
         const profile = await measureTiming("upload.profile_file", () =>
@@ -386,6 +375,7 @@ export function registerStructuredImportRoutes(
         startDate = derivedMetadata.receiptDate.replaceAll("-", "");
         endDate = startDate;
         naturalKey = derivedMetadata.receiptId;
+        receiptStoreName = derivedMetadata.storeName;
       } catch (error) {
         request.log.warn({ err: error }, "structured import profile failed");
         logTiming("upload.total", importRequestStarted, { outcome: "profile_failed" });
@@ -403,6 +393,34 @@ export function registerStructuredImportRoutes(
     const candidateDocumentId = createStructuredImportDocumentId();
     const originalFileName = uploadedFile.fileName;
     const fileHash = createHash("sha256").update(uploadedFile.body).digest("hex");
+    const enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
+    let linkJob: Parameters<StructuredImportRepository["reserveStructuredImport"]>[0]["linkJob"];
+    if (upload.workflowAction !== undefined) {
+      const binding = workflowUploadBindingSchema.safeParse(
+        parseWorkflowAction(upload.workflowAction)
+      );
+      if (
+        !binding.success ||
+        dataset !== "delivery_ledger" ||
+        !naturalKey ||
+        !receiptStoreName ||
+        !startDate
+      )
+        return validationError(
+          reply,
+          "INVALID_WORKFLOW_INPUT",
+          "Provide an upload binding for this delivery receipt."
+        );
+      const date = `${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6)}`;
+      linkJob = workflowUploadLink(employee, binding.data, {
+        kind: "row_import",
+        enterpriseKey,
+        dataset,
+        sourceHash: fileHash,
+        window: { startDate: date, endDate: date },
+        receipt: { id: naturalKey, storeName: receiptStoreName }
+      });
+    }
     const canonicalFileName = canonicalStructuredImportFileName({
       enterpriseName,
       dataset,
@@ -440,7 +458,8 @@ export function registerStructuredImportRoutes(
             actorUserAccountId: employee.id,
             documentId: candidateDocumentId,
             dataset,
-            enterpriseKey: normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
+            enterpriseKey,
+            ...(linkJob ? { linkJob } : {}),
             ...(dataset === "cost_cards" ? { enterpriseName } : {}),
             historicalSupplementReason: upload.historicalSupplementReason,
             fileType,
@@ -474,6 +493,11 @@ export function registerStructuredImportRoutes(
       );
     } catch (error) {
       logTiming("upload.total", importRequestStarted, { outcome: "reservation_failed" });
+      const workflowError = workflowUploadError(error);
+      if (workflowError)
+        return reply
+          .code(workflowError.status)
+          .send(errorResponse(workflowError.code, "Upload binding is unavailable."));
       if (error instanceof ResourceAttributesError)
         return validationError(
           reply,
@@ -578,39 +602,30 @@ export function registerStructuredImportRoutes(
     }
   });
 
-  app.get("/v1/structured/imports", async (request, reply) => {
-    const snapshot = await importStatusSnapshot(dependencies.auth, request, reply);
-    if (!snapshot) return;
-    const employee = dependencies.auth.employee(request);
-    const parsed = deliveryReceiptImportLookupSchema.safeParse(request.query);
-    if (!parsed.success)
-      return validationError(reply, "VALIDATION_ERROR", "Provide receiptId and enterpriseName.");
-
-    const batch =
-      snapshot.role === "admin" &&
-      snapshot.mode !== "suspended" &&
-      snapshot.orgId === employee.orgId &&
-      snapshot.userAccountId === employee.id
-        ? await dependencies.structuredImports().findOwnedDeliveryReceiptImport({
-            orgId: snapshot.orgId,
-            uploaderId: snapshot.userAccountId,
-            enterpriseKey: normalizeEnterpriseIdentity(parsed.data.enterpriseName).enterpriseKey,
-            receiptId: parsed.data.receiptId
-          })
-        : null;
-    if (!batch)
-      return reply
-        .code(404)
-        .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
-    return { importBatch: batch };
-  });
-
   app.get<{ Params: { importBatchId: string } }>(
     "/v1/structured/imports/:importBatchId",
     async (request, reply) => {
-      const snapshot = await importStatusSnapshot(dependencies.auth, request, reply);
-      if (!snapshot) return;
+      const authenticated = await dependencies.auth.authenticate(request, reply);
+
+      if (!authenticated) {
+        return;
+      }
+
       const employee = dependencies.auth.employee(request);
+      let snapshot;
+      try {
+        snapshot = await dependencies.auth.authorization(request);
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "AUTHORIZATION_ADMIN_REQUIRED")
+          throw error;
+        return reply
+          .code(403)
+          .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
+      }
+      if (snapshot.disabled)
+        return reply
+          .code(403)
+          .send(errorResponse(AUTH_ERROR_CODES.employeeDisabled, "Employee account is disabled."));
       const importBatch = await dependencies
         .structuredImports()
         .findImportBatch(snapshot.orgId, request.params.importBatchId);
@@ -670,4 +685,13 @@ export function registerStructuredImportRoutes(
         .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
     }
   );
+}
+
+function parseWorkflowAction(value: string): unknown {
+  if (value.length > 1024) return;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return;
+  }
 }

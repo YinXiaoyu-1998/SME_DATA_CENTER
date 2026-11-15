@@ -32,7 +32,8 @@ describe("structured ingestion", () => {
 
     expect(result.derivedMetadata).toEqual({
       receiptId: "SH2608250117",
-      receiptDate: "2026-08-26"
+      receiptDate: "2026-08-26",
+      storeName: "合成门店"
     });
     expect(result.rows).toHaveLength(13);
     const entryIds = result.rows.map((row) => String(row.payload.entry_id));
@@ -113,7 +114,8 @@ describe("structured ingestion", () => {
 
     expect(profile.derivedMetadata).toEqual({
       receiptId: "SH2608250117",
-      receiptDate: "2026-08-26"
+      receiptDate: "2026-08-26",
+      storeName: "合成门店"
     });
     expect(JSON.stringify(profile)).not.toContain("entry_id");
   });

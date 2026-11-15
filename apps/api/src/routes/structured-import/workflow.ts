@@ -14,6 +14,7 @@ import type { StructuredImportBatchRecord } from "../../structured-imports.js";
 const MAX_CANONICAL_FILE_NAME_CHARS = 200;
 
 export interface ParsedStructuredImportUpload {
+  workflowAction?: string;
   historicalSupplementReason?: string;
   file?: {
     fileName: string;

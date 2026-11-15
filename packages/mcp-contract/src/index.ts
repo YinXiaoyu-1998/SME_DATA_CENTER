@@ -1,4 +1,6 @@
 import { DIRECTORY_MCP_TOOL_NAMES, DIRECTORY_MCP_INPUT_SCHEMAS } from "./employee-directory.js";
+import { queryJobsInputSchema, workflowUploadBindingSchema } from "./jobs.js";
+export * from "./jobs.js";
 import {
   ENTERPRISE_WORKFLOW_LAUNCHER_VERSION,
   WORKFLOW_MCP_INPUT_SCHEMAS,
@@ -467,6 +469,9 @@ const queryStructuredDatasetInputSchema = z
 
 const uploadStructuredDatasetInputSchema = z
   .object({
+    workflowAction: workflowUploadBindingSchema
+      .optional()
+      .describe("Current claimed workflow upload action binding."),
     file: uploadFileInputSchema,
     dataset: uploadStructuredDataset,
     orderScopeTransition: orderScopeTransitionConfirmationSchema
@@ -508,6 +513,16 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
+    if (
+      input.workflowAction &&
+      input.dataset !== "delivery_ledger" &&
+      !PARTITION_DATASETS.includes(input.dataset as (typeof PARTITION_DATASETS)[number])
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["workflowAction"],
+        message: "Workflow upload binding is limited to daily ingestion datasets."
+      });
     if (input.orderScopeTransition && (input.dataset !== "in_store_orders" || !input.orderScope))
       context.addIssue({
         code: "custom",
@@ -596,34 +611,13 @@ const evidenceDocumentStatusInputSchema = z
   })
   .strict();
 
-const receiptId = z.string().min(1).max(255);
-
-export const deliveryReceiptImportLookupSchema = z.strictObject({
-  receiptId: receiptId.trim().min(1).describe("Exact delivery receipt number."),
-  enterpriseName: z
-    .string()
-    .trim()
-    .min(1)
-    .max(PUBLIC_INPUT_LIMITS.enterpriseNameChars)
-    .describe("Enterprise name from the original delivery receipt upload.")
-});
-
 const importStatusInputSchema = z
-  .strictObject({
-    importBatchId: z
-      .string()
-      .min(1)
-      .describe("Structured import batch id. Use by itself.")
-      .optional(),
-    ...deliveryReceiptImportLookupSchema.partial().shape
+  .object({
+    importBatchId: z.string().min(1).describe("Structured import batch id.")
   })
-  .refine(
-    ({ importBatchId, receiptId, enterpriseName }) =>
-      importBatchId !== undefined
-        ? receiptId === undefined && enterpriseName === undefined
-        : receiptId !== undefined && enterpriseName !== undefined,
-    "Provide importBatchId alone, or receiptId and enterpriseName together."
-  );
+  .strict();
+
+const receiptId = z.string().min(1).max(255);
 
 const uploadQuarantineCertificateInputSchema = z
   .object({
@@ -1083,6 +1077,7 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_source_document_download_url",
   "get_evidence_document_status",
   "get_import_status",
+  "query_jobs",
   "get_partition_import_status",
   "download_structured_partitions",
   "download_cost_cards",
@@ -1649,26 +1644,27 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_import_status",
     title: "Get SMEDC structured import status",
     description:
-      "Poll a structured row import by importBatchId until terminal, or look up a delivery ledger import using receiptId and enterpriseName. Receipt lookup returns minimal status for an active admin's own uploads. For cost_cards, authorized readers get the applied publication summary. Use get_partition_import_status for a partitionImportJobId.",
+      "Poll a structured row import by importBatchId until terminal. For cost_cards, current read authorization exposes the applied publication summary with counts, bounded changes and changesTruncated. Upload ownership exposes safe progress. For a partitionImportJobId, use get_partition_import_status.",
     inputSchema: importStatusInputSchema,
     inputFields: [
+      { name: "importBatchId", required: true, description: "Structured import batch id." }
+    ],
+    resultShape: ["document", "processing", "importBatch"]
+  }),
+  defineToolContract({
+    name: "query_jobs",
+    title: "Query SMEDC job history",
+    description:
+      "Read authorized row imports, partition imports, and workflow runs from central history. Use action or actions mode to find upload jobs linked to an existing workflow run. Terminal outcomes include failures.",
+    inputSchema: queryJobsInputSchema,
+    inputFields: [
       {
-        name: "importBatchId",
-        required: false,
-        description: "Structured import batch id. Use by itself."
-      },
-      {
-        name: "receiptId",
-        required: false,
-        description: "Exact delivery receipt number. Requires enterpriseName."
-      },
-      {
-        name: "enterpriseName",
-        required: false,
-        description: "Enterprise name from the delivery receipt upload. Requires receiptId."
+        name: "query",
+        required: true,
+        description: "Detail, receipt, idempotency, action, actions or list selector."
       }
     ],
-    resultShape: ["document", "processing", "importBatch"],
+    resultShape: ["jobs", "nextCursor"],
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({

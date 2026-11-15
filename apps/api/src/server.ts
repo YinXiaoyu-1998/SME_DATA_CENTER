@@ -27,6 +27,7 @@ import { registerCatalogRoutes } from "./routes/catalog.js";
 import { registerStructuredQueryRoutes } from "./routes/structured-query.js";
 import { registerEvidenceRoutes } from "./routes/evidence.js";
 import { registerStructuredImportRoutes } from "./routes/structured-import/routes.js";
+import { registerJobRoutes } from "./jobs/routes.js";
 import { registerQuarantineCertificateRoutes } from "./routes/quarantine-certificates.js";
 import { registerSourceDocumentRoutes } from "./routes/source-documents.js";
 import { registerPartitionDownloadRoutes } from "./routes/structured-partitions/downloads.js";
@@ -68,6 +69,12 @@ export function buildApiServer(options: ApiServerOptions = {}) {
 
   registerApiErrorHandler(app);
   registerEnterpriseWorkflowRoutes(app, { auth: requestAuth, workflows: context.workflows });
+  registerJobRoutes(app, {
+    auth: requestAuth,
+    workflows: context.workflows,
+    createBusinessRequestAudit: context.createBusinessRequestAudit,
+    cursorSigningSecret: context.cursorSigningSecret
+  });
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);

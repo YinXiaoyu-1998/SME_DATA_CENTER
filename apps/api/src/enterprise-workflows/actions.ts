@@ -319,7 +319,9 @@ export async function claimAction(
     const receipt = workflowActionReceiptSchema.parse(sameId.receipt);
     if (
       receipt.state !== "failed" ||
-      !["request_rejected", "manual_resolution", "provider_readback"].includes(receipt.evidence)
+      !["request_rejected", "manual_resolution", "provider_readback", "service_status"].includes(
+        receipt.evidence
+      )
     )
       fail("WORKFLOW_ACTION_UNKNOWN");
     await tx.workflowAction.update({
@@ -492,6 +494,47 @@ async function verifyServiceReceipt(
   // A completed server package does not prove the client downloaded or verified it.
   fail("WORKFLOW_ACTION_UNKNOWN");
 }
+
+async function verifyFailedUpload(
+  tx: Tx,
+  actor: Actor,
+  workflow: Workflow,
+  runId: string,
+  identity: WorkflowActionIdentity,
+  receipt: WorkflowActionReceipt
+) {
+  if (identity.kind !== "upload" || !receipt.jobId) fail("WORKFLOW_ACTION_UNKNOWN");
+  const link = await tx.workflowUploadLink.findUnique({
+    where: {
+      orgId_workflowId_runId_actionId: {
+        orgId: actor.orgId,
+        workflowId: workflow.id,
+        runId,
+        actionId: receipt.actionId
+      }
+    }
+  });
+  if (
+    !link ||
+    link.result !== "accepted" ||
+    link.jobId !== receipt.jobId ||
+    link.dataset !== identity.dataset
+  )
+    fail("WORKFLOW_ACTION_UNKNOWN");
+  const where = { orgId: actor.orgId, id: link.jobId };
+  const status =
+    link.kind === "row_import"
+      ? (await tx.importBatch.findFirst({ where, select: { status: true } }))?.status
+      : ((await tx.partitionImportJob.findFirst({ where, select: { status: true } }))?.status ??
+        (
+          await tx.jobHistory.findUnique({
+            where: { orgId_kind_jobId: { orgId: actor.orgId, kind: link.kind, jobId: link.jobId } },
+            select: { status: true }
+          })
+        )?.status);
+  if (!status || !["failed", "rejected", "cancelled", "expired"].includes(status))
+    fail("WORKFLOW_ACTION_UNKNOWN");
+}
 export async function actionOperation(
   tx: Tx,
   actor: Actor,
@@ -589,8 +632,11 @@ export async function actionOperation(
     if (action.state === "unknown" && receipt.evidence === "request_rejected")
       fail("WORKFLOW_ACTION_UNKNOWN");
     const identity = workflowActionIdentitySchema.parse(action.identity);
-    if (receipt.evidence === "service_status")
-      await verifyServiceReceipt(tx, actor, workflow, identity, receipt);
+    if (receipt.evidence === "service_status") {
+      if (receipt.state === "failed")
+        await verifyFailedUpload(tx, actor, workflow, action.runId, identity, receipt);
+      else await verifyServiceReceipt(tx, actor, workflow, identity, receipt);
+    }
     if (receipt.evidence === "launcher_transfer") {
       const bound = await requireBinding(tx, actor, workflow, op, now);
       await authorizeAction(
@@ -745,7 +791,9 @@ export async function actionOperation(
     }
     if (
       receipt.state === "failed" &&
-      !["request_rejected", "manual_resolution", "provider_readback"].includes(receipt.evidence)
+      !["request_rejected", "manual_resolution", "provider_readback", "service_status"].includes(
+        receipt.evidence
+      )
     )
       fail("WORKFLOW_ACTION_UNKNOWN");
     if (receipt.evidence === "request_rejected" && receipt.state !== "failed")

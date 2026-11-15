@@ -12,6 +12,7 @@ import {
   type AuthorizationSnapshot
 } from "@smedc/domain";
 import { FormalStoreIntakeError, requireFormalStoreForIntake } from "./formal-store-intake.js";
+import { retainPartitionJobs } from "./job-history.js";
 import { compileStructuredReadScope } from "./business-authorization-sql.js";
 import {
   bindHistoricalSupplementIntent,
@@ -154,6 +155,7 @@ export interface StructuredPartitionRepository {
     input: PrepareOrderScopeTransition & { orgId: string; actorId: string }
   ): Promise<OrderScopeTransitionPreview>;
   reserveUpload(input: {
+    linkJob?: (tx: Prisma.TransactionClient, jobId: string) => Promise<void>;
     orderScope?: DeclaredOrderScope;
     orderScopeTransition?: OrderScopeTransitionConfirmation;
     historicalSupplementReason?: string;
@@ -419,94 +421,113 @@ export function createPrismaStructuredPartitionRepository(
           orgId_idempotencyKey: { orgId: input.orgId, idempotencyKey: input.idempotencyKey }
         }
       });
-      if (existing)
-        return existingReservation(existing, input.requestFingerprint, input.uploaderId);
+      async function replay(existingJob: NonNullable<typeof existing>) {
+        const reservation = existingReservation(
+          existingJob,
+          input.requestFingerprint,
+          input.uploaderId
+        );
+        const linkJob = input.linkJob;
+        if (linkJob) await prisma.$transaction((tx) => linkJob(tx, existingJob.id));
+        return reservation;
+      }
+      if (existing) return replay(existing);
       try {
-        const created = await prisma.$transaction(async (tx) => {
-          if (input.dataset === "in_store_orders") await lockOrderScopeControl(tx, input.orgId);
-          await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
-          await requireOrderScopeDeclaration(
-            tx,
-            input.orgId,
-            input.enterpriseKey,
-            input.dataset,
-            input.orderScope
-          );
-          let transition: Awaited<ReturnType<typeof confirmedOrderScopePreview>> | undefined;
-          if (input.orderScopeTransition)
-            transition = await confirmedOrderScopePreview(tx, {
-              ...input,
-              actorId: input.uploaderId
-            });
-          const historicalSupplement = await bindHistoricalSupplementIntent(
-            tx,
-            input.orgId,
-            input.uploaderId,
-            input.historicalSupplementReason,
-            [input.sourceStartDate, input.sourceEndDate]
-          );
-          const job = await tx.partitionImportJob.create({
-            data: {
-              id: input.id ?? createId("pjob"),
-              orgId: input.orgId,
-              uploaderId: input.uploaderId,
-              dataset: input.dataset as PartitionDataset,
-              orderScope: effectiveOrderScope(input.dataset, input.orderScope),
-              enterpriseKey: input.enterpriseKey,
-              enterpriseName: input.enterpriseName,
-              confidentialityLevel: input.confidentialityLevel,
-              idempotencyKey: input.idempotencyKey,
-              requestFingerprint: input.requestFingerprint,
-              originalFileName: input.originalFileName,
-              mediaType: input.mediaType,
-              sourceByteSize: input.sourceByteSize,
-              sourceChecksumSha256: input.sourceChecksumSha256,
-              sourceStartDate: parseBusinessDate(input.sourceStartDate),
-              sourceEndDate: parseBusinessDate(input.sourceEndDate),
-              expiresAt: input.expiresAt,
-              temporaryObjectKey: input.temporaryObjectKey,
-              multipartUploadId: input.multipartUploadId
-            }
-          });
-          if (transition) {
-            const bound = await tx.orderScopeTransitionPreview.updateMany({
-              where: { id: transition.id, orgId: input.orgId, jobId: null },
-              data: { jobId: job.id }
-            });
-            if (bound.count !== 1)
-              throw new StructuredPartitionRepositoryError("ORDER_SCOPE_CONFLICT");
-            await tx.auditLog.create({
+        const created = await prisma.$transaction(
+          async (tx) => {
+            if (input.dataset === "in_store_orders") await lockOrderScopeControl(tx, input.orgId);
+            await requireCurrentUploadAdmin(tx, input.orgId, input.uploaderId);
+            await requireOrderScopeDeclaration(
+              tx,
+              input.orgId,
+              input.enterpriseKey,
+              input.dataset,
+              input.orderScope
+            );
+            let transition: Awaited<ReturnType<typeof confirmedOrderScopePreview>> | undefined;
+            if (input.orderScopeTransition)
+              transition = await confirmedOrderScopePreview(tx, {
+                ...input,
+                actorId: input.uploaderId
+              });
+            const historicalSupplement = await bindHistoricalSupplementIntent(
+              tx,
+              input.orgId,
+              input.uploaderId,
+              input.historicalSupplementReason,
+              [input.sourceStartDate, input.sourceEndDate]
+            );
+            const jobId = input.id ?? createId("pjob");
+            await input.linkJob?.(tx, jobId);
+            const job = await tx.partitionImportJob.create({
               data: {
+                id: jobId,
                 orgId: input.orgId,
-                actorUserAccountId: input.uploaderId,
-                action: "partition.order_scope.confirmed",
-                targetType: "partition_import_job",
-                targetId: job.id,
-                result: "succeeded",
-                metadata: {
-                  previewId: transition.id,
-                  confirmationDigest: transition.confirmationDigest,
-                  orderScope: input.orderScope!,
-                  sourceChecksumSha256: input.sourceChecksumSha256
+                uploaderId: input.uploaderId,
+                dataset: input.dataset as PartitionDataset,
+                orderScope: effectiveOrderScope(input.dataset, input.orderScope),
+                enterpriseKey: input.enterpriseKey,
+                enterpriseName: input.enterpriseName,
+                confidentialityLevel: input.confidentialityLevel,
+                idempotencyKey: input.idempotencyKey,
+                requestFingerprint: input.requestFingerprint,
+                originalFileName: input.originalFileName,
+                mediaType: input.mediaType,
+                sourceByteSize: input.sourceByteSize,
+                sourceChecksumSha256: input.sourceChecksumSha256,
+                sourceStartDate: parseBusinessDate(input.sourceStartDate),
+                sourceEndDate: parseBusinessDate(input.sourceEndDate),
+                expiresAt: input.expiresAt,
+                temporaryObjectKey: input.temporaryObjectKey,
+                multipartUploadId: input.multipartUploadId
+              }
+            });
+            if (transition) {
+              const bound = await tx.orderScopeTransitionPreview.updateMany({
+                where: { id: transition.id, orgId: input.orgId, jobId: null },
+                data: { jobId: job.id }
+              });
+              if (bound.count !== 1)
+                throw new StructuredPartitionRepositoryError("ORDER_SCOPE_CONFLICT");
+              await tx.auditLog.create({
+                data: {
+                  orgId: input.orgId,
+                  actorUserAccountId: input.uploaderId,
+                  action: "partition.order_scope.confirmed",
+                  targetType: "partition_import_job",
+                  targetId: job.id,
+                  result: "succeeded",
+                  metadata: {
+                    previewId: transition.id,
+                    confirmationDigest: transition.confirmationDigest,
+                    orderScope: input.orderScope!,
+                    sourceChecksumSha256: input.sourceChecksumSha256
+                  }
                 }
+              });
+            }
+            if (historicalSupplement)
+              await tx.auditLog.create({
+                data: {
+                  orgId: input.orgId,
+                  actorUserAccountId: input.uploaderId,
+                  action: "partition.historical_supplement.requested",
+                  targetType: "partition_import_job",
+                  targetId: job.id,
+                  result: "succeeded",
+                  clientSource: "admin",
+                  metadata: { historicalSupplement: { ...historicalSupplement } }
+                }
+              });
+            return job;
+          },
+          input.linkJob
+            ? {
+                isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+                timeout: transactionTimeoutMs
               }
-            });
-          }
-          if (historicalSupplement)
-            await tx.auditLog.create({
-              data: {
-                orgId: input.orgId,
-                actorUserAccountId: input.uploaderId,
-                action: "partition.historical_supplement.requested",
-                targetType: "partition_import_job",
-                targetId: job.id,
-                result: "succeeded",
-                clientSource: "admin",
-                metadata: { historicalSupplement: { ...historicalSupplement } }
-              }
-            });
-          return job;
-        });
+            : undefined
+        );
         return { state: "created", job: toJobRecord(created) };
       } catch (error) {
         if (!isUniqueConstraintError(error)) throw error;
@@ -515,7 +536,7 @@ export function createPrismaStructuredPartitionRepository(
             orgId_idempotencyKey: { orgId: input.orgId, idempotencyKey: input.idempotencyKey }
           }
         });
-        return existingReservation(authoritative, input.requestFingerprint, input.uploaderId);
+        return replay(authoritative);
       }
     },
 
@@ -938,31 +959,7 @@ export function createPrismaStructuredPartitionRepository(
     },
 
     async deleteTerminalJobs(before, limit) {
-      const jobs = await prisma.partitionImportJob.findMany({
-        where: {
-          status: {
-            in: [
-              PartitionImportJobStatus.published,
-              PartitionImportJobStatus.rejected,
-              PartitionImportJobStatus.failed,
-              PartitionImportJobStatus.cancelled,
-              PartitionImportJobStatus.expired
-            ]
-          },
-          finishedAt: { lt: before }
-        },
-        orderBy: { finishedAt: "asc" },
-        take: limit,
-        select: { id: true }
-      });
-      if (!jobs.length) return 0;
-      await prisma.orderScopeTransitionPreview.deleteMany({
-        where: { jobId: { in: jobs.map((job) => job.id) } }
-      });
-      const deleted = await prisma.partitionImportJob.deleteMany({
-        where: { id: { in: jobs.map((job) => job.id) } }
-      });
-      return deleted.count;
+      return prisma.$transaction((tx) => retainPartitionJobs(tx, before, limit));
     },
 
     async disconnect() {

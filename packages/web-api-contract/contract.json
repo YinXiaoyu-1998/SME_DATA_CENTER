@@ -7206,10 +7206,10 @@
                           "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema45"
                         },
                         "unresolved": {
-                          "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema50"
+                          "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema51"
                         },
                         "cleanup": {
-                          "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema52"
+                          "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema53"
                         }
                       },
                       "required": [
@@ -7964,6 +7964,9 @@
               },
               "evidenceHash": {
                 "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema49"
+              },
+              "receiptCounts": {
+                "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema50"
               }
             },
             "required": [
@@ -7998,13 +8001,45 @@
             "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema41"
           },
           "r_workflows_getWorkflowStatus___schema50": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "confirmed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "skipped": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pending": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "source",
+              "confirmed",
+              "skipped",
+              "pending"
+            ],
+            "additionalProperties": false
+          },
+          "r_workflows_getWorkflowStatus___schema51": {
             "maxItems": 100,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema51"
+              "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema52"
             }
           },
-          "r_workflows_getWorkflowStatus___schema51": {
+          "r_workflows_getWorkflowStatus___schema52": {
             "type": "object",
             "properties": {
               "code": {
@@ -8039,7 +8074,7 @@
             ],
             "additionalProperties": false
           },
-          "r_workflows_getWorkflowStatus___schema52": {
+          "r_workflows_getWorkflowStatus___schema53": {
             "type": "string",
             "enum": [
               "pending",
@@ -14255,10 +14290,10 @@
                   "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema32"
                 },
                 "unresolved": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema37"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema38"
                 },
                 "cleanup": {
-                  "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema39"
+                  "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema40"
                 }
               },
               "required": [
@@ -14318,6 +14353,9 @@
                 },
                 "evidenceHash": {
                   "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema36"
+                },
+                "receiptCounts": {
+                  "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema37"
                 }
               },
               "required": [
@@ -14352,13 +14390,45 @@
               "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema8"
             },
             "b_workflows_manageWorkflowRun___schema37": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000
+                },
+                "confirmed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "skipped": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "pending": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "source",
+                "confirmed",
+                "skipped",
+                "pending"
+              ],
+              "additionalProperties": false
+            },
+            "b_workflows_manageWorkflowRun___schema38": {
               "maxItems": 100,
               "type": "array",
               "items": {
-                "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema38"
+                "$ref": "#/$defs/b_workflows_manageWorkflowRun___schema39"
               }
             },
-            "b_workflows_manageWorkflowRun___schema38": {
+            "b_workflows_manageWorkflowRun___schema39": {
               "type": "object",
               "properties": {
                 "code": {
@@ -14393,7 +14463,7 @@
               ],
               "additionalProperties": false
             },
-            "b_workflows_manageWorkflowRun___schema39": {
+            "b_workflows_manageWorkflowRun___schema40": {
               "type": "string",
               "enum": [
                 "pending",
@@ -14492,13 +14562,13 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema4"
               },
               "finishedAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema63"
+                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema64"
               },
               "retainUntil": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema4"
               },
               "runId": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema64"
+                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema65"
               },
               "leaseExpiresAt": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema4"
@@ -14633,13 +14703,13 @@
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema4"
               },
               "finishedAt": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema63"
+                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema64"
               },
               "retainUntil": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema4"
               },
               "runId": {
-                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema64"
+                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema65"
               }
             },
             "required": [
@@ -15319,10 +15389,10 @@
                     "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema55"
                   },
                   "unresolved": {
-                    "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema60"
+                    "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema61"
                   },
                   "cleanup": {
-                    "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema62"
+                    "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema63"
                   }
                 },
                 "required": [
@@ -15387,6 +15457,9 @@
               },
               "evidenceHash": {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema59"
+              },
+              "receiptCounts": {
+                "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema60"
               }
             },
             "required": [
@@ -15421,13 +15494,45 @@
             "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema1"
           },
           "r_workflows_manageWorkflowRun___schema60": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "confirmed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "skipped": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "pending": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "source",
+              "confirmed",
+              "skipped",
+              "pending"
+            ],
+            "additionalProperties": false
+          },
+          "r_workflows_manageWorkflowRun___schema61": {
             "maxItems": 100,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema61"
+              "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema62"
             }
           },
-          "r_workflows_manageWorkflowRun___schema61": {
+          "r_workflows_manageWorkflowRun___schema62": {
             "type": "object",
             "properties": {
               "code": {
@@ -15462,7 +15567,7 @@
             ],
             "additionalProperties": false
           },
-          "r_workflows_manageWorkflowRun___schema62": {
+          "r_workflows_manageWorkflowRun___schema63": {
             "type": "string",
             "enum": [
               "pending",
@@ -15471,7 +15576,7 @@
               "blocked"
             ]
           },
-          "r_workflows_manageWorkflowRun___schema63": {
+          "r_workflows_manageWorkflowRun___schema64": {
             "anyOf": [
               {
                 "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema4"
@@ -15481,7 +15586,7 @@
               }
             ]
           },
-          "r_workflows_manageWorkflowRun___schema64": {
+          "r_workflows_manageWorkflowRun___schema65": {
             "type": "string"
           }
         }
