@@ -67,6 +67,7 @@ export interface StructuredWorkbookProfile {
 export interface StructuredDerivedMetadata {
   receiptId: string;
   receiptDate: string;
+  storeName: string;
 }
 export interface ParseStructuredFileInput {
   dataset: StructuredDatasetName;
@@ -681,7 +682,11 @@ function deliveryDerivedMetadataOrThrow(
 }
 
 function toDerivedMetadata(metadata: DeliveryLedgerMetadata): StructuredDerivedMetadata {
-  return { receiptId: metadata.receiptId, receiptDate: metadata.receiptDate };
+  return {
+    receiptId: metadata.receiptId,
+    receiptDate: metadata.receiptDate,
+    storeName: metadata.storeName
+  };
 }
 
 function deliveryItemRows(

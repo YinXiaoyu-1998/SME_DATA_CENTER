@@ -77,6 +77,7 @@ describe("read-only MCP tool handlers", () => {
       "get_source_document_download_url",
       "get_evidence_document_status",
       "get_import_status",
+      "query_jobs",
       "get_partition_import_status",
       "download_structured_partitions",
       "download_cost_cards",

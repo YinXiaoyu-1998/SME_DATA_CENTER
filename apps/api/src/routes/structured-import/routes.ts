@@ -8,6 +8,8 @@ import {
 } from "../../file-upload-authorization.js";
 import { performance } from "node:perf_hooks";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { workflowUploadBindingSchema } from "@smedc/mcp-contract";
+import { workflowUploadError, workflowUploadLink } from "../../enterprise-workflows/job-uploads.js";
 import { databaseErrorDetails, type DatabaseRetryEvent } from "@smedc/db";
 import {
   PHASE3_ERROR_CODES,
@@ -83,6 +85,10 @@ async function parseStructuredImportUpload(
     if (part.fieldname === "orderScope" || part.fieldname === "orderScopeTransition")
       throw new ResourceAttributesError("INVALID_ORDER_SCOPE");
     const value = typeof part.value === "string" ? part.value.trim() : "";
+    if (part.fieldname === "workflowAction") {
+      upload.workflowAction = upload.workflowAction === undefined ? value : "";
+      continue;
+    }
     if (part.fieldname === "historicalSupplementReason") {
       if (upload.historicalSupplementReason !== undefined || !value || value.length > 2048)
         throw new ResourceAttributesError("RESOURCE_HISTORICAL_REASON_REQUIRED");
@@ -345,6 +351,7 @@ export function registerStructuredImportRoutes(
     }
 
     let naturalKey: string | undefined;
+    let receiptStoreName: string | undefined;
     if (registry.metadataPolicy === "derived_receipt") {
       try {
         const profile = await measureTiming("upload.profile_file", () =>
@@ -368,6 +375,7 @@ export function registerStructuredImportRoutes(
         startDate = derivedMetadata.receiptDate.replaceAll("-", "");
         endDate = startDate;
         naturalKey = derivedMetadata.receiptId;
+        receiptStoreName = derivedMetadata.storeName;
       } catch (error) {
         request.log.warn({ err: error }, "structured import profile failed");
         logTiming("upload.total", importRequestStarted, { outcome: "profile_failed" });
@@ -385,6 +393,34 @@ export function registerStructuredImportRoutes(
     const candidateDocumentId = createStructuredImportDocumentId();
     const originalFileName = uploadedFile.fileName;
     const fileHash = createHash("sha256").update(uploadedFile.body).digest("hex");
+    const enterpriseKey = normalizeEnterpriseIdentity(enterpriseName).enterpriseKey;
+    let linkJob: Parameters<StructuredImportRepository["reserveStructuredImport"]>[0]["linkJob"];
+    if (upload.workflowAction !== undefined) {
+      const binding = workflowUploadBindingSchema.safeParse(
+        parseWorkflowAction(upload.workflowAction)
+      );
+      if (
+        !binding.success ||
+        dataset !== "delivery_ledger" ||
+        !naturalKey ||
+        !receiptStoreName ||
+        !startDate
+      )
+        return validationError(
+          reply,
+          "INVALID_WORKFLOW_INPUT",
+          "Provide an upload binding for this delivery receipt."
+        );
+      const date = `${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6)}`;
+      linkJob = workflowUploadLink(employee, binding.data, {
+        kind: "row_import",
+        enterpriseKey,
+        dataset,
+        sourceHash: fileHash,
+        window: { startDate: date, endDate: date },
+        receipt: { id: naturalKey, storeName: receiptStoreName }
+      });
+    }
     const canonicalFileName = canonicalStructuredImportFileName({
       enterpriseName,
       dataset,
@@ -422,7 +458,8 @@ export function registerStructuredImportRoutes(
             actorUserAccountId: employee.id,
             documentId: candidateDocumentId,
             dataset,
-            enterpriseKey: normalizeEnterpriseIdentity(enterpriseName).enterpriseKey,
+            enterpriseKey,
+            ...(linkJob ? { linkJob } : {}),
             ...(dataset === "cost_cards" ? { enterpriseName } : {}),
             historicalSupplementReason: upload.historicalSupplementReason,
             fileType,
@@ -456,6 +493,11 @@ export function registerStructuredImportRoutes(
       );
     } catch (error) {
       logTiming("upload.total", importRequestStarted, { outcome: "reservation_failed" });
+      const workflowError = workflowUploadError(error);
+      if (workflowError)
+        return reply
+          .code(workflowError.status)
+          .send(errorResponse(workflowError.code, "Upload binding is unavailable."));
       if (error instanceof ResourceAttributesError)
         return validationError(
           reply,
@@ -643,4 +685,13 @@ export function registerStructuredImportRoutes(
         .send(errorResponse("IMPORT_BATCH_NOT_FOUND", "Import batch not found."));
     }
   );
+}
+
+function parseWorkflowAction(value: string): unknown {
+  if (value.length > 1024) return;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return;
+  }
 }

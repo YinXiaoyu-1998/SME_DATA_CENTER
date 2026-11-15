@@ -14,7 +14,10 @@ import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import {
   createBusinessAuthorizationRepository,
   createDatabaseAdapter,
-  createPrismaStoreReviewRepository
+  createPrismaStructuredPartitionRepository,
+  createPrismaStoreReviewRepository,
+  retainPartitionJobs,
+  retainWorkflowRuns
 } from "@smedc/db";
 import { workflowCanonicalJson, type AuthenticatedEmployee } from "@smedc/domain";
 import { createOwnedIntegrationDatabase } from "../../../../scripts/test-integration-support.js";
@@ -41,6 +44,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       disabled: false,
       clearance: 3
     };
+    const replacement = { ...actor, id: "replacement_admin", email: "replacement@example.invalid" };
     const selector = { enterpriseKey: "enterprise", workflowType: "meituan-daily-ingestion" };
     const configuration = {
       schemaVersion: 1,
@@ -98,6 +102,16 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           clearance: 3
         }
       });
+      await prisma.userAccount.create({
+        data: {
+          id: replacement.id,
+          orgId: actor.orgId,
+          email: replacement.email,
+          displayName: replacement.displayName,
+          role: "admin",
+          clearance: 3
+        }
+      });
       await prisma.businessAuthorizationState.create({
         data: { orgId: actor.orgId, mode: "enabled" }
       });
@@ -124,8 +138,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           transactionTimeoutMs: 15000,
           batchInsertSize: 500
         }),
+        structuredPartitionRepository: createPrismaStructuredPartitionRepository({
+          databaseUrl: database.databaseUrl,
+          transactionTimeoutMs: 15000
+        }),
         cursorSigningSecret: "synthetic-test-secret",
-        authenticateAccessToken: async () => actor,
+        authenticateAccessToken: async (token) =>
+          token === "synthetic-replacement" ? replacement : actor,
         enterpriseWorkflowService: createEnterpriseWorkflowService({
           prisma,
           now: () => testClock
@@ -690,6 +709,68 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           where: { orgId: actor.orgId, workflowId: state.workflowId, actionId: { in: recoveryIds } }
         });
       }
+      const partitionFailure = {
+        actionId: "bound-partition-failure",
+        identity: { ...intent.identity, sourceHash: "7".repeat(64) }
+      };
+      expect(
+        (await action({ kind: "intent", ...binding, actions: [partitionFailure] })).statusCode
+      ).toBe(200);
+      const submitted = await app.inject({
+        method: "POST",
+        url: "/v1/structured/partition-uploads",
+        headers: { authorization: "Bearer synthetic" },
+        payload: {
+          enterpriseName: "enterprise",
+          dataset: "business",
+          ...run.snapshot.window,
+          sourceChecksumSha256: partitionFailure.identity.sourceHash,
+          sourceByteSize: 1,
+          mediaType: "text/csv",
+          originalFileName: "synthetic.csv",
+          idempotencyKey: "bound-partition-failure",
+          workflowAction: {
+            workflowId: state.workflowId,
+            ...binding,
+            actionId: partitionFailure.actionId
+          }
+        }
+      });
+      expect(submitted.statusCode, submitted.body).toBe(201);
+      const lookup = async () => {
+        const response = await callMcp("query_jobs", {
+          query: {
+            mode: "action",
+            workflowId: state.workflowId,
+            runId: binding.runId,
+            actionId: partitionFailure.actionId
+          }
+        });
+        expect(response.isError, response.content[0].text).toBe(false);
+        return JSON.parse(response.content[0].text).jobs[0].job;
+      };
+      const savedJob = await lookup();
+      expect(savedJob).toMatchObject({ kind: "partition_import", status: "uploading" });
+      const failureReceipt = {
+        actionId: partitionFailure.actionId,
+        state: "failed",
+        evidence: "service_status",
+        jobId: savedJob.id,
+        verifiedAt: testClock.toISOString()
+      };
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [failureReceipt] }))
+          .statusCode
+      ).toBe(409);
+      await prisma.partitionImportJob.update({
+        where: { id: savedJob.id },
+        data: { status: "failed", errorCode: "SYNTHETIC_UPLOAD_FAILURE", finishedAt: testClock }
+      });
+      expect((await lookup()).summary.errorCode).toBe("SYNTHETIC_UPLOAD_FAILURE");
+      expect(
+        (await action({ kind: "record_receipts", ...binding, receipts: [failureReceipt] }))
+          .statusCode
+      ).toBe(200);
       await prisma.userAccount.update({ where: { id: actor.id }, data: { role: "employee" } });
       expect((await action({ kind: "get", actionIds: ["upload-action"] })).statusCode).toBe(403);
       expect(
@@ -910,28 +991,53 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           .permitted
       ).toBe(true);
       const boundary = "synthetic-receipt-upload";
-      const payload = [
-        ...Object.entries({
-          dataset: "delivery_ledger",
-          enterpriseName: enterpriseKey,
-          idempotencyKey: "synthetic-receipt-upload"
-        }).map(
-          ([name, value]) =>
-            `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
-        ),
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="receipt.csv"\r\nContent-Type: text/csv\r\n\r\n${csv}\r\n--${boundary}--\r\n`
-      ].join("");
-      const uploaded = await app.inject({
-        method: "POST",
-        url: "/v1/structured/imports",
-        headers: {
-          authorization: "Bearer synthetic",
-          "content-type": `multipart/form-data; boundary=${boundary}`
-        },
-        payload
+      const upload = (actionId: string, content: string, idempotencyKey = actionId) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/structured/imports",
+          headers: {
+            authorization: "Bearer synthetic",
+            "content-type": `multipart/form-data; boundary=${boundary}`
+          },
+          payload: [
+            ...Object.entries({
+              dataset: "delivery_ledger",
+              enterpriseName: enterpriseKey,
+              idempotencyKey,
+              workflowAction: JSON.stringify({ workflowId, ...binding, actionId })
+            }).map(
+              ([name, value]) =>
+                `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+            ),
+            `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="receipt.csv"\r\nContent-Type: text/csv\r\n\r\n${content}\r\n--${boundary}--\r\n`
+          ].join("")
+        });
+      const queryJob = (query: unknown, replacementAccount = false) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/jobs/query",
+          payload: { query },
+          headers: {
+            authorization: replacementAccount ? "Bearer synthetic-replacement" : "Bearer synthetic"
+          }
+        });
+      const linkQuery = (actionId: string) => ({
+        mode: "action",
+        workflowId,
+        runId: binding.runId,
+        actionId
       });
+      const uploaded = await upload(intent.actionId, csv);
       expect(uploaded.statusCode, uploaded.body).toBe(202);
-      const jobId = uploaded.json().importBatch.importBatchId;
+      // Recover the Job ID from the central action, as a client with no upload response would.
+      const recovered = await queryJob(linkQuery(intent.actionId));
+      expect(recovered.statusCode, recovered.body).toBe(200);
+      const [accepted] = recovered.json().jobs;
+      expect(accepted).toMatchObject({
+        result: "accepted",
+        job: { kind: "row_import", status: "pending" }
+      });
+      const jobId = accepted.job.id;
       const receipt = {
         actionId: "receipt-upload",
         state: "confirmed",
@@ -992,6 +1098,135 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       expect((await action({ kind: "get", actionIds: ["receipt-upload"] })).body).not.toContain(
         "Synthetic item"
       );
+      const failedReceipt = (actionId: string) => ({
+        actionId,
+        state: "failed",
+        evidence: "request_rejected",
+        verifiedAt: testClock.toISOString()
+      });
+      expect((await upload(mismatched.actionId, csv)).statusCode).toBe(403);
+      expect((await queryJob(linkQuery(mismatched.actionId))).json().jobs).toEqual([]);
+      expect(
+        (
+          await action({
+            kind: "record_receipts",
+            ...binding,
+            receipts: [failedReceipt(mismatched.actionId)]
+          })
+        ).statusCode
+      ).toBe(200);
+
+      const conflictCsv = csv.replace("Synthetic item", "A different item");
+      const conflict = {
+        ...intent,
+        actionId: "synthetic-conflict",
+        identity: {
+          ...intent.identity,
+          sourceHash: createHash("sha256").update(conflictCsv).digest("hex")
+        }
+      };
+      expect(
+        (await action({ kind: "intent", ...binding, actions: [conflict] })).json().actions[0]
+          .permitted
+      ).toBe(true);
+      const rejected = await upload(conflict.actionId, conflictCsv);
+      expect(rejected.statusCode, rejected.body).toBe(409);
+      expect(rejected.json().error.code).toBe("RECEIPT_ID_CONFLICT");
+      expect(
+        (
+          await action({
+            kind: "record_receipts",
+            ...binding,
+            receipts: [failedReceipt(conflict.actionId)]
+          })
+        ).statusCode
+      ).toBe(200);
+      const linkedConflict = await queryJob(linkQuery(conflict.actionId));
+      expect(linkedConflict.json().jobs).toMatchObject([
+        {
+          result: "receipt_conflict",
+          job: { id: jobId, status: "applied", receiptId: "SYNTHETIC-RECEIPT" }
+        }
+      ]);
+      expect((await queryJob(linkQuery(conflict.actionId), true)).statusCode).toBe(404);
+
+      const finished = await call("manage_workflow_run", {
+        workflowId,
+        operation: {
+          kind: "finish",
+          ...binding,
+          summary: {
+            phase: "finished",
+            status: "partial",
+            cleanup: "retained",
+            observations: [
+              {
+                date: window.startDate,
+                storeName: "Store A",
+                dataset: "delivery_ledger",
+                status: "incomplete",
+                evidenceHash: "a".repeat(64),
+                receiptCounts: { source: 1, confirmed: 0, skipped: 0, pending: 1 }
+              }
+            ],
+            unresolved: [
+              {
+                actionId: conflict.actionId,
+                code: "WORKFLOW_SOURCE_UNAVAILABLE",
+                nextStep: "Verify receipt"
+              }
+            ]
+          }
+        }
+      });
+      expect(finished.statusCode, finished.body).toBe(200);
+      const correction = await app.inject({
+        method: "POST",
+        url: `/v1/jobs/workflow_run/${binding.runId}/corrections`,
+        headers: { authorization: "Bearer synthetic" },
+        payload: {
+          type: "delivery_receipt_conflict",
+          actionId: conflict.actionId,
+          expectedVersion: 0,
+          reason: "Verified existing delivery receipt"
+        }
+      });
+      expect(correction.statusCode, correction.body).toBe(200);
+      expect(correction.json()).toMatchObject({ status: "succeeded", version: 1 });
+      expect(
+        (await action({ kind: "get", actionIds: [conflict.actionId] })).json().actions[0].state
+      ).toBe("failed");
+      const note = (expectedVersion: number) =>
+        app.inject({
+          method: "PATCH",
+          url: `/v1/jobs/workflow_run/${binding.runId}/metadata`,
+          headers: { authorization: "Bearer synthetic" },
+          payload: { expectedVersion, reason: "Synthetic audit", tags: ["reviewed"] }
+        });
+      expect((await note(0)).statusCode).toBe(409);
+      expect((await note(1)).json().metadata).toMatchObject({ version: 2, tags: ["reviewed"] });
+
+      // Model the new central assignment with a different account. No local receipts are involved.
+      const where = {
+        orgId_workflowId_installationId: {
+          orgId: actor.orgId,
+          workflowId,
+          installationId: binding.installationId
+        }
+      };
+      await prisma.workflowInstallation.update({ where, data: { userAccountId: replacement.id } });
+      try {
+        expect((await queryJob(linkQuery(conflict.actionId), true)).json().jobs).toMatchObject([
+          {
+            job: { id: jobId, status: "applied" }
+          }
+        ]);
+        expect(
+          (await queryJob({ mode: "detail", kind: "row_import", id: jobId }, true)).json().jobs
+        ).toEqual([]);
+      } finally {
+        await prisma.workflowInstallation.update({ where, data: { userAccountId: actor.id } });
+      }
     });
 
     it("reports only elapsed gaps under a confirmed enabled local schedule", async () => {
@@ -2966,6 +3201,93 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         })
       ).json();
       expect(historical.actions[0].state).toBe("confirmed");
+    });
+
+    it("reads both successful and failed job history after terminal detail retention", async () => {
+      const start = new Date("2026-11-01T01:00:00Z");
+      const finished = new Date("2026-11-01T02:00:00Z");
+      for (const status of ["published", "failed"] as const) {
+        await prisma.partitionImportJob.create({
+          data: {
+            id: `history-${status}`,
+            orgId: actor.orgId,
+            uploaderId: actor.id,
+            dataset: "business",
+            enterpriseKey: "history-enterprise",
+            enterpriseName: "Synthetic",
+            confidentialityLevel: 0,
+            idempotencyKey: `idem-${status}`,
+            requestFingerprint: "a".repeat(64),
+            originalFileName: "must-not-enter-history.csv",
+            mediaType: "text/csv",
+            sourceByteSize: 1n,
+            sourceChecksumSha256: "b".repeat(64),
+            sourceStartDate: start,
+            sourceEndDate: start,
+            createdAt: start,
+            expiresAt: finished,
+            finishedAt: finished,
+            status,
+            errorCode: status === "failed" ? "SYNTHETIC_IMPORT_FAILURE" : null
+          }
+        });
+      }
+      const query = (value: unknown) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/jobs/query",
+          payload: { query: value },
+          headers: { authorization: "Bearer synthetic" }
+        });
+      const filter = {
+        mode: "list",
+        kind: "partition_import",
+        enterpriseKey: "history-enterprise",
+        limit: 1
+      };
+      const live = await query(filter);
+      expect(live.statusCode, live.body).toBe(200);
+      expect(live.json().jobs[0].status).toBe("published");
+      await prisma.$transaction((tx) => retainPartitionJobs(tx, new Date("2026-11-02"), 100));
+      expect(
+        await prisma.partitionImportJob.count({ where: { enterpriseKey: "history-enterprise" } })
+      ).toBe(0);
+      const next = await query({ ...filter, cursor: live.json().nextCursor });
+      expect(next.json()).toMatchObject({
+        jobs: [
+          {
+            status: "failed",
+            archived: true,
+            summary: { errorCode: "SYNTHETIC_IMPORT_FAILURE" }
+          }
+        ],
+        nextCursor: null
+      });
+      expect(next.body).not.toContain("must-not-enter-history.csv");
+      expect(
+        (await query({ ...filter, enterpriseKey: "different", cursor: live.json().nextCursor }))
+          .statusCode
+      ).toBe(400);
+      expect(
+        (
+          await query({
+            mode: "idempotency",
+            kind: "partition_import",
+            enterpriseKey: "history-enterprise",
+            idempotencyKey: "idem-published"
+          })
+        ).json().jobs
+      ).toMatchObject([{ id: "history-published", status: "published", archived: true }]);
+      await prisma.$transaction((tx) =>
+        retainWorkflowRuns(tx, new Date(Date.now() + 100 * 86400000))
+      );
+      expect(
+        (
+          await query({ mode: "list", kind: "workflow_run", enterpriseKey: "receipt-enterprise" })
+        ).json().jobs
+      ).toMatchObject([
+        { status: "succeeded", archived: true, metadata: { version: 2, tags: ["reviewed"] } }
+      ]);
     });
   }
 );

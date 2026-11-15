@@ -181,6 +181,8 @@ model Organization {
   supplierCatalogRows    SupplierCatalogRow[]
   quarantineCertificates QuarantineCertificate[]
   auditLogs              AuditLog[]
+  jobHistory             JobHistory[]
+  jobMetadata            JobMetadata[]
   skillEntries           SkillEntry[]
   loginIdentities        LoginIdentity[]
   authSessions           AuthSession[]
@@ -1521,6 +1523,7 @@ model EnterpriseWorkflow {
   installations WorkflowInstallation[]
   runs WorkflowRun[]
   actions WorkflowAction[]
+  uploadLinks WorkflowUploadLink[]
   @@unique([orgId, id])
   @@unique([orgId, enterpriseKey, type], map: "uq_enterprise_workflow_type")
   @@map("enterprise_workflows")
@@ -1649,6 +1652,59 @@ model WorkflowAction {
   @@index([orgId, workflowId, state])
   @@index([orgId, workflowId, runId, actionId], map: "ix_workflow_actions_run_inventory")
   @@map("workflow_actions")
+}
+
+// Safe terminal metadata survives the detailed partition job and workflow run retention windows.
+model JobHistory {
+  orgId String @map("org_id") @db.VarChar(64)
+  kind String @db.VarChar(32)
+  jobId String @map("job_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(191)
+  ownerId String @map("owner_id") @db.VarChar(32)
+  workflowId String? @map("workflow_id") @db.VarChar(64)
+  status String @db.VarChar(32)
+  idempotencyHash String? @map("idempotency_hash") @db.Char(64)
+  summary Json
+  createdAt DateTime @map("created_at") @db.DateTime(3)
+  finishedAt DateTime @map("finished_at") @db.DateTime(3)
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  @@id([orgId, kind, jobId])
+  @@index([orgId, kind, enterpriseKey, ownerId, createdAt, jobId], map: "ix_job_history_owner")
+  @@index([orgId, kind, enterpriseKey, workflowId, createdAt, jobId], map: "ix_job_history_workflow")
+  @@index([orgId, kind, ownerId, idempotencyHash], map: "ix_job_history_idempotency")
+  @@map("job_history")
+}
+
+model JobMetadata {
+  orgId String @map("org_id") @db.VarChar(64)
+  kind String @db.VarChar(32)
+  jobId String @map("job_id") @db.VarChar(64)
+  version Int @default(0) @db.UnsignedInt
+  note String? @db.VarChar(1000)
+  tags Json
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  @@id([orgId, kind, jobId])
+  @@map("job_metadata")
+}
+
+// Per-run linkage is stable even if a rejected action ID is reused in a later run.
+model WorkflowUploadLink {
+  orgId String @map("org_id") @db.VarChar(64)
+  workflowId String @map("workflow_id") @db.VarChar(64)
+  runId String @map("run_id") @db.VarChar(64)
+  actionId String @map("action_id") @db.VarChar(64)
+  kind String @db.VarChar(32)
+  jobId String @map("job_id") @db.VarChar(64)
+  result String @db.VarChar(32)
+  dataset String @db.VarChar(32)
+  storeNames Json @map("store_names")
+  storeKeys Json @map("store_keys")
+  receiptId String? @map("receipt_id") @db.VarChar(255)
+  actorId String @map("actor_id") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  workflow EnterpriseWorkflow @relation(fields: [orgId, workflowId], references: [orgId, id], onDelete: Restrict)
+  @@id([orgId, workflowId, runId, actionId])
+  @@map("workflow_upload_links")
 }
 
 model WorkflowMigration {

@@ -1,4 +1,6 @@
 import { DIRECTORY_MCP_TOOL_NAMES, DIRECTORY_MCP_INPUT_SCHEMAS } from "./employee-directory.js";
+import { queryJobsInputSchema, workflowUploadBindingSchema } from "./jobs.js";
+export * from "./jobs.js";
 import {
   ENTERPRISE_WORKFLOW_LAUNCHER_VERSION,
   WORKFLOW_MCP_INPUT_SCHEMAS,
@@ -467,6 +469,9 @@ const queryStructuredDatasetInputSchema = z
 
 const uploadStructuredDatasetInputSchema = z
   .object({
+    workflowAction: workflowUploadBindingSchema
+      .optional()
+      .describe("Current claimed workflow upload action binding."),
     file: uploadFileInputSchema,
     dataset: uploadStructuredDataset,
     orderScopeTransition: orderScopeTransitionConfirmationSchema
@@ -508,6 +513,16 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
+    if (
+      input.workflowAction &&
+      input.dataset !== "delivery_ledger" &&
+      !PARTITION_DATASETS.includes(input.dataset as (typeof PARTITION_DATASETS)[number])
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["workflowAction"],
+        message: "Workflow upload binding is limited to daily ingestion datasets."
+      });
     if (input.orderScopeTransition && (input.dataset !== "in_store_orders" || !input.orderScope))
       context.addIssue({
         code: "custom",
@@ -1062,6 +1077,7 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "get_source_document_download_url",
   "get_evidence_document_status",
   "get_import_status",
+  "query_jobs",
   "get_partition_import_status",
   "download_structured_partitions",
   "download_cost_cards",
@@ -1634,6 +1650,22 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       { name: "importBatchId", required: true, description: "Structured import batch id." }
     ],
     resultShape: ["document", "processing", "importBatch"]
+  }),
+  defineToolContract({
+    name: "query_jobs",
+    title: "Query SMEDC job history",
+    description:
+      "Read authorized row imports, partition imports, and workflow runs from central history. Use action or actions mode to find upload jobs linked to an existing workflow run. Terminal outcomes include failures.",
+    inputSchema: queryJobsInputSchema,
+    inputFields: [
+      {
+        name: "query",
+        required: true,
+        description: "Detail, receipt, idempotency, action, actions or list selector."
+      }
+    ],
+    resultShape: ["jobs", "nextCursor"],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({
     name: "describe_ledger_pdf_coverage",

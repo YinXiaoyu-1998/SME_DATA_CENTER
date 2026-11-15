@@ -5,6 +5,7 @@
 - 企业资料中枢 is a service/tool for employee-owned agents, CLIs, MCP clients, APIs, and minimal admin UI; do not turn it into an employee-facing AI agent, report generator, dashboard, or skill runner.
 - Follow `docs/implementation/implementation-plan.md` phase boundaries. Backend authorization is mandatory for every non-health endpoint; never trust client-side filtering.
 - Never commit secrets, `.env`, real customer exports, private tokens, service-account keys, or downloaded third-party data.
+- Extend an existing MCP tool when its purpose and authorization boundary fit and existing inputs remain compatible. Add a tool only when no existing tool fits, and explain why in the PR.
 
 ## Working discipline
 

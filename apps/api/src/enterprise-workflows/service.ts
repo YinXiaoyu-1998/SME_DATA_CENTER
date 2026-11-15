@@ -1,14 +1,26 @@
 import { ENTERPRISE_WORKFLOW_CAPABILITY, workflowHostSnapshotSchema } from "@smedc/domain";
+import { retainWorkflowRuns } from "@smedc/db";
 import { migrationOperation, migrationSummaries } from "./migrations.js";
 import { actionOperation, authorizeAction } from "./actions.js";
 import { requireBinding } from "./runs.js";
 import { installOperation } from "./installations.js";
 import { scheduledWindow, runOperation, runView } from "./runs.js";
 import type { PrismaClient } from "@prisma/client";
-import { WORKFLOW_OPERATION_INPUT_SCHEMAS, type WorkflowOperationName } from "@smedc/mcp-contract";
+import {
+  WORKFLOW_OPERATION_INPUT_SCHEMAS,
+  jobMetadataPatchSchema,
+  jobCorrectionSchema,
+  type JobKind,
+  type JobQuery,
+  type WorkflowOperationName
+} from "@smedc/mcp-contract";
 import { dbType, transaction, lockWorkflow, fail, type Actor } from "./repository.js";
 import { ensureWorkflow, prepareChange, saveChange, view } from "./configuration.js";
 import { canonicalWebOrigin } from "../config/origins.js";
+import { queryJobs } from "../jobs/query.js";
+import { patchJobMetadata, correctWorkflowJob } from "../jobs/changes.js";
+import type { RequestAuditContext } from "../request-audit-context.js";
+import type { z } from "zod";
 // Recognize only bounded, unambiguous daily/weekly cadence. This never schedules a job
 // or predicts today's next trigger; unsupported calendar rules remain unknown.
 function confirmedCycleDays(type: string, schedule: string): number | null {
@@ -69,23 +81,43 @@ export function createEnterpriseWorkflowService(options: {
 }) {
   const webOrigin = options.webOrigin ? canonicalWebOrigin(options.webOrigin.trim()) : "";
   async function pruneRetention(now = options.now?.() ?? new Date()) {
-    const expired = await options.prisma.workflowRun.findMany({
-      where: { retainUntil: { lt: now }, finishedAt: { not: null } },
-      select: { id: true },
-      take: 100
+    return { pruned: await options.prisma.$transaction((tx) => retainWorkflowRuns(tx, now)) };
+  }
+  function withJobAuthorization<T>(
+    actor: Actor,
+    operation: (tx: import("./repository.js").Tx) => Promise<T>
+  ) {
+    return transaction(options.prisma, actor, (tx, auth) => {
+      if (auth.mode !== "enabled") fail("JOB_ACCESS_UNAVAILABLE");
+      return operation(tx);
     });
-    if (expired.length)
-      await options.prisma.workflowRun.deleteMany({
-        where: {
-          id: { in: expired.map((r) => r.id) },
-          retainUntil: { lt: now },
-          finishedAt: { not: null }
-        }
-      });
-    return { pruned: expired.length };
   }
   return {
     pruneRetention,
+    queryJobs(actor: Actor, query: JobQuery, secret: string) {
+      return withJobAuthorization(actor, (tx) => queryJobs(tx, actor, query, secret));
+    },
+    patchJob(
+      actor: Actor,
+      audit: RequestAuditContext,
+      kind: JobKind,
+      id: string,
+      patch: z.infer<typeof jobMetadataPatchSchema>
+    ) {
+      return withJobAuthorization(actor, (tx) =>
+        patchJobMetadata(tx, actor, audit, kind, id, patch)
+      );
+    },
+    correctJob(
+      actor: Actor,
+      audit: RequestAuditContext,
+      id: string,
+      correction: z.infer<typeof jobCorrectionSchema>
+    ) {
+      return withJobAuthorization(actor, (tx) =>
+        correctWorkflowJob(tx, actor, audit, id, correction)
+      );
+    },
     disconnect: options.disconnect,
     async execute(tool: WorkflowOperationName, raw: unknown, actor: Actor): Promise<unknown> {
       return transaction(options.prisma, actor, async (tx, auth) => {

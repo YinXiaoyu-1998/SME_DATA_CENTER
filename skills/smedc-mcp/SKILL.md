@@ -598,6 +598,10 @@ Do not send `startDate` or `endDate`.
   existing receipts. The service fills shelf life on new receipt imports from the enterprise's
   catalog by exact item name; unmatched items stay empty. Later catalog changes leave existing
   receipts unchanged. Shelf-life catalog upload is not currently exposed.
+- Use `query_jobs` with `query: {mode: "receipt", enterpriseKey, receiptId}` to locate
+  a delivery receipt batch that belongs to the current uploader. Workflow uploads may use
+  the central action association to reconcile an existing receipt. See
+  [central Job history](references/job-history.md).
 - Raw `delivery_ledger` details, aggregates, coverage and original CSV/XLSX links are unavailable,
   including for admins and older clients. Use the finished PDF workflow only; do not try old
   aggregate selectors or feature flags. Read

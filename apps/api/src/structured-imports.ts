@@ -106,6 +106,11 @@ export interface StructuredImportBatchRecord {
 }
 
 export interface ReserveStructuredImportInput {
+  linkJob?: (
+    tx: Prisma.TransactionClient,
+    jobId: string,
+    result?: "accepted" | "receipt_conflict"
+  ) => Promise<void>;
   historicalSupplementReason?: string;
   enterpriseKey?: string;
   enterpriseName?: string;
@@ -176,7 +181,8 @@ export interface StructuredImportRepository {
 export class StructuredImportError extends Error {
   constructor(
     readonly code: string,
-    message = code
+    message = code,
+    readonly conflictingBatchId?: string
   ) {
     super(message);
   }
@@ -381,7 +387,11 @@ export function createPrismaStructuredImportRepository(options: {
 
       if (existingNaturalKeyBatch) {
         if (existingNaturalKeyBatch.requestFingerprint !== input.requestFingerprint) {
-          throw new StructuredImportError("RECEIPT_ID_CONFLICT");
+          throw new StructuredImportError(
+            "RECEIPT_ID_CONFLICT",
+            undefined,
+            existingNaturalKeyBatch.id
+          );
         }
 
         return {
@@ -472,14 +482,28 @@ export function createPrismaStructuredImportRepository(options: {
       ) {
         throw new StructuredImportError("DATASET_REQUIRES_PARTITION_EXTRACT");
       }
+      const linkJob = input.linkJob;
+      async function findExisting() {
+        const existing = await resolveExistingReservation(input).catch(async (error: unknown) => {
+          if (linkJob && error instanceof StructuredImportError && error.conflictingBatchId) {
+            const batchId = error.conflictingBatchId;
+            await prisma.$transaction((tx) => linkJob(tx, batchId, "receipt_conflict"));
+          }
+          throw error;
+        });
+        if (existing && linkJob)
+          await prisma.$transaction((tx) => linkJob(tx, existing.importBatch.id));
+        return existing;
+      }
       return retryIdempotentDatabaseOperation(async () => {
-        const existing = await resolveExistingReservation(input);
+        const existing = await findExisting();
         if (existing) return existing;
         const importBatchId = createImportBatchId();
         try {
           const batch = await prisma.$transaction(
             async (tx) => {
               await requireCurrentUploadAdmin(tx, input.orgId, input.actorUserAccountId);
+              await linkJob?.(tx, importBatchId);
               let confidentialityLevel = input.document.confidentialityLevel;
               if (input.dataset === "cost_cards") {
                 if (
@@ -629,12 +653,15 @@ export function createPrismaStructuredImportRepository(options: {
                 include: importBatchInclude
               });
             },
-            { timeout: options.transactionTimeoutMs }
+            {
+              timeout: options.transactionTimeoutMs,
+              ...(linkJob ? { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted } : {})
+            }
           );
           return { state: "created" as const, importBatch: toImportBatchRecord(batch) };
         } catch (error) {
           if (isUniqueConstraintError(error)) {
-            const raced = await resolveExistingReservation(input);
+            const raced = await findExisting();
             if (raced) return raced;
           }
           throw error;

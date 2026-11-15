@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.20.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.21.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1404,6 +1404,7 @@ it("preserves cost-card archive revisions and publication summaries through MCP"
     ],
     [
       "get_import_status",
+      "query_jobs",
       { importBatchId: "batch_a" },
       {
         importBatch: {

@@ -21,41 +21,42 @@ export const publicType = (type: string) => type.replaceAll("_", "-") as Workflo
 export function fail(code: string): never {
   throw new Error(code);
 }
+export async function loadWorkflowAuthorization(
+  tx: Tx,
+  actor: Actor
+): Promise<AuthorizationSnapshot> {
+  await tx.$queryRaw`SELECT org_id FROM business_authorization_states WHERE org_id = ${actor.orgId} FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM employees WHERE org_id = ${actor.orgId} AND id = ${actor.id} FOR SHARE`;
+  const employee = await tx.userAccount.findFirst({
+    where: { id: actor.id, orgId: actor.orgId, role: "admin", disabled: false }
+  });
+  if (!employee) fail("WORKFLOW_ADMIN_REQUIRED");
+  const state = await tx.businessAuthorizationState.findUnique({ where: { orgId: actor.orgId } });
+  const categories = await tx.businessCategory.findMany({
+    where: { orgId: actor.orgId },
+    include: { dimensions: true }
+  });
+  return {
+    orgId: actor.orgId,
+    userAccountId: actor.id,
+    role: employee.role,
+    disabled: employee.disabled,
+    clearance: employee.clearance,
+    mode: state?.mode ?? "legacy",
+    authorizationVersion: String(state?.version ?? 0),
+    categories: categories.map(toBusinessCategoryRule),
+    grants: (await loadBusinessGrants(tx, actor.orgId, actor.id)).get(actor.id) ?? []
+  };
+}
 export async function transaction<T>(
   prisma: PrismaClient,
   actor: Actor,
   fn: (tx: Tx, snapshot: AuthorizationSnapshot) => Promise<T>
 ) {
-  return prisma.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT org_id FROM business_authorization_states WHERE org_id = ${actor.orgId} FOR SHARE`;
-      await tx.$queryRaw`SELECT id FROM employees WHERE org_id = ${actor.orgId} AND id = ${actor.id} FOR SHARE`;
-      const employee = await tx.userAccount.findFirst({
-        where: { id: actor.id, orgId: actor.orgId, role: "admin", disabled: false }
-      });
-      if (!employee) fail("WORKFLOW_ADMIN_REQUIRED");
-      const state = await tx.businessAuthorizationState.findUnique({
-        where: { orgId: actor.orgId }
-      });
-      const categories = await tx.businessCategory.findMany({
-        where: { orgId: actor.orgId },
-        include: { dimensions: true }
-      });
-      const snapshot: AuthorizationSnapshot = {
-        orgId: actor.orgId,
-        userAccountId: actor.id,
-        role: employee.role,
-        disabled: employee.disabled,
-        clearance: employee.clearance,
-        mode: state?.mode ?? "legacy",
-        authorizationVersion: String(state?.version ?? 0),
-        categories: categories.map(toBusinessCategoryRule),
-        grants: (await loadBusinessGrants(tx, actor.orgId, actor.id)).get(actor.id) ?? []
-      };
-      return fn(tx, snapshot);
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15000 }
-  );
+  return prisma.$transaction(async (tx) => fn(tx, await loadWorkflowAuthorization(tx, actor)), {
+    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    timeout: 15000
+  });
 }
 export async function lockWorkflow(tx: Tx, actor: Actor, workflowId: string) {
   const identity = await tx.enterpriseWorkflow.findFirst({

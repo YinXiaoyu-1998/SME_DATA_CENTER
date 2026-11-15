@@ -9,6 +9,7 @@ import {
   type PartitionDatasetName
 } from "@smedc/domain";
 import { z } from "zod";
+import type { WorkflowUploadBinding } from "@smedc/mcp-contract";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
@@ -94,6 +95,7 @@ async function uploadPartitionDatasetInternal(input: {
   historicalSupplementReason?: string;
   orderScope?: DeclaredOrderScope;
   orderScopeTransition?: OrderScopeTransitionConfirmation;
+  workflowAction?: WorkflowUploadBinding;
 }): Promise<unknown> {
   const before = await stat(input.filePath);
   if (!before.isFile()) throw new Error("Local partition upload source is not a regular file.");
@@ -104,6 +106,7 @@ async function uploadPartitionDatasetInternal(input: {
       dataset: input.dataset,
       orderScope: input.orderScope,
       orderScopeTransition: input.orderScopeTransition,
+      workflowAction: input.workflowAction,
       enterpriseName: input.enterpriseName,
       startDate: compactDateToIso(input.startDate),
       endDate: compactDateToIso(input.endDate),

@@ -67,6 +67,7 @@ export type LauncherBusinessToolName =
   | "get_source_document_download_url"
   | "get_evidence_document_status"
   | "get_import_status"
+  | "query_jobs"
   | "get_partition_import_status"
   | "download_structured_partitions"
   | "download_cost_cards"
@@ -276,6 +277,8 @@ export function registerLauncherTools(
               ) ||
               [
                 "prepare_order_scope_transition",
+                "get_import_status",
+                "query_jobs",
                 "download_cost_cards",
                 "archive_cost_card",
                 "upsert_store_reviews",
@@ -478,6 +481,7 @@ async function proxyPartitionUpload(
     idempotencyKey: string;
     confidentialityLevel?: number;
     historicalSupplementReason?: string;
+    workflowAction?: import("@smedc/mcp-contract").WorkflowUploadBinding;
     orderScope?: "settled_only" | "all_statuses";
     orderScopeTransition?: { previewId: string; confirmationDigest: string };
   };
@@ -503,7 +507,8 @@ async function proxyPartitionUpload(
         confidentialityLevel: value.confidentialityLevel,
         orderScope: value.orderScope,
         orderScopeTransition: value.orderScopeTransition,
-        historicalSupplementReason: value.historicalSupplementReason
+        historicalSupplementReason: value.historicalSupplementReason,
+        workflowAction: value.workflowAction
       })) as Record<string, unknown>
     );
   } catch (error) {

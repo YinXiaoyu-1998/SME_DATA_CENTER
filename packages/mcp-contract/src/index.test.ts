@@ -238,6 +238,7 @@ const validInputs = {
   get_source_document_download_url: { sourceDocumentId: "doc_1" },
   get_evidence_document_status: { documentId: "doc_1" },
   get_import_status: { importBatchId: "imp_1" },
+  query_jobs: { query: { mode: "detail", kind: "partition_import", id: "pjob_1" } },
   get_partition_import_status: { partitionImportJobId: "pjob_1" },
   download_cost_cards: { enterpriseName: "Synthetic" },
   archive_cost_card: { costCardId: "cc_a" },
@@ -697,6 +698,24 @@ const invalidInputCases = [
     ]
   },
   {
+    tool: "query_jobs",
+    cases: [
+      { label: "untyped query", input: { query: { mode: "detail", id: "job" } } },
+      {
+        label: "foreign organization selector",
+        input: {
+          query: { mode: "detail", kind: "row_import", id: "job", orgId: "outside" }
+        }
+      },
+      {
+        label: "requested metadata write",
+        input: {
+          query: { mode: "detail", kind: "row_import", id: "job", note: "new note" }
+        }
+      }
+    ]
+  },
+  {
     tool: "get_partition_import_status",
     cases: [
       { label: "missing partition job id", input: {} },
@@ -879,6 +898,7 @@ describe("SMEDC MCP contract", () => {
       "get_source_document_download_url",
       "get_evidence_document_status",
       "get_import_status",
+      "query_jobs",
       "get_partition_import_status",
       "download_structured_partitions",
       "download_cost_cards",

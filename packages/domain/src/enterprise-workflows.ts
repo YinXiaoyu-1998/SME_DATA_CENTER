@@ -706,13 +706,32 @@ export const workflowObservationSchema = z
     storeName: workflowNameSchema,
     date: workflowDateSchema,
     status: z.enum(["observed_zero", "no_source", "unreadable", "incomplete", "confirmed"]),
-    evidenceHash: workflowHashSchema.optional()
+    evidenceHash: workflowHashSchema.optional(),
+    receiptCounts: z
+      .strictObject({
+        source: z.number().int().positive().max(100_000),
+        confirmed: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative(),
+        pending: z.number().int().nonnegative()
+      })
+      .optional()
   })
   .strict()
   .refine(
     (v) => v.status !== "observed_zero" || v.evidenceHash !== undefined,
     "Observed zero requires source evidence."
-  );
+  )
+  .refine((value) => {
+    const counts = value.receiptCounts;
+    return (
+      !counts ||
+      (value.dataset === "delivery_ledger" &&
+        !!value.evidenceHash &&
+        ["confirmed", "incomplete"].includes(value.status) &&
+        counts.source === counts.confirmed + counts.skipped + counts.pending &&
+        (value.status === "confirmed" ? counts.pending === 0 : counts.pending > 0))
+    );
+  }, "Receipt counts require complete source evidence and a matching receipt outcome.");
 export const workflowRunSummarySchema = z
   .object({
     phase: z.enum(WORKFLOW_RUN_PHASES),

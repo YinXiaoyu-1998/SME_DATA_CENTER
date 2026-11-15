@@ -146,7 +146,8 @@ In `enabled` mode ordinary full metadata requires every retained source requirem
 current lifecycle, complete scopes and category clearance; raw delivery-receipt metadata remains
 unavailable. `legacy`/`preparing` explicitly retain the existing upload-clearance metadata rule;
 `suspended` never uses that rule. There is no implicit admin content bypass or new management API.
-`get_import_status` delegates to this same server boundary with unchanged input parameters.
+`get_import_status` delegates to the batch-ID route. Central lookup by receipt,
+idempotency key or workflow action is described in [Job history](job-history.md).
 
 ## Upload fields and limits
 

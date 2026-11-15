@@ -28,6 +28,8 @@ import {
 import type { ApiRuntimeLimits } from "../../config/runtime-limits.js";
 import { errorResponse, validationError } from "../../request-errors.js";
 import type { RequestAuth } from "../../request-auth.js";
+import { workflowUploadBindingSchema, type WorkflowUploadBinding } from "@smedc/mcp-contract";
+import { workflowUploadError, workflowUploadLink } from "../../enterprise-workflows/job-uploads.js";
 import {
   StructuredPartitionRepositoryError,
   type StructuredPartitionRepository
@@ -36,6 +38,7 @@ import {
 const PART_URL_PAGE_SIZE = 100;
 
 interface CreateUploadBody {
+  workflowAction?: WorkflowUploadBinding;
   historicalSupplementReason?: string;
   dataset?: string;
   orderScope?: DeclaredOrderScope;
@@ -148,7 +151,18 @@ export function registerStructuredPartitionRoutes(
         checksumSha256: parsed.value.sourceChecksumSha256
       });
       try {
-        const fingerprint = createHash("sha256").update(JSON.stringify(parsed.value)).digest("hex");
+        const { workflowAction, ...source } = parsed.value;
+        const fingerprint = createHash("sha256").update(JSON.stringify(source)).digest("hex");
+        const linkJob =
+          workflowAction &&
+          workflowUploadLink(employee, workflowAction, {
+            kind: "partition_import",
+            enterpriseKey: source.enterpriseKey,
+            dataset: source.dataset,
+            sourceHash: source.sourceChecksumSha256,
+            window: { startDate: source.startDate, endDate: source.endDate },
+            orderScope: source.orderScope
+          });
         const reserved = await dependencies.partitions().reserveUpload({
           id: jobId,
           historicalSupplementReason: parsed.value.historicalSupplementReason,
@@ -172,7 +186,8 @@ export function registerStructuredPartitionRoutes(
             Date.now() + dependencies.runtimeLimits.partitionUploadSessionTtlSeconds * 1000
           ),
           temporaryObjectKey: objectKey,
-          multipartUploadId: createdMultipart.uploadId
+          multipartUploadId: createdMultipart.uploadId,
+          ...(linkJob ? { linkJob } : {})
         });
         if (reserved.state === "existing") {
           await storage.abortMultipartUpload({
@@ -201,6 +216,11 @@ export function registerStructuredPartitionRoutes(
         await storage
           .abortMultipartUpload({ key: objectKey, uploadId: createdMultipart.uploadId })
           .catch(() => undefined);
+        const workflowError = workflowUploadError(error);
+        if (workflowError)
+          return reply
+            .code(workflowError.status)
+            .send(errorResponse(workflowError.code, "Upload binding is unavailable."));
         if (error instanceof ResourceAttributesError)
           return validationError(
             reply,
@@ -503,6 +523,9 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       "INVALID_ORDER_SCOPE",
       "Declare settled_only or all_statuses only for in_store_orders."
     );
+  const workflowAction = workflowUploadBindingSchema.optional().safeParse(body.workflowAction);
+  if (!workflowAction.success)
+    return invalid("INVALID_WORKFLOW_INPUT", "Provide a valid upload binding.");
   const transition = orderScopeTransitionConfirmationSchema
     .optional()
     .safeParse(body.orderScopeTransition);
@@ -588,6 +611,7 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
     ok: true as const,
     value: {
       ...body,
+      workflowAction: workflowAction.data,
       dataset: body.dataset,
       orderScope: body.orderScope as DeclaredOrderScope | undefined,
       orderScopeTransition: transition.data,
