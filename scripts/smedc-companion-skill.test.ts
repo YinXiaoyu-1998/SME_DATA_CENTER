@@ -20,14 +20,16 @@ describe("SMEDC companion skill guidance", () => {
     expect(skill).toContain("smedc-delivery-ledger");
     expect(skill).toContain("https://github.com/YinXiaoyu-1998/smedc-companion-skills");
   });
-  it("routes a general upgrade through standalone companion refresh even without tasks", async () => {
+  it("routes a general upgrade to the refresh procedure for all installed official companions", async () => {
     const [skill, upgrade] = await Promise.all([
       readFile(path.join(root, "skills/smedc-mcp/SKILL.md"), "utf8"),
       readFile(path.join(root, "skills/smedc-mcp/references/upgrade-cleanup.md"), "utf8")
     ]);
     expect(skill).toContain("给我升级一下 SMEDC");
-    expect(skill).toContain("even without scheduled tasks");
-    expect(upgrade).toContain("including standalone copies with no scheduled tasks");
+    expect(skill.replace(/\s+/g, " ")).toContain(
+      "all official companion skills already installed on this computer"
+    );
+    expect(upgrade).toContain("all official companion skills already installed on this computer");
     expect(upgrade).toContain("#refresh-installed-companions-during-a-general-upgrade");
   });
   it("routes cost-card details to local CSV with published release and independent provenance", async () => {

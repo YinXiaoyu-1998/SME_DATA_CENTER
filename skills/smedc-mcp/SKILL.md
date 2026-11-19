@@ -103,8 +103,8 @@ authorize a launcher upgrade. For an authorized launcher update, first refresh t
 copy has not yet been verified against the official default branch, then follow Official Install
 Or Update using the
 newly verified exact pin. Never derive a new approved pin from server metadata alone. A general
-SMEDC update includes the core skill, launcher, all already-installed official companion skills
-on this computer even without scheduled tasks, and existing official scheduled workflows. Follow
+SMEDC update includes the core skill, launcher, all official companion skills
+already installed on this computer, and existing official scheduled workflows. Follow
 [upgrade, restart, and cleanup](references/upgrade-cleanup.md) and verify the loaded skills
 and any existing task definitions before reporting success.
 

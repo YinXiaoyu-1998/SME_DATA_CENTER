@@ -107,7 +107,7 @@ npm run worker:once
 页面上的产品名在对应服务部署后刷新即可看到。要让本机智能体识别新名称，请在官方 Skill 默认分支提供新版后选择更新范围：
 
 - “只更新 smedc-mcp 这个 Skill，不升级 launcher”：保留本地定制的恢复副本，校验并重载基础 Skill。已安装的配套 Skill 按需分别更新。
-- “帮我升级一下 SMEDC”：先核验官方基础 Skill，再按其指定版本升级已有连接，更新本机已安装的官方配套 Skill，包括没有对应定时任务的副本，并读回验证已有官方定时任务（含暂停任务）。旧版 Skill 可用英文名或稳定 ID 发起更新。
+- “帮我升级一下 SMEDC”：先核验官方基础 Skill，再按其指定版本升级已有连接，更新本机所有已安装的官方配套 Skill，并读回验证已有官方定时任务（含暂停任务）。旧版 Skill 可用英文名或稳定 ID 发起更新。
 
 正式员工通过[基础 Skill](skills/smedc-mcp/SKILL.md) 当前批准的固定版本本机 stdio launcher 访问远程 `https://api.smedatacenter.xyz`。双归属的
 `skills/smedc-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载

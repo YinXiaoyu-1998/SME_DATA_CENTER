@@ -11,10 +11,9 @@ passing a standalone self-check is not completion.
   discoverable current-user SMEDC integrations to the approved pin, reconnecting their hosts and
   removing superseded SMEDC processes, installations and entries. A skill-only request follows
   [update-skill.md](update-skill.md) and does not change launcher installations or MCP sessions.
-- A general SMEDC upgrade covers all already-installed official companion skills on this
-  computer, including standalone copies with no scheduled tasks. Discover these from the actual
-  host skill roots and the official companion repository; the employee does not need to list
-  them. Leave uninstalled companions out of the standalone refresh.
+- A general SMEDC upgrade covers all official companion skills already installed on this computer.
+  Discover these from the actual host skill roots and verify them against the official companion
+  repository.
 - The same request covers existing official scheduled workflows, including paused tasks.
   Coordinate changes to shared skill paths with those tasks before replacing the files. Use the [companion workflow upgrade procedure](https://github.com/YinXiaoyu-1998/smedc-companion-skills/blob/main/skills/smedc-workflows/references/installation.md#升级本机定时任务).
   Before switching the launcher, inventory the actual tasks and pause future triggers for
@@ -156,8 +155,7 @@ During a general upgrade, use the verified companion checkout and the procedure 
 Update existing tasks and their pinned dependencies through the scheduled workflow procedure.
 For other installed official companions, run the installed-copy refresh against the actual host
 skill roots after affected in-flight runs are reconciled. Keep all replacements from the same
-companion revision, and reuse already-verified copies updated by the task procedure. Run this
-step even when there are no tasks.
+companion revision, and reuse already-verified copies updated by the task procedure.
 Verify every in-scope companion's loaded path and revision. Keep recovery copies and record
 pending reloads or blocked copies until verification succeeds.
 
@@ -196,7 +194,7 @@ and launcher, no old launcher processes or effective entries remain, and superse
 update-created temporary backups are removed. For an upgrade covering scheduled workflows,
 report each task's verified package and launcher versions, host state and central registration.
 For a general upgrade, report each already-installed official companion's verified revision
-and loaded path, even on a computer with no scheduled tasks. An in-scope companion awaiting
+and loaded path. An in-scope companion awaiting
 replacement or reload keeps the upgrade incomplete.
 An in-scope task awaiting an update or readback leaves the upgrade incomplete. State the
 inspected scope. Any inaccessible host, remaining old installation, required restart,
