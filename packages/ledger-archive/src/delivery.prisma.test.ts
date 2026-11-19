@@ -108,6 +108,60 @@ beforeEach(() =>
     .mockResolvedValue({ sourceFingerprint: hash, rowCount: 1, sources: [ledger] })
 );
 describe("Prisma delivery current data boundaries", () => {
+  it("lists only unambiguous official names matching current ledger PDF grants, even without files", async () => {
+    const f = fixture();
+    const store = (name: string, officialName = name, enterpriseKey = "east") => ({
+      name,
+      officialName,
+      enterpriseKey
+    });
+    f.prisma.businessStore.findMany.mockResolvedValue([
+      store("old", "Renamed"),
+      store("No grant"),
+      store("Other enterprise", "Other enterprise", "west"),
+      store("collision", "Shared"),
+      store("collision2", "Shared", "west")
+    ] as never);
+    const authorization: NonNullable<LedgerDeliveryEmployee["authorization"]> = {
+      orgId: "org",
+      userAccountId: "e",
+      role: "admin",
+      disabled: false,
+      clearance: 2,
+      mode: "enabled",
+      authorizationVersion: "1",
+      categories: [
+        {
+          id: "pdf",
+          key: "ledger_pdf",
+          kind: "fixed",
+          confidentialityLevel: 2,
+          ownerships: ["store"],
+          requiredDimensionIds: []
+        }
+      ],
+      grants: [
+        {
+          id: "grant",
+          orgId: "org",
+          enterpriseKey: "east",
+          categoryIds: ["pdf"],
+          ownership: "store",
+          stores: { kind: "fixed", values: ["old", "Other enterprise", "collision"] },
+          dimensions: {}
+        }
+      ]
+    };
+    const list = (patch: Partial<typeof authorization>) =>
+      f.repository.listStores({ ...employee, authorization: { ...authorization, ...patch } });
+    expect(await list({})).toEqual(["Renamed"]);
+    expect(await list({ clearance: 1 })).toEqual([]);
+    expect(await list({ grants: [] })).toEqual([]);
+    expect(await list({ mode: "suspended" })).toEqual([]);
+    expect(f.prisma.businessStore.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { orgId: "org" } })
+    );
+  });
   it("rejects a source revision changed between selection and reservation", async () => {
     const f = fixture();
     const scope = { storeNames: [key.storeName], dates: [key.purchaseDate] };

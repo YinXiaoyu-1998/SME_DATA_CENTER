@@ -119,6 +119,9 @@ async function fixture(overrides: { ledgerPdfDeliveryEnabled?: boolean } = {}) {
     async currentEmployee(e) {
       return principal.disabled ? null : { ...e };
     },
+    async listStores() {
+      return readable ? [" 店 é "] : [];
+    },
     async facts(e, scope) {
       const dates = ledgerScopeDates(
         parseLedgerScope({ ...scope, storeNames: scope.storeNames ?? ["test"] })
@@ -309,6 +312,14 @@ describe("ledger download center browser boundary", () => {
     expect(context.body).not.toContain("email");
     expect(context.headers["x-content-type-options"]).toBe("nosniff");
     expectContract("ledger.context", body);
+
+    const withStores = await f.app.inject({
+      method: "GET",
+      url: "/api/web/v1/ledger/context?includeStores=1",
+      headers: { cookie }
+    });
+    expect(withStores.json().storeNames).toEqual([" 店 é "]);
+    expectContract("ledger.context", withStores.json());
 
     f.expire();
     const expired = await f.app.inject({

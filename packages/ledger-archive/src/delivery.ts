@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
+  canReadResource,
   LEDGER_BUNDLE_LIMITS,
   ledgerPdfNameForSegment,
   ledgerStoreFileSegment,
@@ -102,6 +103,7 @@ export type LedgerBundleRecord = {
 };
 export interface LedgerDeliveryRepository {
   currentEmployee(employee: LedgerDeliveryEmployee): Promise<LedgerDeliveryEmployee | null>;
+  listStores(employee: LedgerDeliveryEmployee): Promise<string[]>;
   commitDownloadIssue?<T>(employee: LedgerDeliveryEmployee, result: T): Promise<T>;
   facts(
     employee: LedgerDeliveryEmployee,
@@ -372,6 +374,9 @@ export function createLedgerPdfDelivery({
     status: fact.status
   });
   return {
+    async listStoresForBrowser(principal: LedgerDeliveryEmployee) {
+      return repository.listStores(await employee(principal));
+    },
     async coverage(input: {
       employee: LedgerDeliveryEmployee;
       scope: LedgerCoverageScope;
@@ -778,6 +783,22 @@ export async function ledgerBundleContentCurrent(
   });
 }
 
+function ledgerDisplayNames(directory: { name: string; officialName: string }[]) {
+  const names = new Map<string, string | null>();
+  const official = new Set<string>();
+  const ambiguous = new Set<string>();
+  for (const store of directory) {
+    names.set(store.name, names.has(store.name) ? null : store.officialName);
+    if (official.has(store.officialName)) ambiguous.add(store.officialName);
+    official.add(store.officialName);
+  }
+  return (name: string) => {
+    const display = names.get(name);
+    if (display === undefined) return official.has(name) ? null : name;
+    return display !== null && !ambiguous.has(display) ? display : null;
+  };
+}
+
 export function createPrismaLedgerDeliveryRepository({
   prisma,
   storage,
@@ -954,6 +975,60 @@ export function createPrismaLedgerDeliveryRepository({
   }
   return {
     currentEmployee,
+    async listStores(employee) {
+      const snapshot = employee.authorization;
+      if (!snapshot || snapshot.disabled || snapshot.mode === "suspended") return [];
+      const directory = await prisma.businessStore.findMany({
+        where: { orgId: employee.orgId },
+        select: { name: true, officialName: true, enterpriseKey: true }
+      });
+      const display = ledgerDisplayNames(directory);
+      const names = new Set<string>();
+      if (snapshot.mode === "enabled") {
+        const category = snapshot.categories.find((rule) => rule.key === "ledger_pdf");
+        if (!category) return [];
+        for (const store of directory) {
+          const name = display(store.name);
+          if (
+            name !== null &&
+            canReadResource(snapshot, {
+              orgId: employee.orgId,
+              categoryId: category.id,
+              valid: true,
+              scopes: [
+                {
+                  enterpriseKey: store.enterpriseKey,
+                  ownership: "store",
+                  storeName: store.name,
+                  dimensions: {}
+                }
+              ]
+            }).allowed
+          )
+            names.add(name);
+        }
+      } else {
+        // Legacy clearance is per partition. A directory entry alone cannot prove visibility.
+        let cursor: string | undefined;
+        do {
+          const page = await archive.listPartitionKeys({
+            orgId: employee.orgId,
+            ...(cursor ? { cursor } : {})
+          });
+          for (const key of page.keys) {
+            const name = display(key.storeName);
+            if (
+              name !== null &&
+              !names.has(name) &&
+              (await prisma.$transaction((tx) => readFact(tx, key, employee)))
+            )
+              names.add(name);
+          }
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor);
+      }
+      return [...names].sort();
+    },
     async commitDownloadIssue(employee, result) {
       return prisma.$transaction(async (tx) => {
         await tx.$queryRaw(
@@ -1015,16 +1090,7 @@ export function createPrismaLedgerDeliveryRepository({
         if (directory.some((store) => store.name === name)) return fail("LEDGER_PDF_UNAVAILABLE");
         return name;
       };
-      const display = (name: string): string | null => {
-        const matches = directory.filter((store) => store.name === name);
-        if (!matches.length) return name;
-        if (
-          matches.length !== 1 ||
-          directory.filter((store) => store.officialName === matches[0]!.officialName).length !== 1
-        )
-          return null;
-        return matches[0]!.officialName;
-      };
+      const display = ledgerDisplayNames(directory);
       const stableScope = scope.storeNames
         ? { ...scope, storeNames: scope.storeNames.map(toStable) }
         : scope;

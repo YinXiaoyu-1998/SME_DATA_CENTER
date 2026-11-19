@@ -43,6 +43,7 @@ function entry(date = "2026-10-01"): LedgerBundleEntry {
 }
 function fixture() {
   const repository: LedgerDeliveryRepository = {
+    listStores: vi.fn(async () => []),
     currentEmployee: vi.fn(async (e) => (e.disabled ? null : e)),
     auditDenied: vi.fn(async () => {}),
     facts: vi.fn(async () =>

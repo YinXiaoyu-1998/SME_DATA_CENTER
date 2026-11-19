@@ -28,9 +28,14 @@ export const ledgerLimitsSchema = z
 
 export type LedgerLimits = z.output<typeof ledgerLimitsSchema>;
 
+export const ledgerContextQuerySchema = z
+  .object({ includeStores: z.literal("1").optional() })
+  .strict();
+
 export const ledgerContextResponseSchema = z
   .object({
     identity: ledgerContextIdentitySchema,
+    storeNames: z.array(z.string()).optional(),
     /** 所有台账写操作（筛选、打包、领取链接）必须回传的 CSRF 令牌。 */
     csrfToken: z.string().min(1),
     limits: ledgerLimitsSchema

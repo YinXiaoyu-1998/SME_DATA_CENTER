@@ -17,6 +17,7 @@ const employee: AuthenticatedEmployee = {
 };
 function fixture(enabled = true, role: "employee" | "admin" = "employee") {
   const delivery = {
+    listStoresForBrowser: vi.fn(async () => []),
     coverageForBrowser: vi.fn(async () => ({ partitions: [], nextCursor: null })),
     requestSelectedLedgerBundle: vi.fn(async () => ({ requestId: "b", status: "queued" })),
     openLedgerPdf: vi.fn<LedgerPdfDelivery["openLedgerPdf"]>(async () => {
