@@ -1,5 +1,6 @@
 import { defineWebApiRoute, type WebApiRoute } from "../route-types.js";
 import {
+  ledgerContextQuerySchema,
   ledgerContextResponseSchema,
   ledgerCoverageBodySchema,
   ledgerCoverageResponseSchema,
@@ -26,9 +27,15 @@ export const ledgerWebApiRoutes: readonly WebApiRoute[] = Object.freeze([
     method: "GET",
     path: "/api/web/v1/ledger/context",
     auth: "session",
+    query: ledgerContextQuerySchema,
     response: ledgerContextResponseSchema,
-    errors: ["BROWSER_SIGN_IN_REQUIRED", "INTERNAL_ERROR"],
-    summary: "读取台账下载中心所需的本人身份、CSRF 令牌与静态限额"
+    errors: [
+      "BROWSER_SIGN_IN_REQUIRED",
+      "WEB_API_INVALID_REQUEST",
+      "LEDGER_PDF_UNAVAILABLE",
+      "INTERNAL_ERROR"
+    ],
+    summary: "读取台账下载中心所需的本人身份、CSRF 令牌、静态限额及按需加载的可选门店"
   }),
   defineWebApiRoute({
     id: "ledger.coverage",

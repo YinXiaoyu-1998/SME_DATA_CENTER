@@ -187,11 +187,22 @@ export function registerLedgerWebRoutes(
   registerWebApiRoute<BrowserPrincipal>(app, getWebApiRoute("ledger.context"), {
     authenticate,
     verifyWrite,
-    handler: async ({ request, principal }) => {
+    handler: async ({ request, reply, query, principal }) => {
       const secret = secretFor(request);
       if (!principal || secret === null)
         throw new Error("ledger.context reached without an authenticated session");
+      let storeNames: string[] | undefined;
+      if (query.includeStores === "1") {
+        try {
+          storeNames = options.ledgerPdfDeliveryEnabled
+            ? await options.delivery().listStoresForBrowser(principal)
+            : [];
+        } catch (error) {
+          return deliveryFailure(error, request, reply);
+        }
+      }
       return {
+        ...(storeNames === undefined ? {} : { storeNames }),
         identity: {
           userAccountId: principal.id,
           orgId: principal.orgId,

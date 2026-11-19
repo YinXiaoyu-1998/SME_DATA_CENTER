@@ -1219,8 +1219,19 @@
       "method": "GET",
       "path": "/api/web/v1/ledger/context",
       "auth": "session",
-      "summary": "读取台账下载中心所需的本人身份、CSRF 令牌与静态限额",
-      "request": {},
+      "summary": "读取台账下载中心所需的本人身份、CSRF 令牌、静态限额及按需加载的可选门店",
+      "request": {
+        "query": {
+          "type": "object",
+          "properties": {
+            "includeStores": {
+              "type": "string",
+              "const": "1"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
       "response": {
         "type": "object",
         "properties": {
@@ -1251,6 +1262,12 @@
               "organizationName"
             ],
             "additionalProperties": false
+          },
+          "storeNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "csrfToken": {
             "type": "string",
@@ -1316,7 +1333,9 @@
       },
       "errors": [
         "BROWSER_SIGN_IN_REQUIRED",
-        "INTERNAL_ERROR"
+        "INTERNAL_ERROR",
+        "LEDGER_PDF_UNAVAILABLE",
+        "WEB_API_INVALID_REQUEST"
       ]
     },
     {
