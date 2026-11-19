@@ -1,11 +1,11 @@
 ---
 name: smedc-mcp
 description: >-
-  上传和查询企业数据中枢（SMEDC）中的文件与资料：当员工要求把文件/文档/表格上传到
+  上传文件到企业智脑（SMEDC），或查询其中的资料和营业额：当员工要求把文件/文档/表格上传到
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
   用户要求更新 smedc-mcp 或 smedc-mcp-skill 这个 skill 时也使用本技能。
   用户询问 SMEDC 的配套分析、报表或扩展 skill 时也使用本技能。
-  安装 SMEDC、选择企业自动任务或换电脑恢复工作流时也使用本技能。
+  安装或升级企业智脑（SMEDC）、选择企业自动任务或换电脑恢复工作流时也使用本技能。
   企业入驻资料准备、新账号业务授权与管理员 MCP 权限配置时也使用本技能；不负责创建组织、账号或处理密码。
   Also use when users ask about optional SMEDC analysis, reporting, or extension skills.
   Also covers updating this skill from its official GitHub source and installing, configuring,
@@ -88,6 +88,9 @@ name and a recognized user-facing alias. “帮我更新 smedc-mcp-skill 这个 
 refresh this skill's files from its official source. The request authorizes that local update;
 do not ask which kind of update the employee means when they explicitly name the skill.
 
+“帮我升级一下企业智脑”, “帮我升级一下 SMEDC”, and “给我升级一下 SMEDC” request the general upgrade below.
+“只更新 smedc-mcp 这个 Skill，不升级 launcher” selects the skill-only procedure.
+
 Official source: [YinXiaoyu-1998/smedc-mcp-skill](https://github.com/YinXiaoyu-1998/smedc-mcp-skill),
 directory `skills/smedc-mcp/`, latest commit on the repository's default branch
 (currently `main`). A marketplace listing, SMEDC login, MCP connection, and an approved
@@ -100,9 +103,10 @@ authorize a launcher upgrade. For an authorized launcher update, first refresh t
 copy has not yet been verified against the official default branch, then follow Official Install
 Or Update using the
 newly verified exact pin. Never derive a new approved pin from server metadata alone. A general
-SMEDC update includes the core skill, launcher, and existing official scheduled workflows on
-this computer. Finish the [upgrade, restart, and cleanup procedure](references/upgrade-cleanup.md)
-and verify the existing task definitions before reporting success.
+SMEDC update includes the core skill, launcher, all official companion skills
+already installed on this computer, and existing official scheduled workflows. Follow
+[upgrade, restart, and cleanup](references/upgrade-cleanup.md) and verify the loaded skills
+and any existing task definitions before reporting success.
 
 ## Optional Enterprise Workflows
 
@@ -1098,7 +1102,7 @@ For authorized service tools:
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged
   with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
   `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
-- `smedc_list_skills` exposes approved directory metadata only; do not execute an entry.
+- `smedc_list_skills` exposes approved directory metadata only; do not execute an entry. For brand discovery, use either complete name as `q` (see the [directory search contract](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/blob/main/docs/implementation/api-contract.md#skill-directory-search)).
 
 ## Local File Read Errors
 
@@ -1116,7 +1120,7 @@ content, do not paste file contents into chat, and do not silently retry with an
 
 Example employee-facing reply (Chinese):
 
-> 您刚才提供的文件企业数据中枢没有足够权限读取，请把文件放到桌面/下载等可访问位置后重新提供，
+> 您刚才提供的文件，企业智脑没有足够权限读取，请把文件放到桌面/下载等可访问位置后重新提供，
 > 或重新拖入文件。
 
 For `MCP_LOCAL_FILE_NOT_FOUND` / `MCP_LOCAL_FILE_INVALID`, ask the employee to re-check the file

@@ -1,34 +1,17 @@
-import type { SkillDirectoryEntry, SkillDirectoryRepository } from "../skills.js";
+import {
+  filterKeywordMatches,
+  type SkillDirectoryEntry,
+  type SkillDirectoryRepository
+} from "../skills.js";
 
 export function createSkillRepository(entries: SkillDirectoryEntry[]): SkillDirectoryRepository {
   return {
     async listApprovedSkills(input) {
-      const q = input.q?.toLowerCase() ?? null;
-      return entries.filter((entry) => {
-        if (entry.status !== "approved") {
-          return false;
-        }
-
-        if (input.category && entry.category !== input.category) {
-          return false;
-        }
-
-        if (!q) {
-          return true;
-        }
-
-        return [
-          entry.name,
-          entry.description,
-          entry.category,
-          ...entry.inputRequirements,
-          entry.installInstructions,
-          ...entry.examplePrompts
-        ]
-          .join("\n")
-          .toLowerCase()
-          .includes(q);
-      });
+      const visible = entries.filter(
+        (entry) =>
+          entry.status === "approved" && (!input.category || entry.category === input.category)
+      );
+      return filterKeywordMatches(visible, input.q);
     }
   };
 }

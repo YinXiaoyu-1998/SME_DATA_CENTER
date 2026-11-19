@@ -1,12 +1,12 @@
-# 企业资料中枢 Test Cases
+# SMEDC Test Cases
 
-Last updated: 2026-10-24
+Last updated: 2026-11-19
 
 This file records the active verification matrix. Historical Phase 1/2 ordinary document upload/search tests are no longer current because that public surface has been removed.
 
 ## Admin-only upload regression boundary
 
-Launcher source recommendation is 0.14.0 and minimum remains 0.12.0. Verified live policy and deployment evidence are maintained in [staging readiness](staging-readiness.md). Run the HTTP upload
+Use the approved launcher in the [installation contract](official-user-install-and-login.md). The OAuth minimum is 0.12.0. Verified live policy and deployment evidence are maintained in [staging readiness](staging-readiness.md). Run the HTTP upload
 route tests, MCP HTTP/upload-handler tests, launcher preflight tests, and shared contract tests to
 prove employee c0/c3 receive HTTP `403` from direct HTTP upload endpoints; MCP JSON-RPC transport
 returns HTTP `200` with `isError: true` in the tool result. Both carry `UPLOAD_ADMIN_REQUIRED`,
@@ -125,7 +125,7 @@ For the current macOS Codex slice, run:
 npm run test:official-manual -- --evidence-config=/absolute/path/fixture-scope.json
 ```
 
-The runner uses `smedc-mcp-launcher@0.14.0`. Full business smoke requires explicit Evidence
+The runner uses the exact launcher pin in the [official manual acceptance guide](official-manual-acceptance.md). Full business smoke requires explicit Evidence
 category/scopes JSON through `--evidence-config`; missing/invalid configuration fails before
 controller cleanup or uploads. The default profile requires the synthetic admin-c0 identity;
 `--reuse-session` binds an explicitly selected existing admin. Selected read-only
@@ -248,7 +248,7 @@ Use synthetic fixtures. Focused contract/HTTP/MCP checks:
 They compare current server SQL predicates and denial behavior, admin self/other complete configuration,
 tenant/version failures, strict controlled schemas, and closed raw-ledger aggregate/original paths.
 Launcher build, installed-package tool/schema checks and dry packing are one release boundary.
-Launcher `0.14.0` is published and independently verified; it is the approved exact pin. Service
+Use the published, independently verified launcher approved by the core Skill. Service
 rollout, real-tenant activation and the explicitly requested full manual suite remain separate gates.
 
 The default owned integration runner includes the business authorization foundation and cutover,
@@ -260,7 +260,7 @@ full official manual workflow, real-tenant backfills or activation as part of th
 
 ## Cost-card changed-workflow cases (published launcher, synthetic only)
 
-Cost-card checks target published, independently verified launcher 0.14.0. Verify service rollout
+Cost-card checks target the approved launcher. Verify service rollout
 and synthetic tenant configuration separately; publication does not authorize the full official
 suite, real imports/cleanup or real tenant changes. Use small synthetic
 cards with 35-column originals, two same-name specifications, the same SKU under another SPU,
@@ -303,7 +303,6 @@ write. Baseline comparisons and query output both preserve arbitrary JSON score 
 Focused HTTP/contract/launcher tests cover 401/403/400/413, canonical duplicate identities,
 null versus omission, strict no-orgId input, safe requestId errors and byte budgets. Companion
 Skill tests parse every synthetic review JSON example through its named shared contract.
-Launcher `0.14.0` is published and independently verified; approved installation pins and service
-source recommendation are `0.14.0`. Publication evidence is separate from the synthetic deployed
+Verify the installed launcher against the approved pin and current service recommendation in the [login contract](official-user-install-and-login.md). Publication evidence is separate from the synthetic deployed
 review probe and target service checks recorded in staging readiness. Real tenant permissions and
 platform reply publication remain separate authorized operations.

@@ -2,7 +2,8 @@
 
 ## Core boundaries
 
-- 企业资料中枢 is a service/tool for employee-owned agents, CLIs, MCP clients, APIs, and minimal admin UI; do not turn it into an employee-facing AI agent, report generator, dashboard, or skill runner.
+- Use 企业智脑 in Chinese product copy and SMEDC in English. Use 企业智脑（SMEDC） on first mention where installation, terminology or Skill discovery needs both names. Preserve technical identifiers and tenant-provided names.
+- SMEDC is a service/tool for employee-owned agents, CLIs, MCP clients, APIs, and minimal admin UI; do not turn it into an employee-facing AI agent, report generator, dashboard, or skill runner.
 - Follow `docs/implementation/implementation-plan.md` phase boundaries. Backend authorization is mandatory for every non-health endpoint; never trust client-side filtering.
 - Never commit secrets, `.env`, real customer exports, private tokens, service-account keys, or downloaded third-party data.
 - Extend an existing MCP tool when its purpose and authorization boundary fit and existing inputs remain compatible. Add a tool only when no existing tool fits, and explain why in the PR.

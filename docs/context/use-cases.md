@@ -1,4 +1,4 @@
-# 企业资料中枢当前使用场景
+# 企业智脑当前使用场景
 
 本文仅描述当前公共能力。术语见 [领域模型](../../CONTEXT.md)，具体参数见 [API/MCP 契约](../implementation/api-contract.md)。用户与自己的 agent 对话，agent 通过官方 launcher 使用 SMEDC；服务本身不生成答案或报告。
 

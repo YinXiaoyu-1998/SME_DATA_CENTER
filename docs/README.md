@@ -1,4 +1,4 @@
-# SMEDC 文档入口
+# 企业智脑文档入口
 
 普通文档只维护当前有效状态、契约或最终决策。同一主题存在替代版本时，保留唯一现行版本、删除旧版本并修复引用；实施阶段不等于部署/激活阶段。历史资料不作为操作指令。
 
@@ -30,7 +30,7 @@
 
 ## 已确认的自动工作流设计（尚未实现）
 
-可分发企业工作流、已结账来源口径和换机接管的权威规格为 [Issue #298](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/298)。[图解使用指南](guides/automation-user-guide.html) 面向餐饮管理人员，说明功能完成后的首次安装、旧版更新、已有设置复用及换机步骤，不代表当前已经上线。
+可分发企业工作流、已结账来源口径和换机接管的权威规格为 [Issue #298](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/298)。[图解使用指南](https://smedatacenter.xyz/guides/automation-user-guide.html) 面向餐饮管理人员，由官网仓维护首次安装、旧版更新、已有设置复用及换机步骤。
 
 ## 已确认的员工档案与正式门店设计（尚未实现）
 

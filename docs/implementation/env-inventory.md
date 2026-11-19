@@ -1,4 +1,4 @@
-# 企业资料中枢 Environment Inventory
+# SMEDC Environment Inventory
 
 This file tracks required variables and external services. Do not store secret values here.
 

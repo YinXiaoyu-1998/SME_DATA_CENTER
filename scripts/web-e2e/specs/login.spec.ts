@@ -10,7 +10,7 @@ const ORG = "default-org";
 test("未登录访问受保护页面会跳到登录页并保留 next", async ({ page }) => {
   await page.goto(`/admin/${ORG}/permissions`);
   await expect(page).toHaveURL(/\/login\?next=/);
-  await expect(page.getByRole("heading", { name: "登录 SMEDC" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "登录企业智脑" })).toBeVisible();
 });
 
 test("管理员登录后回到原权限页面并看到两段导航", async ({ page }) => {

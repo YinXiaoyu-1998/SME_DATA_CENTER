@@ -154,6 +154,8 @@ The API entrypoint automatically loads `.env` from the current working directory
 
 ## Official Employee MCP
 
+After deployment, refresh the browser to see the localized brand. To recognize it in local requests, [refresh the installed Skill](skills/smedc-mcp/references/update-skill.md) and reload the host. A [general SMEDC upgrade](skills/smedc-mcp/references/upgrade-cleanup.md) also updates existing launcher integrations and all official companion Skills already installed on this computer. It updates existing official scheduled workflows and verifies their state, including paused tasks.
+
 The official employee path is remote `https://api.smedatacenter.xyz` through the pinned
 `smedc-mcp-launcher@0.21.0` local stdio launcher. The dual-homed
 `skills/smedc-mcp/` skill is the authoritative current-user install, configuration,
