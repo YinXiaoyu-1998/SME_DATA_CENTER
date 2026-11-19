@@ -1,6 +1,6 @@
-# SMEDC MCP 用户流程
+# 企业智脑（SMEDC）MCP 用户流程
 
-更新：2026-10-24。安装已发布的 `smedc-mcp-launcher@0.13.1`，服务端源码最低版本保持 0.12.0，推荐版本为 0.13.1。以双归属基础 Skill 为安装手册；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
+安装版本以[基础 Skill](../../skills/smedc-mcp/SKILL.md) 核验后的精确 pin 为准。网页显示、Skill 单独更新和通用升级的入口见[中文接入说明](../../README.zh.md#正式员工-mcp)；部署证据见 [staging 状态](staging-readiness.md)，企业激活与特定宿主验收分别核对。本文不是运维手册。
 
 ## 上传权限
 
@@ -22,8 +22,8 @@ flowchart LR
   Employee["员工"] -->|"自然语言请求"| Agent["员工自有 agent / MCP client"]
   Agent -->|"读取安装与恢复指导"| Skill["smedc-mcp skill"]
   Agent <-->|"本机 stdio；配置无凭证"| Launcher["固定版本本地 launcher"]
-  Launcher -->|"打开或投递验证链接"| Browser["SMEDC HTTPS 验证页"]
-  Browser -->|"密码与配对确认"| Auth["SMEDC identity endpoints"]
+  Launcher -->|"打开或投递验证链接"| Browser["企业智脑 HTTPS 验证页"]
+  Browser -->|"密码与配对确认"| Auth["企业智脑身份验证接口"]
   Launcher <-->|"Device Authorization 轮询"| Auth
   Launcher -->|"Streamable HTTP POST /mcp\n不透明 bearer access token"| Api["https://api.smedatacenter.xyz"]
   Api --> Data["后端强制授权的服务\nAPI、storage、worker、MySQL、Qdrant"]
@@ -33,13 +33,13 @@ flowchart LR
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 员工 -> agent       | 员工只提出业务请求，绝不向 agent 提供密码、token、授权码或 credential-store record。                                                                                    |
 | Agent -> launcher   | 本机 stdio entry 不含秘密。agent 仅用 `smedc_login`、`smedc_logout`、`smedc_auth_status` 管理会话。                                                                     |
-| Launcher -> browser | 员工只在 SMEDC HTTPS 页面输入密码并确认 agent 实例；浏览器不会通过 agent/model 返回任何凭证。                                                                           |
+| Launcher -> browser | 员工只在企业智脑 HTTPS 页面输入密码并确认 agent 实例；浏览器不会通过 agent/model 返回任何凭证。                                                                         |
 | Launcher -> API/MCP | launcher 轮询 token 端点、保护并附加不透明 access token；有可用安全存储时使用 Keychain/Credential Manager/兼容的 Linux Secret Service，否则只保存在 launcher 进程内存。 |
 | MCP -> 业务数据     | 每个请求均经认证与后端授权。skill/launcher 绝不直接操作 API 基础设施、数据库、Qdrant、storage、Docker、worker 或云资源。                                                |
 
 ## 安装或更新
 
-1. 员工用自然语言要求 agent 安装、更新或修复 SMEDC。
+1. 员工用自然语言要求 agent 安装、更新或修复企业智脑。
 2. agent 确认 macOS、Windows 或 Linux，检查当前用户的 Node.js/npm，然后把 skill 批准的精确
    launcher 包安装到该平台版本目录。Linux 使用
    `${XDG_DATA_HOME:-$HOME/.local/share}/SMEDC/launcher/versions/<version>/`，写入 MCP
@@ -61,9 +61,9 @@ sequenceDiagram
   participant A as "Agent / MCP client"
   participant L as "固定 launcher"
   participant B as "系统浏览器"
-  participant S as "SMEDC 服务"
+  participant S as "企业智脑服务"
 
-  E->>A: "上传/检索/查询 SMEDC"
+  E->>A: "上传/检索/查询企业智脑"
   A->>L: "smedc_auth_status 或业务 tool"
   alt authentication_required
     A->>L: "smedc_login"
@@ -100,7 +100,7 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 - Evidence 上传必须明确类别、完整 scopes 和逐文件密级；照片明确企业及一家精确门店。启用业务授权后，固定类别使用当前服务配置密级，旧上传 level 不能覆盖；不从内容或名称推断缺失属性，不任意指定组织。
 - 只读取用户选择或明确指定文件的精确字节。优先使用 launcher 的 `file.encoding="path"` 和绝对
   本地路径；仅对小文件使用 inline base64。不得重建、规范化、翻译或重输内容。
-- 只能轮询服务状态；不得启动 worker 或操作任何 SMEDC 服务组件。
+- 只能轮询服务状态；不得启动 worker 或操作任何企业智脑服务组件。
 - 文本/证据或结构化表格上传返回 `202` 后，保留 Document ID；结构化上传还保留 ImportBatch ID。按
   2 秒、5 秒、10 秒、之后每 15 秒的节奏轮询对应 status tool，默认最多 10 分钟。只有到达成功终态才可
   告知上传成功；`rejected`/`failed` 只总结安全返回的错误并给出修改建议。10 分钟仍未终态时报告仍在
@@ -113,7 +113,7 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
   它不是完整性保证，也不会自动判断查询答案是否充分；agent 需要自行决定查询、收窄范围或追问。
 - evidence cursor 是不透明的同 query continuation。`INVALID_CURSOR` 时不带 cursor 重新开始；
   `CURSOR_EXPIRED` 时说明过期，只有员工仍想继续时才重新开始。
-- `smedc_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把 SMEDC 变成
+- `smedc_list_skills` 只返回目录元数据。不得执行条目、生成报告，或把企业智脑变成
   员工直接对话的 AI 服务。
 
 ## 门店过滤与异步分区下载
@@ -121,7 +121,7 @@ launcher 进程。移除一个 agent 的 MCP entry 不是退出登录；完全�
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-使用批准的 launcher 0.13.1 及匹配服务；选择可选 ZIP 前仍须确认目标服务可用。
+使用基础 Skill 批准的 launcher 及匹配服务；选择可选 ZIP 前仍须确认目标服务可用。
 business/dishes 的 coverage 与 prepare 使用相同 `enterpriseName`/`storeNameContains` 范围。
 后者为 1–20 个 NFC/trim、每项 1–255 字符的字面、区分大小写子串；数组内 OR，与授权及其他条件 AND。
 prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempotencyKey`；按 `retryAfterSeconds`
@@ -140,7 +140,7 @@ prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempot
 
 ## 店铺评价
 
-已发布并独立验证的 launcher `0.13.1` 包含 `upsert_store_reviews` / `query_store_reviews`，是当前批准安装 pin；仍须核对匹配服务部署与企业类别/授权配置。Skill 更新不代表 launcher 升级、部署或租户授权。
+已发布并独立验证的 launcher `0.13.1` 包含 `upsert_store_reviews` / `query_store_reviews`；仍须核对匹配服务部署与企业类别/授权配置。Skill 更新不代表 launcher 升级、部署或租户授权。
 先刷新 `get_my_permissions.storeReviewEnterprises`，写入用 write、查询用 read：明确企业先精确校验；未指定且仅一个候选时填入并告知，多个先问，零个报告不可用。禁止推断 orgId 或默认企业。
 当前有效 admin 可按 1–1000 条及 16 MiB UTF-8 JSON 预算同步，每批独立事务；读需完整类别/企业/门店授权与密级，admin 不绕过。正文/评分/回复省略不更新、null 清空，评分整体替换；纯评分也入库但不进入拟回复表。未读到的回复省略，只有平台发布成功且核验后才补写 merchantReply，草稿不入库。
 北京时间至少到小时，缺小时或身份歧义记未同步；超限分批不截断，多批不承诺全局回滚。超时先核验，分别报告确认与未确认批次，不自动重放可能覆盖新值的旧数据。查询用不透明游标且保持筛选不变，权限或数据变化后重启。详见[评价使用规则](../../skills/smedc-mcp/references/store-reviews.md)。

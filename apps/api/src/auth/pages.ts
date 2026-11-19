@@ -19,6 +19,9 @@ export interface LocalizedText {
   en: string;
 }
 
+const deviceSignInTitle: LocalizedText = { zh: "登录企业智脑", en: "Sign in to SMEDC" };
+const passwordSetupTitle: LocalizedText = { zh: "设置企业智脑密码", en: "Set your SMEDC password" };
+
 interface FormPageOptions extends PageOptions {
   csrfToken: string;
   error?: LocalizedText;
@@ -58,10 +61,10 @@ export function renderDeviceVerificationPage(
   return pageShell(
     {
       nonce: options.nonce,
-      title: { zh: "登录企业智脑", en: "Sign in to SMEDC" }
+      title: deviceSignInTitle
     },
     `<main class="login"><section class="panel">
-      <h1>${localized({ zh: "登录企业智脑", en: "Sign in to SMEDC" })}</h1>
+      <h1>${localized(deviceSignInTitle)}</h1>
       <p class="device" data-locale="zh-CN">本次登录将授权 <strong>${escapeHtml(
         options.instanceName
       )}</strong>（主机：${escapeHtml(options.instanceHostname)}）。</p>
@@ -86,7 +89,7 @@ export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
   return pageShell(
     {
       nonce: options.nonce,
-      title: { zh: "设置企业智脑密码", en: "Set your SMEDC password" }
+      title: passwordSetupTitle
     },
     `<main class="login"><section class="panel">
       <h1>${localized({ zh: "正在准备密码设置…", en: "Preparing password setup…" })}</h1>
@@ -134,10 +137,10 @@ export function renderPasswordSetupForm(
   return pageShell(
     {
       nonce: options.nonce,
-      title: { zh: "设置企业智脑密码", en: "Set your SMEDC password" }
+      title: passwordSetupTitle
     },
     `<main class="login"><section class="panel">
-      <h1>${localized({ zh: "设置企业智脑密码", en: "Set your SMEDC password" })}</h1>
+      <h1>${localized(passwordSetupTitle)}</h1>
       <p>${localized({
         zh: "请选择一个长度为 8–128 个字符的密码。",
         en: "Choose a password with 8–128 characters."

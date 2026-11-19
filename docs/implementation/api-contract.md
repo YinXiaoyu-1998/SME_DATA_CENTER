@@ -169,6 +169,10 @@ paths through multipart storage, with a 2 GiB default source limit. Filenames, t
 metadata, evidence filters, cursors, and structured-query limits retain their existing public
 limits. Label keys and label arrays are not accepted.
 
+## Skill directory search
+
+`smedc_list_skills` delegates to authenticated `GET /skills`. Results are restricted to the caller’s organization, approved entries and the requested category. After trimming whitespace and folding case, a whole query of `SMEDC` or `企业智脑` matches entries containing either name. All other queries, including partial names and phrases, retain literal substring matching.
+
 ## MCP surface
 
 MCP contracts mirror the HTTP boundary. `smedc_get_current_user` returns exactly `displayName`,

@@ -1101,7 +1101,7 @@ For authorized service tools:
 - Treat evidence cursors as opaque, short-lived continuations. Return `page.nextCursor` unchanged
   with the same query, filters, and limit. Restart without it on `INVALID_CURSOR`; on
   `CURSOR_EXPIRED`, explain the expiry and restart only if the employee still wants more results.
-- `smedc_list_skills` exposes approved directory metadata only; do not execute an entry.
+- `smedc_list_skills` exposes approved directory metadata only; do not execute an entry. For brand discovery, use either complete name as `q` (see the [directory search contract](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/blob/main/docs/implementation/api-contract.md#skill-directory-search)).
 
 ## Local File Read Errors
 
