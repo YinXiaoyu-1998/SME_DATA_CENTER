@@ -88,7 +88,7 @@ name and a recognized user-facing alias. “帮我更新 smedc-mcp-skill 这个 
 refresh this skill's files from its official source. The request authorizes that local update;
 do not ask which kind of update the employee means when they explicitly name the skill.
 
-“帮我升级一下企业智脑” and “帮我升级一下 SMEDC” request the general upgrade below.
+“帮我升级一下企业智脑”, “帮我升级一下 SMEDC”, and “给我升级一下 SMEDC” request the general upgrade below.
 “只更新 smedc-mcp 这个 Skill，不升级 launcher” selects the skill-only procedure.
 
 Official source: [YinXiaoyu-1998/smedc-mcp-skill](https://github.com/YinXiaoyu-1998/smedc-mcp-skill),
@@ -103,9 +103,10 @@ authorize a launcher upgrade. For an authorized launcher update, first refresh t
 copy has not yet been verified against the official default branch, then follow Official Install
 Or Update using the
 newly verified exact pin. Never derive a new approved pin from server metadata alone. A general
-SMEDC update includes the core skill, launcher, and existing official scheduled workflows on
-this computer. Finish the [upgrade, restart, and cleanup procedure](references/upgrade-cleanup.md)
-and verify the existing task definitions before reporting success.
+SMEDC update includes the core skill, launcher, all already-installed official companion skills
+on this computer even without scheduled tasks, and existing official scheduled workflows. Follow
+[upgrade, restart, and cleanup](references/upgrade-cleanup.md) and verify the loaded skills
+and any existing task definitions before reporting success.
 
 ## Optional Enterprise Workflows
 

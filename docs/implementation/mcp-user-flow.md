@@ -41,7 +41,7 @@ flowchart LR
 
 ## Installation Or Update
 
-For a [Skill-only update](../../skills/smedc-mcp/references/update-skill.md), replace and reload the selected Skill. A [general upgrade](../../skills/smedc-mcp/references/upgrade-cleanup.md) also aligns existing launcher integrations and verifies installed official scheduled workflows, including paused tasks.
+For a [Skill-only update](../../skills/smedc-mcp/references/update-skill.md), replace and reload the selected Skill. A [general upgrade](../../skills/smedc-mcp/references/upgrade-cleanup.md) also aligns existing launcher integrations, refreshes already-installed official companion Skills even without scheduled tasks, and verifies existing official scheduled workflows, including paused tasks.
 
 1. The employee asks their agent to install, update, or repair SMEDC.
 2. The agent confirms macOS, Windows, or Linux, checks current-user Node.js/npm availability, and

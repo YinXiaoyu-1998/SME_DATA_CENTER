@@ -80,7 +80,8 @@ For a skill-only request, finish after the skill refresh and report the launcher
 unchanged. If the employee also requested a launcher update, use the exact version approved in
 the newly verified skill and its Official Install Or Update procedure, then finish
 [upgrade, restart, and cleanup](upgrade-cleanup.md). A general SMEDC update or request to keep
-only the latest version also enters that procedure's existing scheduled workflow scope.
+only the latest version also refreshes already-installed official companion skills, including
+standalone copies, and updates existing official scheduled workflows.
 If the server still recommends a version beyond that official pin, report the mismatch and
 defer that unsupported launcher upgrade; do not invent a pin or use npm `latest`.
 

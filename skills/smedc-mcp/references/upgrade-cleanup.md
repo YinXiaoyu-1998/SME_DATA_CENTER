@@ -11,8 +11,12 @@ passing a standalone self-check is not completion.
   discoverable current-user SMEDC integrations to the approved pin, reconnecting their hosts and
   removing superseded SMEDC processes, installations and entries. A skill-only request follows
   [update-skill.md](update-skill.md) and does not change launcher installations or MCP sessions.
-- A general SMEDC upgrade also covers existing official scheduled workflows on this computer,
-  including paused tasks. Use the [companion workflow upgrade procedure](https://github.com/YinXiaoyu-1998/smedc-companion-skills/blob/main/skills/smedc-workflows/references/installation.md#升级本机定时任务).
+- A general SMEDC upgrade covers all already-installed official companion skills on this
+  computer, including standalone copies with no scheduled tasks. Discover these from the actual
+  host skill roots and the official companion repository; the employee does not need to list
+  them. Leave uninstalled companions out of the standalone refresh.
+- The same request covers existing official scheduled workflows, including paused tasks.
+  Coordinate changes to shared skill paths with those tasks before replacing the files. Use the [companion workflow upgrade procedure](https://github.com/YinXiaoyu-1998/smedc-companion-skills/blob/main/skills/smedc-workflows/references/installation.md#升级本机定时任务).
   Before switching the launcher, inventory the actual tasks and pause future triggers for
   affected enabled tasks while in-flight work is reconciled. After native MCP reconnection,
   update the installed workflow packages, dependencies and existing task IDs, then verify
@@ -40,7 +44,10 @@ Record only non-secret facts, using the host's supported configuration interface
   not just by an entry's name. Never dump whole configurations, process environments, or tokens.
 - The skill locations the hosts actually load, including legacy locations and backup folders
   inside discovery roots. Resolve symlinks before classifying distinct copies. Follow the skill
-  update procedure for replacement and deduplication.
+  update procedure for replacement and deduplication. For a general upgrade, inventory official
+  installed companions separately from scheduled task dependencies. Follow the
+  [installed-companion refresh procedure](https://github.com/YinXiaoyu-1998/smedc-companion-skills/blob/main/README.md#refresh-installed-companions-during-a-general-upgrade)
+  to verify provenance, the effective host paths, and the source revision before any replacement.
 - Installed launcher versions in the platform directory, plus legacy installs, wrappers, or
   package-manager locations referenced by those entries. Use package metadata to verify identity
   and version. Check a current-user global prefix or isolated `npx` installation if discovered;
@@ -116,7 +123,8 @@ it must run the same native-connection verification before claiming completion.
 
 Before yielding, leave a short, non-secret continuation record: host and approved version,
 official skill revision and installed path, completed checks, remaining verification/cleanup,
-and exact recovery-file paths outside discovery roots. Do not include configuration contents,
+and exact recovery-file paths outside discovery roots. Record companion revisions, paths, and
+pending refresh or reload steps as well. Do not include configuration contents,
 credentials or business records. For scheduled workflows, retain the scoped task IDs, original
 states and pending update steps in that record. After restart, inspect the current state first.
 Continue the original user request after verification, then remove old files and recovery
@@ -141,6 +149,17 @@ through that new connection for a fresh card. Report its mode, clearance and exp
 `legacy` means the saved business grants are not yet the active read model. An upgrade neither
 activates a tenant nor authorizes permission edits. Do not substitute cached identity or earlier
 browser observations for this check.
+
+### Finish Installed Companion Refresh And Task Updates
+
+During a general upgrade, use the verified companion checkout and the procedure in step 1.
+Update existing tasks and their pinned dependencies through the scheduled workflow procedure.
+For other installed official companions, run the installed-copy refresh against the actual host
+skill roots after affected in-flight runs are reconciled. Keep all replacements from the same
+companion revision, and reuse already-verified copies updated by the task procedure. Run this
+step even when there are no tasks.
+Verify every in-scope companion's loaded path and revision. Keep recovery copies and record
+pending reloads or blocked copies until verification succeeds.
 
 ## 5. Remove Superseded Files
 
@@ -176,6 +195,9 @@ and remaining blockers. Claim **complete** only when the in-scope hosts load the
 and launcher, no old launcher processes or effective entries remain, and superseded files and
 update-created temporary backups are removed. For an upgrade covering scheduled workflows,
 report each task's verified package and launcher versions, host state and central registration.
+For a general upgrade, report each already-installed official companion's verified revision
+and loaded path, even on a computer with no scheduled tasks. An in-scope companion awaiting
+replacement or reload keeps the upgrade incomplete.
 An in-scope task awaiting an update or readback leaves the upgrade incomplete. State the
 inspected scope. Any inaccessible host, remaining old installation, required restart,
 or unverified skill reload means **incomplete**,
