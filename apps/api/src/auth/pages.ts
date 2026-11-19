@@ -58,10 +58,10 @@ export function renderDeviceVerificationPage(
   return pageShell(
     {
       nonce: options.nonce,
-      title: { zh: "登录 SMEDC", en: "Sign in to SMEDC" }
+      title: { zh: "登录企业智脑", en: "Sign in to SMEDC" }
     },
     `<main class="login"><section class="panel">
-      <h1>${localized({ zh: "登录 SMEDC", en: "Sign in to SMEDC" })}</h1>
+      <h1>${localized({ zh: "登录企业智脑", en: "Sign in to SMEDC" })}</h1>
       <p class="device" data-locale="zh-CN">本次登录将授权 <strong>${escapeHtml(
         options.instanceName
       )}</strong>（主机：${escapeHtml(options.instanceHostname)}）。</p>
@@ -86,7 +86,7 @@ export function renderPasswordSetupBootstrapPage(options: PageOptions): string {
   return pageShell(
     {
       nonce: options.nonce,
-      title: { zh: "设置 SMEDC 密码", en: "Set your SMEDC password" }
+      title: { zh: "设置企业智脑密码", en: "Set your SMEDC password" }
     },
     `<main class="login"><section class="panel">
       <h1>${localized({ zh: "正在准备密码设置…", en: "Preparing password setup…" })}</h1>
@@ -134,10 +134,10 @@ export function renderPasswordSetupForm(
   return pageShell(
     {
       nonce: options.nonce,
-      title: { zh: "设置 SMEDC 密码", en: "Set your SMEDC password" }
+      title: { zh: "设置企业智脑密码", en: "Set your SMEDC password" }
     },
     `<main class="login"><section class="panel">
-      <h1>${localized({ zh: "设置 SMEDC 密码", en: "Set your SMEDC password" })}</h1>
+      <h1>${localized({ zh: "设置企业智脑密码", en: "Set your SMEDC password" })}</h1>
       <p>${localized({
         zh: "请选择一个长度为 8–128 个字符的密码。",
         en: "Choose a password with 8–128 characters."
@@ -210,7 +210,7 @@ function pageShell(options: PageOptions & { title: LocalizedText }, body: string
   </head>
   <body>
     <header>
-    <div class="brand">SMEDC</div>
+    <div class="brand">${localized({ zh: "企业智脑", en: "SMEDC" })}</div>
     <nav class="language-switcher" aria-label="语言 / Language">
       <button type="button" data-locale-option="zh-CN" aria-pressed="true">中文</button>
       <button type="button" data-locale-option="en" aria-pressed="false">English</button>

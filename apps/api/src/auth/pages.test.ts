@@ -36,7 +36,10 @@ describe("official authentication browser pages", () => {
     expect(html).toContain('data-locale-option="zh-CN"');
     expect(html).toContain('data-locale-option="en"');
     expect(html).toContain("smedc-locale");
-    expect(html).toContain("登录 SMEDC");
+    expect(html).toContain('data-title-zh="登录企业智脑" data-title-en="Sign in to SMEDC"');
+    expect(html).toContain(
+      '<span data-locale="zh-CN">企业智脑</span><span data-locale="en" hidden>SMEDC</span>'
+    );
     expect(html).toContain("Sign in to SMEDC");
     expect(html).toContain("邮箱或密码错误。");
     expect(html).toContain("The email or password is incorrect.");
@@ -85,6 +88,9 @@ describe("official authentication browser pages", () => {
       }
     });
 
+    expect(html).toContain(
+      'data-title-zh="设置企业智脑密码" data-title-en="Set your SMEDC password"'
+    );
     expect(html).toContain("显示名称");
     expect(html).toContain("Display name");
     expect(html).toContain("殷啸宇 &lt;script&gt;alert(1)&lt;/script&gt;");

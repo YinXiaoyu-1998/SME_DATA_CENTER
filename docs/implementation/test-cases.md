@@ -1,4 +1,4 @@
-# 企业资料中枢 Test Cases
+# SMEDC Test Cases
 
 Last updated: 2026-10-24
 

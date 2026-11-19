@@ -1,8 +1,8 @@
-# 企业资料中枢
+# 企业智脑
 
 公开官网、素材与独立发布流程由 [SMEDC_LANDING_PAGE](https://github.com/YinXiaoyu-1998/SMEDC_LANDING_PAGE) 管理，不再随本服务构建或部署。
 
-企业资料中枢是给员工自有 agent、MCP client、API client 和极简管理面使用的数据服务。它不是员工直接对话的 AI agent，不生成自然语言结论，不做报表/dashboard，不执行 Skill Directory 条目。
+企业智脑是给员工自有 agent、MCP client、API client 和极简管理面使用的数据服务。它不是员工直接对话的 AI agent，不生成自然语言结论，不做报表/dashboard，不执行 Skill Directory 条目。
 
 当前产品面是 Phase 3-only：
 
@@ -104,8 +104,12 @@ npm run worker:once
 
 ## 正式员工 MCP
 
-正式员工路径是通过固定版本的本机 stdio launcher
-`smedc-mcp-launcher@0.15.0` 访问远程 `https://api.smedatacenter.xyz`。双归属的
+页面上的产品名在对应服务部署后刷新即可看到。要让本机智能体识别新名称，请在官方 Skill 默认分支提供新版后选择更新范围：
+
+- “只更新 smedc-mcp 这个 Skill，不升级 launcher”：保留本地定制的恢复副本，校验并重载基础 Skill。已安装的配套 Skill 按需分别更新。
+- “帮我升级一下 SMEDC”：先核验官方基础 Skill，再按其指定版本升级已有连接，处理本机已安装的官方定时任务（含暂停任务）并读回验证。旧版 Skill 可用英文名或稳定 ID 发起更新。
+
+正式员工通过[基础 Skill](skills/smedc-mcp/SKILL.md) 当前批准的固定版本本机 stdio launcher 访问远程 `https://api.smedatacenter.xyz`。双归属的
 `skills/smedc-mcp/` skill 是当前 OS 用户的安装、配置、浏览器登录、恢复、退出和卸载
 权威手册。它禁止 email/password/token/code 对 agent 可见，使用 `smedc_login`、
 `smedc_logout`、`smedc_auth_status` 和仅查询当前身份的
@@ -157,7 +161,7 @@ MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登�
 
 已公开发行并独立核验的 launcher `0.15.0`统一使用 `in_store_orders`（店内订单明细），与 `takeaway_orders` 配对。
 订单状态独立保留待制作、未结账、已结账、已撤单、已退单，保留 30 个来源字段及有序支付 JSON，未结账/撤单记录不被过滤。
-批准安装 pin/源码推荐为 `0.15.0`，历史 `0.14.0` 使用旧名 `settled_orders`。新名称仍需匹配的协调服务迁移，保留当前 CSV 与授权，旧 ZIP 重新准备。
+当前批准的安装版本见[安装与登录契约](docs/implementation/official-user-install-and-login.md)，历史 `0.14.0` 使用旧名 `settled_orders`。新名称仍需匹配的协调服务迁移，保留当前 CSV 与授权，旧 ZIP 重新准备。
 详见[店内订单用法](skills/smedc-mcp/references/in-store-orders.md)与[命名迁移](docs/implementation/in-store-order-design.md)。
 
 ## 菜品目录（当前状态）
@@ -203,7 +207,7 @@ MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登�
 | `smedc_login`                    | 打开浏览器完成正式登录                                          |
 | `smedc_logout`                   | 撤销并清除本机共享 session                                      |
 | `smedc_auth_status`              | 返回不含凭证的认证状态                                          |
-| `smedc_list_skills`              | 读取已批准 Skill Directory 元数据                               |
+| `smedc_list_skills`              | 读取本组织已批准的技能，完整品牌词「企业智脑」与 SMEDC 等价     |
 | `upload_evidence_document`       | 上传 MD/TXT/DOCX evidence 文档                                  |
 | `get_evidence_document_status`   | 查询 evidence 文档和索引状态                                    |
 | `search_document_evidence`       | 检索可见 evidence chunks                                        |

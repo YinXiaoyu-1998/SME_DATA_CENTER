@@ -1,4 +1,4 @@
-# 企业资料中枢 API / MCP Contract
+# SMEDC API / MCP Contract
 
 Last updated: 2026-11-11
 

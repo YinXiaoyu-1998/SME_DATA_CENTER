@@ -60,15 +60,17 @@ export function createPrismaSkillDirectoryRepository(
   };
 }
 
-function filterKeywordMatches(skills: SkillDirectoryEntry[], q: string | null) {
+export function filterKeywordMatches(skills: SkillDirectoryEntry[], q: string | null) {
   const keyword = q?.trim().toLowerCase();
 
   if (!keyword) {
     return skills;
   }
 
-  return skills.filter((skill) =>
-    [
+  const brandNames = ["企业智脑", "smedc"];
+  const keywords = brandNames.includes(keyword) ? brandNames : [keyword];
+  return skills.filter((skill) => {
+    const searchableText = [
       skill.name,
       skill.description,
       skill.category,
@@ -77,9 +79,9 @@ function filterKeywordMatches(skills: SkillDirectoryEntry[], q: string | null) {
       ...skill.examplePrompts
     ]
       .join("\n")
-      .toLowerCase()
-      .includes(keyword)
-  );
+      .toLowerCase();
+    return keywords.some((term) => searchableText.includes(term));
+  });
 }
 
 function toStringArray(value: Prisma.JsonValue): string[] {
