@@ -115,8 +115,7 @@ npm run worker:once
 `smedc_logout`、`smedc_auth_status` 和仅查询当前身份的
 `smedc_get_current_user`，且绝不操作服务基础设施。
 
-`smedc-mcp-launcher@0.15.0` 已公开发布并通过独立验证，原生 macOS/Windows launcher
-包验证已有记录。当前服务部署与公开推荐证据见 [staging 状态](docs/implementation/staging-readiness.md)；特定客户端完整验收及真实租户激活分别核对。
+批准版本已完成 macOS、Windows、Linux 包验证。当前服务部署、公开发行物与推荐版本的证据见 [staging 状态](docs/implementation/staging-readiness.md)；特定客户端完整验收及真实租户激活分别核对。
 
 ## MCP 服务与本地开发边界
 
@@ -159,7 +158,7 @@ CSV，MySQL 仅保存当前分区目录。客户端用 `get_partition_import_sta
 
 MCP 调用方不要提供组织 ID；组织边界始终由服务端从当前登录员工推导。Evidence search 的 cursor 是不透明、短期有效的翻页 token：下一页必须沿用相同 query/filter/limit 原样传回 `page.nextCursor`。遇到 `INVALID_CURSOR` 可不带 cursor 重新开始；遇到 `CURSOR_EXPIRED`，先说明 cursor 已过期，只有用户仍希望继续时才重新搜索。结构化导入只有在同一个文件和同一组 metadata 精确重试时才复用 `idempotencyKey`；精确重放会返回第一次持久化的 ID/storage key，不可见的 import status 与不存在批次一样返回非枚举 404。
 
-已公开发行并独立核验的 launcher `0.15.0`统一使用 `in_store_orders`（店内订单明细），与 `takeaway_orders` 配对。
+当前批准的 launcher 使用 `in_store_orders`（店内订单明细），与 `takeaway_orders` 配对。
 订单状态独立保留待制作、未结账、已结账、已撤单、已退单，保留 30 个来源字段及有序支付 JSON，未结账/撤单记录不被过滤。
 当前批准的安装版本见[安装与登录契约](docs/implementation/official-user-install-and-login.md)，历史 `0.14.0` 使用旧名 `settled_orders`。新名称仍需匹配的协调服务迁移，保留当前 CSV 与授权，旧 ZIP 重新准备。
 详见[店内订单用法](skills/smedc-mcp/references/in-store-orders.md)与[命名迁移](docs/implementation/in-store-order-design.md)。

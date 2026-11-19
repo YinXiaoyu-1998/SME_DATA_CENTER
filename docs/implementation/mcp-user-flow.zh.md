@@ -140,7 +140,7 @@ prepare 使用含首尾日期的 `YYYYMMDD` 和仅精确重放复用的 `idempot
 
 ## 店铺评价
 
-已发布并独立验证的 launcher `0.13.1` 包含 `upsert_store_reviews` / `query_store_reviews`；仍须核对匹配服务部署与企业类别/授权配置。Skill 更新不代表 launcher 升级、部署或租户授权。
+当前批准的 launcher 包含 `upsert_store_reviews` / `query_store_reviews`；仍须核对匹配服务部署与企业类别/授权配置。Skill 更新不代表 launcher 升级、部署或租户授权。
 先刷新 `get_my_permissions.storeReviewEnterprises`，写入用 write、查询用 read：明确企业先精确校验；未指定且仅一个候选时填入并告知，多个先问，零个报告不可用。禁止推断 orgId 或默认企业。
 当前有效 admin 可按 1–1000 条及 16 MiB UTF-8 JSON 预算同步，每批独立事务；读需完整类别/企业/门店授权与密级，admin 不绕过。正文/评分/回复省略不更新、null 清空，评分整体替换；纯评分也入库但不进入拟回复表。未读到的回复省略，只有平台发布成功且核验后才补写 merchantReply，草稿不入库。
 北京时间至少到小时，缺小时或身份歧义记未同步；超限分批不截断，多批不承诺全局回滚。超时先核验，分别报告确认与未确认批次，不自动重放可能覆盖新值的旧数据。查询用不透明游标且保持筛选不变，权限或数据变化后重启。详见[评价使用规则](../../skills/smedc-mcp/references/store-reviews.md)。

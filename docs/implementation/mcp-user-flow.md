@@ -1,6 +1,6 @@
 # SMEDC MCP User Flow
 
-Updated: 2026-10-24. Use the published approved `smedc-mcp-launcher@0.13.1` and the dual-homed Skill. The source OAuth minimum remains 0.12.0 and recommendation is 0.13.1. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
+Install the exact launcher version in the verified [core Skill](../../skills/smedc-mcp/SKILL.md). The [login contract](official-user-install-and-login.md) records the source recommendation and OAuth minimum. Current deployment evidence is in [staging readiness](staging-readiness.md); tenant activation and client acceptance are separate. This is an employee trust-boundary guide, not an operations runbook.
 
 ## Upload Authorization
 
@@ -14,7 +14,7 @@ without re-login, retry, or a clearance workaround.
 Local prevention produces no backend audit; backend denial best-effort records `file_upload.denied`.
 An admin may explicitly classify above their clearance, but ordinary read/status/search/query/download
 rules still apply. Partition create/parts/complete require admin; owner abort remains allowed.
-The source minimum is 0.12.0 and recommended launcher version is 0.13.1; older launchers receive an upgrade error. See the
+Versions below the 0.12.0 OAuth minimum receive an upgrade error. See the
 [endpoint matrix](api-contract.md#file-upload-capability) for surfaces and the future service-identity non-goal.
 
 ## Participants And Credential Boundary
@@ -40,6 +40,8 @@ flowchart LR
 | MCP -> business data | Every request is authenticated and backend-authorized. The skill/launcher never directly operate API infrastructure, database, Qdrant, storage, Docker, worker, or cloud resources.                        |
 
 ## Installation Or Update
+
+For a [Skill-only update](../../skills/smedc-mcp/references/update-skill.md), replace and reload the selected Skill. A [general upgrade](../../skills/smedc-mcp/references/upgrade-cleanup.md) also aligns existing launcher integrations and verifies installed official scheduled workflows, including paused tasks.
 
 1. The employee asks their agent to install, update, or repair SMEDC.
 2. The agent confirms macOS, Windows, or Linux, checks current-user Node.js/npm availability, and
@@ -136,7 +138,6 @@ action.
 Range is the default. Bundle mode is optional and requires a known matching ZIP service;
 tools/list is insufficient. If ZIP is removed, regenerate saved plans with range downloads.
 
-Use approved launcher 0.13.1 with the matching deployed service. Verify optional ZIP support before selecting bundle mode.
 For business/dishes, use the same `enterpriseName`/`storeNameContains` scope in coverage and
 prepare. Names are 1–20 NFC/trim literal case-sensitive substrings, OR within the array and AND
 with authorization and other selectors. Prepare with compact inclusive `YYYYMMDD` dates and an
@@ -157,8 +158,7 @@ Business/dishes use partition download for local analysis, not generic row queri
 
 ## Store reviews
 
-Published, independently verified launcher `0.13.1` includes `upsert_store_reviews` and
-`query_store_reviews`; it is the approved exact installation pin. Confirm the matching service
+The approved launcher includes `upsert_store_reviews` and `query_store_reviews`. Confirm the matching service
 release and tenant configuration through staging readiness and current permission cards.
 Skill refresh does not establish launcher upgrade, service deployment or tenant authorization.
 Refresh `get_my_permissions.storeReviewEnterprises` before choosing: writes use write candidates,
