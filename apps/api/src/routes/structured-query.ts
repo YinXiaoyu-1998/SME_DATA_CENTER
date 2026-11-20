@@ -236,7 +236,7 @@ export function registerStructuredQueryRoutes(
       ) {
         throw new StructuredQueryValidationError(
           PHASE3_ERROR_CODES.invalidQuery,
-          "enterpriseName and storeNameContains coverage scope are supported only for business/dishes/in_store_orders/takeaway_orders."
+          "enterpriseName and storeNameContains coverage scope are supported only for business/dishes/in_store_orders/takeaway_orders/combo_sales."
         );
       }
       const compiled = compileStructuredCoverageQuery({

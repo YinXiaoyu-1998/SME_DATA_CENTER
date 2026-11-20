@@ -466,6 +466,15 @@ suite("partition download persistence", () => {
       await prisma.$executeRawUnsafe(
         "UPDATE partition_import_jobs SET dataset='business' WHERE id='download_source'"
       );
+      // The historical migration narrows the four enums. Restore the current schema for later scenarios.
+      const currentEnums = await readFile(
+        new URL("../prisma/migrations/20261120110000_combo_sales/migration.sql", import.meta.url),
+        "utf8"
+      );
+      for (const statement of currentEnums
+        .split(";")
+        .filter((sql) => sql.trimStart().startsWith("ALTER TABLE")))
+        await prisma.$executeRawUnsafe(statement);
     }
   });
 

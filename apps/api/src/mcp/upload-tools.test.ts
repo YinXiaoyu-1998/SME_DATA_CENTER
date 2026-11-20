@@ -364,7 +364,8 @@ describe("upload MCP tool handlers", () => {
     ["in_store_orders", null],
     ["in_store_orders", "0.14.0"],
     ["takeaway_orders", null],
-    ["takeaway_orders", "0.14.0"]
+    ["takeaway_orders", "0.14.0"],
+    ["combo_sales", "0.21.0"]
   ])(
     "requires a capable %s launcher before legacy proxy (%s)",
     async (dataset, launcherVersion) => {

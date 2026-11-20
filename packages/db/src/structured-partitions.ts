@@ -1,5 +1,4 @@
 import {
-  isOrderPartitionDataset,
   effectiveOrderScope,
   normalizeEnterpriseIdentity,
   validateOrderScopeDataset,
@@ -1145,16 +1144,15 @@ export function readablePartitionScope(input: {
 }): Prisma.Sql {
   // New categories have no legacy entitlement, even when an older tenant is still preparing.
   const authorization = input.authorization;
+  const legacyEntitlement = input.dataset === "business" || input.dataset === "dishes";
   const permission =
     authorization &&
-    (isOrderPartitionDataset(input.dataset) ||
-      authorization.mode === "enabled" ||
-      authorization.mode === "suspended")
+    (!legacyEntitlement || authorization.mode === "enabled" || authorization.mode === "suspended")
       ? compileStructuredReadScope(authorization, "partition", input.dataset)
       : null;
   const scope = permission
     ? Prisma.sql(permission.sql.split("?"), ...permission.params)
-    : isOrderPartitionDataset(input.dataset)
+    : !legacyEntitlement
       ? Prisma.sql`0 = 1`
       : Prisma.sql`confidentiality_level <= ${input.clearance}`;
   return Prisma.sql`org_id = ${input.orgId} AND ${scope} AND dataset = ${input.dataset}

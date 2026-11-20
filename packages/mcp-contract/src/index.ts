@@ -21,6 +21,7 @@ import {
   PUBLIC_INPUT_LIMITS,
   STRUCTURED_DATASETS,
   PARTITION_DATASETS,
+  WORKFLOW_DATASETS,
   STRUCTURED_QUERY_LIMITS,
   getStructuredRegistry,
   COST_CARD_DIRECTORY_REGISTRY,
@@ -47,13 +48,14 @@ export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 export const COST_CARD_LAUNCHER_VERSION = "0.10.0";
 export const IN_STORE_ORDER_LAUNCHER_VERSION = "0.15.0";
+export const COMBO_SALES_LAUNCHER_VERSION = "0.22.0";
 export const TAKEAWAY_ORDER_LAUNCHER_VERSION = "0.15.0";
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
   .enum(STRUCTURED_DATASETS)
   .describe(
-    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders, combo_sales."
   );
 const uploadableStructuredDatasets = [
   "dishes",
@@ -63,12 +65,13 @@ const uploadableStructuredDatasets = [
   "supplier_catalog",
   "cost_cards",
   "in_store_orders",
-  "takeaway_orders"
+  "takeaway_orders",
+  "combo_sales"
 ] as const;
 const uploadStructuredDataset = z
   .enum(uploadableStructuredDatasets)
   .describe(
-    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders, combo_sales."
   );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -494,14 +497,14 @@ const uploadStructuredDatasetInputSchema = z
       .regex(/^\d{8}$/)
       .optional()
       .describe(
-        "YYYYMMDD business window start for dishes, business, in_store_orders, takeaway_orders, or vip."
+        "YYYYMMDD business window start for dishes, business, in_store_orders, takeaway_orders, combo_sales, or vip."
       ),
     endDate: z
       .string()
       .regex(/^\d{8}$/)
       .optional()
       .describe(
-        "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, or vip."
+        "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, combo_sales, or vip."
       ),
     idempotencyKey: z
       .string()
@@ -513,11 +516,7 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (
-      input.workflowAction &&
-      input.dataset !== "delivery_ledger" &&
-      !PARTITION_DATASETS.includes(input.dataset as (typeof PARTITION_DATASETS)[number])
-    )
+    if (input.workflowAction && !WORKFLOW_DATASETS.some((dataset) => dataset === input.dataset))
       context.addIssue({
         code: "custom",
         path: ["workflowAction"],
@@ -1325,7 +1324,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, or `takeaway_orders`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, `takeaway_orders`, or `combo_sales`."
       },
       {
         name: "select",
@@ -1377,19 +1376,19 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, or `takeaway_orders`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, `takeaway_orders`, or `combo_sales`."
       },
       {
         name: "enterpriseName",
         required: false,
         description:
-          "Optional enterprise/source scope for business/dishes/in_store_orders/takeaway_orders or cost-card coverage."
+          "Optional enterprise/source scope for business/dishes/in_store_orders/takeaway_orders/combo_sales or cost-card coverage."
       },
       {
         name: "storeNameContains",
         required: false,
         description:
-          "Optional business/dishes/in_store_orders/takeaway_orders scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
+          "Optional business/dishes/in_store_orders/takeaway_orders/combo_sales scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
       }
     ],
     resultShape: [
@@ -1404,7 +1403,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions; the remaining datasets use the row-import service. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions. combo_sales requires 0.22.0+ and the original single-day XLSX with per-store detail, specifications and all dishes/channels. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: Object.entries(uploadStructuredDatasetInputSchema.shape).map(([name, schema]) => ({
       name,
@@ -1412,7 +1411,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       description: schema.description ?? name
     })),
     resultShape: [
-      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, orderScope, error",
+      "business/dishes/in_store_orders/takeaway_orders/combo_sales: partitionImportJobId, status, partitionCount, totalRowCount, orderScope, error",
       "other datasets: document, processing, importBatch"
     ]
   }),
@@ -1420,7 +1419,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_partition_import_status",
     title: "Get partition import status",
     description:
-      "Poll a business, dishes, in-store order or takeaway order import by partitionImportJobId until it reaches a terminal status. For row imports identified by importBatchId, use get_import_status.",
+      "Poll a business, dishes, in-store order, takeaway order or combo sales import by partitionImportJobId until it reaches a terminal status. For row imports identified by importBatchId, use get_import_status.",
     inputSchema: partitionImportStatusInputSchema,
     inputFields: [
       { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
@@ -1438,7 +1437,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "download_structured_partitions",
     title: "Download structured partitions",
     description:
-      "Download authorized business/dishes/in_store_orders/takeaway_orders daily store partitions into a launcher-managed local directory.",
+      "Download authorized business/dishes/in_store_orders/takeaway_orders/combo_sales daily store partitions into a launcher-managed local directory.",
     inputSchema: downloadStructuredPartitionsInputSchema,
     inputFields: [
       {
@@ -1450,7 +1449,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       {
         name: "dataset",
         required: false,
-        description: "business, dishes, in_store_orders, or takeaway_orders."
+        description: "business, dishes, in_store_orders, takeaway_orders, or combo_sales."
       },
       { name: "enterpriseName", required: false, description: "Enterprise/source name." },
       { name: "startDate", required: false, description: "Inclusive YYYYMMDD start." },
@@ -1499,13 +1498,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "prepare_structured_partition_download",
     title: "Prepare structured partition download",
     description:
-      "Queue an authorized business/dishes/in_store_orders/takeaway_orders partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
+      "Queue an authorized business/dishes/in_store_orders/takeaway_orders/combo_sales partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
     inputSchema: preparePartitionDownloadInputSchema,
     inputFields: [
       {
         name: "dataset",
         required: true,
-        description: "business, dishes, in_store_orders, or takeaway_orders."
+        description: "business, dishes, in_store_orders, takeaway_orders, or combo_sales."
       },
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
       { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },

@@ -30,7 +30,8 @@ describe("structured field registries", () => {
       "supplier_catalog",
       "cost_cards",
       "in_store_orders",
-      "takeaway_orders"
+      "takeaway_orders",
+      "combo_sales"
     ]);
 
     expect(getStructuredRegistry("delivery_ledger")).toMatchObject({

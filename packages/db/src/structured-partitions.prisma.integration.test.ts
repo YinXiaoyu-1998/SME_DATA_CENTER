@@ -1,6 +1,7 @@
 import { createStoreCleanupRepository } from "../../../scripts/partition-store-cleanup-support.js";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createBusinessAuthorizationRepository } from "./business-authorization.js";
 import { storageGarbageKeyHash } from "./storage-garbage.js";
 import { createDatabaseAdapter } from "./adapter.js";
 import {
@@ -536,6 +537,113 @@ suite("structured partition repository", () => {
     }
   });
 
+  it("publishes combo sales independently of dishes and only exposes stores on the caller's combo grant", async () => {
+    const dataset = "combo_sales" as const;
+    const scope = {
+      orgId,
+      dataset,
+      enterpriseKey: "synthetic",
+      clearance: 3,
+      startDate: "2026-09-07",
+      endDate: "2026-09-07",
+      maxPartitions: 10
+    };
+    await registerStore("Combo Store B");
+    await createProcessingJob("combo", "synthetic", dataset);
+    const first = candidate({
+      id: "part_combo_a",
+      dataset,
+      merchantId: null,
+      storeKey: "name:store a",
+      objectKey: "structured-partitions/combo/a"
+    });
+    const second = candidate({
+      id: "part_combo_b",
+      dataset,
+      merchantId: null,
+      storeName: "Combo Store B",
+      storeKey: "name:combo store b",
+      objectKey: "structured-partitions/combo/b"
+    });
+    await repository.publishSourceAtomically({
+      orgId,
+      jobId: "pjob_combo",
+      lease: leases.get("pjob_combo")!,
+      totalRowCount: 6n,
+      candidates: [first, second]
+    });
+    expect(await repository.listReadableManifestRows(scope)).toEqual([]);
+
+    const category = (key: string) =>
+      prisma.businessCategory.update({
+        where: { orgId_key: { orgId, key } },
+        data: { confidentialityLevel: 2 }
+      });
+    const dishes = await category("dishes");
+    const combo = await category(dataset);
+    await prisma.businessAuthorizationState.update({ where: { orgId }, data: { mode: "enabled" } });
+    const grantId = "partition_repo_combo_grant";
+    await prisma.businessGrant.create({
+      data: {
+        orgId,
+        id: grantId,
+        userAccountId,
+        enterpriseKey: "synthetic",
+        ownership: "store",
+        categories: { create: { categoryId: dishes.id } },
+        stores: { create: { storeName: "Store A" } }
+      }
+    });
+    try {
+      const permissions = createBusinessAuthorizationRepository({ prisma });
+      const read = async () => ({
+        ...scope,
+        authorization: await permissions.loadAuthorizationSnapshot(userAccountId, orgId)
+      });
+      expect(await repository.listReadableManifestRows(await read())).toEqual([]);
+      await prisma.businessGrantCategory.create({ data: { orgId, grantId, categoryId: combo.id } });
+      expect(await repository.listReadableManifestRows(await read())).toMatchObject([
+        { storeName: "Store A", objectKey: first.objectKey }
+      ]);
+      const coverage = await repository.listCoverage!(await read());
+      expect(coverage.enterprises).toMatchObject([
+        { partitionCount: 1, totalRowCount: 3n, stores: [{ storeName: "Store A" }] }
+      ]);
+      await createProcessingJob("combo_fix", "synthetic", dataset);
+      const corrected = {
+        ...first,
+        id: "part_combo_fix",
+        objectKey: "structured-partitions/combo/a2",
+        checksumSha256: "f".repeat(64),
+        rowCount: 1n
+      };
+      await repository.publishSourceAtomically({
+        orgId,
+        jobId: "pjob_combo_fix",
+        lease: leases.get("pjob_combo_fix")!,
+        totalRowCount: 1n,
+        candidates: [corrected]
+      });
+      await prisma.businessGrantStore.create({
+        data: { orgId, grantId, enterpriseKey: "synthetic", storeName: "Combo Store B" }
+      });
+      expect(
+        (await repository.listReadableManifestRows(await read())).sort((a, b) =>
+          a.storeName.localeCompare(b.storeName)
+        )
+      ).toMatchObject([
+        { storeName: "Combo Store B", objectKey: second.objectKey, rowCount: 3n },
+        { storeName: "Store A", objectKey: corrected.objectKey, rowCount: 1n }
+      ]);
+    } finally {
+      await prisma.businessGrant.delete({ where: { orgId_id: { orgId, id: grantId } } });
+      await prisma.businessAuthorizationState.update({
+        where: { orgId },
+        data: { mode: "legacy" }
+      });
+    }
+  });
+
   async function registerStore(name: string, enterpriseKey = "synthetic") {
     await prisma.$executeRaw`
       INSERT INTO business_stores (org_id, enterprise_key, name, official_name, store_id, confirmation)
@@ -543,13 +651,17 @@ suite("structured partition repository", () => {
     `;
   }
 
-  async function createProcessingJob(suffix: string, enterpriseKey = "synthetic") {
+  async function createProcessingJob(
+    suffix: string,
+    enterpriseKey = "synthetic",
+    dataset: PartitionCandidate["dataset"] = "business"
+  ) {
     const jobId = `pjob_${suffix}`;
     await repository.reserveUpload({
       id: jobId,
       orgId,
       uploaderId: userAccountId,
-      dataset: "business",
+      dataset,
       enterpriseKey,
       enterpriseName: "Synthetic",
       confidentialityLevel: 0,

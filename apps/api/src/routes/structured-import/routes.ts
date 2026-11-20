@@ -250,7 +250,7 @@ export function registerStructuredImportRoutes(
         .send(
           errorResponse(
             "PARTITION_UPLOAD_SESSION_REQUIRED",
-            "business, dishes, in_store_orders, and takeaway_orders must use the partition upload session."
+            "business, dishes, in_store_orders, takeaway_orders, and combo_sales must use the partition upload session."
           )
         );
     }
