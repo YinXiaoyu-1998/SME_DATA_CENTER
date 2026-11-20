@@ -781,6 +781,7 @@ function parseSheetStream(
     state.preserveNumericText = options.preserveNumericText;
     state.preserveCellWhitespace = options.preserveCellWhitespace;
     state.maxRows = options.maxRows;
+    state.maxColumns = options.maxColumns;
     state.maxMaterializedCells = options.maxMaterializedCells;
     state.preserveNumberPadding = options.preserveNumberPadding;
     const parser = sax.parser(true, {
@@ -927,10 +928,11 @@ function worksheetEntryPath(target: string): string {
 
 export interface XlsxTextOptions {
   /** Used only by exact-decimal datasets; legacy numeric/date rendering is unchanged. */
-  preserveNumericText?: boolean;
+  preserveNumericText?: boolean | "canonical_integer";
   preserveCellWhitespace?: boolean;
   /** Source-coordinate ceiling for sparse row and merged-cell materialization, not item count. */
   maxRows?: number;
+  maxColumns?: number;
   maxMaterializedCells?: number;
   preserveNumberPadding?: boolean;
 }
