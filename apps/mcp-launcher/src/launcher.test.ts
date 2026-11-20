@@ -1754,8 +1754,8 @@ it("delivers raw combo sales and one attributed record per source row using inde
   };
   const sources: Record<string, string> = {
     combo_sales:
-      "门店,套餐,菜品编码,单品名称,规格,菜品收入(元),营业日期,来源行号\nEast,Lunch,P,Roll,L,-1.25,2026-01-20,4\n",
-    dishes: "门店,菜品名称,关联菜品名称,菜品销售方式名称\nEast,Roll,Bun,单品\n"
+      "门店,套餐,菜品编码,单品名称,规格,菜品收入(元),营业日期,来源行号\nArchived store name,Lunch,P,Roll,L,-1.25,2026-01-20,4\n",
+    dishes: "门店,菜品名称,关联菜品名称,菜品销售方式名称\nFormer official name,Roll,Bun,单品\n"
   };
   const remote: typeof fetch = async (url, init) => {
     const body = JSON.parse(String(init?.body ?? "{}"));
@@ -1819,7 +1819,8 @@ it("delivers raw combo sales and one attributed record per source row using inde
     expect(data.attribution.status).toBe("ready");
     const line = JSON.parse((await readFile(data.attribution.file, "utf8")).trim());
     expect(line).toMatchObject({
-      source: { "菜品收入(元)": "-1.25", 来源行号: "4" },
+      storeName: "East",
+      source: { 门店: "Archived store name", "菜品收入(元)": "-1.25", 来源行号: "4" },
       attribution: { status: "sku", departmentId: "D", sku: "B" }
     });
   } finally {

@@ -396,7 +396,7 @@ export const downloadStructuredPartitionsInputSchema = z
   .superRefine((input, context) => {
     if (
       input.comboAttribution &&
-      (String(input.dataset) !== "combo_sales" ||
+      (input.dataset !== "combo_sales" ||
         input.comboAttribution.evidenceStartDate > input.comboAttribution.evidenceEndDate)
     ) {
       context.addIssue({
@@ -1478,6 +1478,12 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     inputSchema: downloadStructuredPartitionsInputSchema,
     inputFields: [
       {
+        name: "comboAttribution",
+        required: false,
+        description:
+          "Optional combo_sales range enrichment. Provide evidenceStartDate and evidenceEndDate in YYYYMMDD for authorized same-store dishes names."
+      },
+      {
         name: "requestId",
         required: false,
         description:
@@ -1499,7 +1505,14 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
           "1–20 NFC/trim store-name substrings (at most 255 characters each), literal and case-sensitive, OR within the array and AND with merchant IDs and authorization."
       }
     ],
-    resultShape: ["localDirectory", "dataset", "partitionCount", "totalRowCount", "files[]"]
+    resultShape: [
+      "localDirectory",
+      "dataset",
+      "partitionCount",
+      "totalRowCount",
+      "files[]",
+      "attribution?: status, file (JSONL when ready), evidence range"
+    ]
   }),
   defineToolContract({
     name: "download_cost_cards",

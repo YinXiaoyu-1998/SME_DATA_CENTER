@@ -180,7 +180,7 @@ export async function attributeComboExtract(
           path.join(evidence.localDirectory, f.fileName),
           context.signal
         )) {
-          if (row["门店"] !== f.storeName) throw new Error("Name evidence store mismatch.");
+          // The authorized manifest carries the current official store name after a rename.
           reader.addEvidence(
             f.storeName,
             row["菜品名称"]!,
@@ -197,8 +197,7 @@ export async function attributeComboExtract(
   async function* records() {
     for (const f of sales) {
       for await (const row of csvRows(path.join(raw.localDirectory, f.fileName), context.signal)) {
-        if (row["门店"] !== f.storeName || row["营业日期"] !== f.businessDate)
-          throw new Error("Combo sale scope mismatch.");
+        if (row["营业日期"] !== f.businessDate) throw new Error("Combo sale scope mismatch.");
         const attribution = reader.resolve({
           store: f.storeName,
           parentName: row["套餐"]!,
@@ -206,7 +205,7 @@ export async function attributeComboExtract(
           name: row["单品名称"]!,
           spec: row["规格"] ?? null
         });
-        yield JSON.stringify({ source: row, attribution }) + "\n";
+        yield JSON.stringify({ storeName: f.storeName, source: row, attribution }) + "\n";
       }
     }
   }

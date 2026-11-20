@@ -59,6 +59,7 @@ function context(
     structuredQueries: () => repository,
     structuredCoverage: () => coverageRepository,
     storeReviews: unexpectedDependency,
+    comboSaleMappings: unexpectedDependency,
     dishCatalog: unexpectedDependency,
     costCards: unexpectedDependency,
     skills: unexpectedDependency,
