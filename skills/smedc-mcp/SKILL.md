@@ -3,6 +3,7 @@ name: smedc-mcp
 description: >-
   上传文件到企业智脑（SMEDC），或查询其中的资料和营业额：当员工要求把文件/文档/表格上传到
   企业数据中枢、企业资料中枢、企业知识库或企业数据库，或想基于已上传的企业资料提问业务问题时使用。
+  员工要维护总部套餐、查询实际售出的套餐子菜或核对其部门归属时也使用本技能。
   用户要求更新 smedc-mcp 或 smedc-mcp-skill 这个 skill 时也使用本技能。
   用户询问 SMEDC 的配套分析、报表或扩展 skill 时也使用本技能。
   安装或升级企业智脑（SMEDC）、选择企业自动任务或换电脑恢复工作流时也使用本技能。
@@ -183,8 +184,7 @@ discover them by hand.
   `delivery_ledger` remains an upload dataset even though its raw reads are disabled and it is absent
   from `list_structured_datasets`. The backend still validates role, enterprise, file and metadata;
   do not bypass a returned denial or missing upload contract.
-- `dish_catalog` is not an upload dataset. Read the local file yourself and use
-  `upsert_dish_catalog`; an old file upload request returns `DATASET_UPLOAD_RETIRED`. Do not submit
+- `dish_catalog` is not an upload dataset. Use `upsert_dish_catalog` for local catalog data; an old file upload request returns `DATASET_UPLOAD_RETIRED`. Do not submit
   the catalog through `upload_structured_dataset` or construct the retired metadata fields.
 - In structured dataset discovery, `canonicalName` is the queryable field name. `sourceColumn` and
   `aliases` are not accepted directly by `query_structured_dataset`; use them to map the user's
@@ -465,12 +465,15 @@ releases them through its shared index; never directly delete another consumer's
 Service data cleanup is operator-only and is not an employee MCP tool, including for admins.
 Do not run operator cleanup commands or dataset repair from this base skill.
 
+## Combo composition, sales and store confirmations
+
+For 总部套餐, actual combo item sales, department attribution or store-specific name confirmations, use the [manual combo catalog and sales guide](references/combo-sales.md). Check connected capabilities before applying its candidate workflow.
+
 ## Dish Catalog Batch Writes
 
 `dish_catalog` is one current catalog per business enterprise, one row per SKU. It has no
 `snapshotDate`, `snapshot_date`, date-ordered history, archive step, or cross-snapshot diff. Maintain
-it with `upsert_dish_catalog`; the service never receives a catalog file. Read the employee's local
-file yourself and submit structured rows. Use the verified launcher `0.21.0` with a service that
+it with `upsert_dish_catalog`; the service never receives a catalog file. For the current row-based workflow, read the employee's local file and submit structured rows. Use the verified launcher `0.21.0` with a service that
 supports the current directory. If tool discovery omits `upsert_dish_catalog`, follow the official
 launcher update flow and confirm the matching service.
 
