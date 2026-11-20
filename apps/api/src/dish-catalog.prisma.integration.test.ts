@@ -174,6 +174,116 @@ suite("dish catalog current-state HTTP seam", () => {
     return { app, orgId, enterpriseKey, kitchenId, otherEnterpriseName, headers };
   }
 
+  it("maintains a complete combo, preserves manual fields on refresh and rejects broken references", async () => {
+    const { app, enterpriseKey, kitchenId, headers } = await fixture();
+    const write = (body: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/dish-catalog/upsert",
+        headers: headers("admin-token"),
+        payload: { enterpriseName, ...body }
+      });
+    const composition = {
+      pricingMethod: "含加价",
+      salePrice: "21",
+      groups: [
+        {
+          name: "主菜",
+          type: "fixed",
+          chooseCount: null,
+          items: [{ skuId: "LEAF", quantity: "2", extraPrice: "1.5" }]
+        }
+      ]
+    };
+    try {
+      expect(
+        (
+          await write({
+            rows: [
+              row("COMBO", { departmentName: "Café", dishAlias: "午餐" }),
+              row("LEAF", { dishType: "single", departmentName: null })
+            ],
+            compositions: [{ skuId: "COMBO", composition }]
+          })
+        ).statusCode
+      ).toBe(200);
+      // A legacy full-row update can still maintain the department and alias.
+      expect(
+        (
+          await write({
+            rows: [row("COMBO", { departmentName: "Café", dishAlias: "午餐", salePrice: "19" })]
+          })
+        ).json()
+      ).toMatchObject({ updated: 1 });
+      await write({
+        enterpriseName: otherEnterpriseName,
+        rows: [row("FOREIGN", { departmentName: null, dishType: "single" })]
+      });
+      for (const target of ["FOREIGN", "COMBO"]) {
+        const invalid = await write({
+          compositions: [
+            {
+              skuId: "COMBO",
+              composition: {
+                ...composition,
+                groups: [
+                  {
+                    ...composition.groups[0],
+                    items: [{ skuId: target, quantity: "1", extraPrice: "0" }]
+                  }
+                ]
+              }
+            }
+          ]
+        });
+        expect(invalid.statusCode).toBe(400);
+        expect(invalid.json().error.code).toBe("DISH_CATALOG_INVALID_REFERENCE");
+      }
+      expect(
+        (
+          await write({
+            rows: [row("COMBO", { departmentName: null, dishName: "午餐组合" })],
+            preserveManualFields: true
+          })
+        ).statusCode
+      ).toBe(200);
+      expect(
+        (await write({ compositions: [{ skuId: "COMBO", composition }] })).json()
+      ).toMatchObject({ unchanged: 1 });
+      expect((await write({ removeSkuIds: ["LEAF"] })).statusCode).toBe(400);
+      expect(
+        (await write({ rows: [row("LEAF", { departmentName: null, dishType: "combo" })] }))
+          .statusCode
+      ).toBe(400);
+      const query = await app.inject({
+        method: "POST",
+        url: "/v1/structured/query",
+        headers: headers("reader-token"),
+        payload: {
+          dataset: "dish_catalog",
+          select: ["dish_name", "dish_alias", "dish_type", "department_id", "combo_composition"],
+          filter: {
+            and: [
+              { field: "enterprise_key", op: "eq", value: enterpriseKey },
+              { field: "sku_id", op: "eq", value: "COMBO" }
+            ]
+          }
+        }
+      });
+      expect(query.statusCode).toBe(200);
+      expect(query.json().rows).toHaveLength(1);
+      expect(query.json().rows[0]).toMatchObject({
+        dish_name: "午餐组合",
+        dish_alias: "午餐",
+        dish_type: "combo",
+        department_id: kitchenId
+      });
+      expect(JSON.parse(query.json().rows[0].combo_composition)).toEqual(composition);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("writes, queries and reports coverage through the public routes", async () => {
     const { app, orgId, enterpriseKey, kitchenId, headers } = await fixture();
     try {

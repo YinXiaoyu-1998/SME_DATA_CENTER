@@ -35,6 +35,7 @@ import {
   DISH_CATALOG_LIMITS,
   DISH_CATALOG_SALE_PRICE_PATTERN,
   dishCatalogTextSchema,
+  dishComboReplacementSchema,
   DishCatalogValidationError,
   isDishCatalogInputField,
   parseDishCatalogBatch
@@ -875,6 +876,7 @@ export const queryStoreReviewsInputSchema = z
 // contract only keeps strict structure and field descriptions.
 const dishCatalogRowSchema = z
   .object({
+    dishType: z.enum(["single", "combo"]).optional(),
     spuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.spuIdChars, { required: true }).describe(
       "SPU identifier."
     ),
@@ -916,12 +918,23 @@ export const upsertDishCatalogInputSchema = z
     enterpriseName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.enterpriseNameChars, {
       required: true
     }).describe("Exact registered enterprise name of the current organization."),
+    preserveManualFields: z
+      .boolean()
+      .optional()
+      .describe(
+        "Refresh workbook fields while retaining existing department, alias and known dish type."
+      ),
+    compositions: z
+      .array(dishComboReplacementSchema)
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe("Replace only these complete combo configurations."),
     rows: z
       .array(dishCatalogRowSchema)
       .max(DISH_CATALOG_LIMITS.maxBatchEntries)
       .optional()
       .describe(
-        "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries per batch."
+        "Rows to create or replace. Rows, compositions and removals together total 1–1000 entries per batch."
       ),
     removeSkuIds: z
       .array(dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }))
@@ -1743,30 +1756,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upsert_dish_catalog",
     title: "Upsert dish catalog",
     description:
-      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Send only changed rows plus explicit removeSkuIds; rows and removals total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted nullable row fields clear the stored value, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
+      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Submit rows, complete compositions, and explicit removeSkuIds; together they total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted dishType retains the current type. Omitted nullable row fields clear the stored value unless preserveManualFields protects the department and alias, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
     inputSchema: upsertDishCatalogInputSchema,
-    inputFields: [
-      {
-        name: "enterpriseName",
-        required: true,
-        description: "Exact registered enterprise name of the current organization."
-      },
-      {
-        name: "rows",
-        required: false,
-        description: "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries."
-      },
-      {
-        name: "removeSkuIds",
-        required: false,
-        description: "SKUs to permanently delete; removing an absent SKU is a no-op."
-      },
-      {
-        name: "sourceFileName",
-        required: false,
-        description: "Optional audit-only source file name; the server reads no file."
-      }
-    ],
+    inputFields: Object.entries(upsertDishCatalogInputSchema.shape).map(([name, schema]) => ({
+      name,
+      required: !schema.isOptional(),
+      description: schema.description ?? name
+    })),
     resultShape: ["received, created, updated, unchanged, removed"],
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
   }),

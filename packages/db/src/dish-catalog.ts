@@ -8,7 +8,7 @@ import {
   isBusinessClearance,
   parseDishCatalogBatch,
   type DishCatalogRowInput,
-  type ParsedDishCatalogBatch
+  type DishComboReplacement
 } from "@smedc/domain";
 import { ResourceAttributesError } from "./business-authorization.js";
 import { categoriesInclude } from "./business-authorization-records.js";
@@ -23,7 +23,7 @@ export interface DishCatalogActor {
   requestId?: string;
 }
 
-/** Batch counters; rows.length === created + updated + unchanged. */
+/** Each row and each explicit composition is one write operation in these counters. */
 export interface DishCatalogWriteResult {
   received: number;
   created: number;
@@ -46,13 +46,8 @@ export class DishCatalogRepositoryError extends Error {
   }
 }
 
-/** One concurrent insert can win the unique SKU key after our FOR UPDATE found nothing. */
-function isUniqueSkuConflict(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
-}
-
 /** Canonical snake_case payload; omitted optional fields are stored as explicit nulls. */
-function catalogPayload(row: DishCatalogRowInput): Prisma.InputJsonValue {
+function catalogPayload(row: DishCatalogRowInput) {
   return {
     spu_id: row.spuId,
     sku_id: row.skuId,
@@ -67,14 +62,79 @@ function catalogPayload(row: DishCatalogRowInput): Prisma.InputJsonValue {
   };
 }
 
+function invalidReference(index?: number) {
+  return new DishCatalogRepositoryError(
+    "DISH_CATALOG_INVALID_REFERENCE",
+    index === undefined ? {} : { rowIndexes: [index] }
+  );
+}
+
+async function replaceCompositions(
+  tx: Tx,
+  scope: { orgId: string; enterpriseKey: string },
+  replacements: DishComboReplacement[],
+  result: DishCatalogWriteResult,
+  now: Date
+) {
+  // Mark every submitted parent before checking children, so order within a batch is irrelevant.
+  const parents = await tx.dishCatalogEntry.findMany({
+    where: { ...scope, skuId: { in: replacements.map((item) => item.skuId) } },
+    select: { id: true, skuId: true, dishType: true, comboComposition: true }
+  });
+  const indexed = new Map(parents.map((row) => [row.skuId, row]));
+  const edges = [];
+  for (const [index, { skuId, composition }] of replacements.entries()) {
+    const parent = indexed.get(skuId);
+    if (!parent) throw invalidReference(index);
+    if (parent.dishType === "combo" && isDeepStrictEqual(parent.comboComposition, composition)) {
+      result.unchanged++;
+      continue;
+    }
+    await tx.dishCatalogEntry.update({
+      where: { id: parent.id },
+      data: { dishType: "combo", comboComposition: composition, updatedAt: now }
+    });
+    await tx.dishComboReference.deleteMany({ where: { ...scope, parentSku: skuId } });
+    const children = new Set(
+      composition.groups.flatMap((group) => group.items.map((item) => item.skuId))
+    );
+    for (const childSku of children) edges.push({ ...scope, parentSku: skuId, childSku, index });
+    result.updated++;
+  }
+  if (edges.length) {
+    const children = await tx.dishCatalogEntry.findMany({
+      where: {
+        ...scope,
+        dishType: "single",
+        skuId: { in: [...new Set(edges.map((edge) => edge.childSku))] }
+      },
+      select: { skuId: true }
+    });
+    const known = new Set(children.map((row) => row.skuId));
+    for (const edge of edges) if (!known.has(edge.childSku)) throw invalidReference(edge.index);
+    await tx.dishComboReference.createMany({
+      data: edges.map(({ orgId, enterpriseKey, parentSku, childSku }) => ({
+        orgId,
+        enterpriseKey,
+        parentSku,
+        childSku
+      }))
+    });
+  }
+}
+
 function catalogResourceKey(enterpriseKey: string): string {
   return `dish-catalog:${enterpriseKey}`;
 }
 
 /** Use the same collation as the unique SKU key, including its trailing-space rules. */
-async function validateStoredSkuIdentity(tx: Tx, batch: ParsedDishCatalogBatch) {
-  const rowCount = batch.rows.length;
-  const skuIds = [...batch.rows.map(({ skuId }) => skuId), ...batch.removeSkuIds];
+async function validateStoredSkuIdentity(
+  tx: Tx,
+  writes: readonly { skuId: string }[],
+  removals: readonly string[]
+) {
+  const rowCount = writes.length;
+  const skuIds = [...writes.map(({ skuId }) => skuId), ...removals];
   if (skuIds.length < 2) return;
 
   const collisions = await tx.$queryRaw<
@@ -229,7 +289,7 @@ export function createPrismaDishCatalogRepository({
           if (!enterprise)
             throw new DishCatalogRepositoryError("DISH_CATALOG_ENTERPRISE_NOT_AVAILABLE");
           const { enterpriseKey } = enterprise;
-          await validateStoredSkuIdentity(tx, parsed);
+          await validateStoredSkuIdentity(tx, parsed.rows, parsed.removeSkuIds);
 
           // Resolve every department name once, exactly and only among current departments.
           // Comparisons use the column collation (utf8mb4_unicode_ci) so case/accent variants
@@ -288,6 +348,8 @@ export function createPrismaDishCatalogRepository({
                 Array<{
                   requested_sku_id: string;
                   id: string;
+                  sku_id: string;
+                  dish_type: string | null;
                   department_id: string | null;
                   payload: string | null;
                 }>
@@ -295,7 +357,7 @@ export function createPrismaDishCatalogRepository({
                 Prisma.sql`${Prisma.join(
                   skuIds.map(
                     (skuId) =>
-                      Prisma.sql`SELECT ${skuId} AS requested_sku_id, id, department_id,
+                      Prisma.sql`SELECT ${skuId} AS requested_sku_id, id, sku_id, dish_type, department_id,
                                         CAST(payload AS CHAR CHARACTER SET utf8mb4) AS payload
                                    FROM dish_catalog_entries
                                   WHERE org_id = ${actor.orgId}
@@ -309,7 +371,8 @@ export function createPrismaDishCatalogRepository({
           const existingBySku = new Map(existingRows.map((row) => [row.requested_sku_id, row]));
 
           const result: DishCatalogWriteResult = {
-            received: parsed.rows.length + parsed.removeSkuIds.length,
+            received:
+              parsed.rows.length + parsed.removeSkuIds.length + (parsed.compositions?.length ?? 0),
             created: 0,
             updated: 0,
             unchanged: 0,
@@ -318,72 +381,109 @@ export function createPrismaDishCatalogRepository({
           const now = new Date();
           for (const [index, row] of parsed.rows.entries()) {
             const desired = catalogPayload(row);
-            const departmentId = departmentIds[index] ?? null;
             const existing = existingBySku.get(row.skuId);
+            const savedPayload = existing?.payload ? JSON.parse(existing.payload) : null;
+            const departmentId =
+              parsed.preserveManualFields && existing
+                ? existing.department_id
+                : (departmentIds[index] ?? null);
+            if (parsed.preserveManualFields && existing)
+              desired.dish_alias = savedPayload?.dish_alias ?? null;
+            const dishType = parsed.preserveManualFields
+              ? (existing?.dish_type ?? row.dishType ?? null)
+              : (row.dishType ?? existing?.dish_type ?? null);
+            if (
+              existing &&
+              existing.sku_id !== row.skuId &&
+              (await tx.dishComboReference.count({
+                where: {
+                  orgId: actor.orgId,
+                  enterpriseKey,
+                  OR: [{ childSku: existing.sku_id }, { parentSku: existing.sku_id }]
+                }
+              }))
+            )
+              throw invalidReference(index);
             if (existing) {
               if (
+                existing.dish_type === dishType &&
                 existing.department_id === departmentId &&
-                isDeepStrictEqual(
-                  existing.payload === null ? null : JSON.parse(existing.payload),
-                  desired
-                )
+                isDeepStrictEqual(savedPayload, desired)
               ) {
                 result.unchanged++;
                 continue;
               }
               await tx.dishCatalogEntry.update({
                 where: { id: existing.id },
-                data: { skuId: row.skuId, departmentId, payload: desired, updatedAt: now }
+                data: {
+                  skuId: row.skuId,
+                  departmentId,
+                  dishType,
+                  ...(dishType === "single" ? { comboComposition: Prisma.DbNull } : {}),
+                  payload: desired,
+                  updatedAt: now
+                }
               });
+              if (dishType === "single" && existing.dish_type === "combo")
+                await tx.dishComboReference.deleteMany({
+                  where: { orgId: actor.orgId, enterpriseKey, parentSku: row.skuId }
+                });
               result.updated++;
               continue;
             }
             const id = randomUUID().replaceAll("-", "");
-            try {
-              await tx.dishCatalogEntry.create({
-                data: {
-                  id,
-                  orgId: actor.orgId,
-                  enterpriseKey,
-                  skuId: row.skuId,
-                  departmentId,
-                  payload: desired,
-                  createdAt: now,
-                  updatedAt: now
-                }
-              });
-              result.created++;
-            } catch (error) {
-              if (!isUniqueSkuConflict(error)) throw error;
-              // FOR UPDATE cannot lock a row that does not exist yet: a concurrent batch can
-              // insert the same SKU between our read and this create. Its insert has committed
-              // by the time InnoDB reports the duplicate, so converge to the update path
-              // (last write wins) instead of surfacing a 500.
-              const conflicted = await tx.dishCatalogEntry.findFirst({
-                where: { orgId: actor.orgId, enterpriseKey, skuId: row.skuId }
-              });
-              if (!conflicted) throw error;
-              if (
-                conflicted.departmentId === departmentId &&
-                isDeepStrictEqual(conflicted.payload, desired)
-              ) {
-                result.unchanged++;
-                continue;
+            await tx.dishCatalogEntry.create({
+              data: {
+                id,
+                orgId: actor.orgId,
+                enterpriseKey,
+                skuId: row.skuId,
+                departmentId,
+                dishType,
+                payload: desired,
+                createdAt: now,
+                updatedAt: now
               }
-              await tx.dishCatalogEntry.update({
-                where: { id: conflicted.id },
-                data: { skuId: row.skuId, departmentId, payload: desired, updatedAt: now }
-              });
-              result.updated++;
-            }
+            });
+            result.created++;
+          }
+
+          const scope = { orgId: actor.orgId, enterpriseKey };
+          if (parsed.compositions?.length) {
+            const replacements = parsed.compositions;
+            // SQL collation can equate two identifiers JS considers distinct.
+            await validateStoredSkuIdentity(tx, replacements, parsed.removeSkuIds);
+            await replaceCompositions(tx, scope, replacements, result, now);
           }
 
           if (parsed.removeSkuIds.length) {
+            await tx.dishComboReference.deleteMany({
+              where: { ...scope, parentSku: { in: parsed.removeSkuIds } }
+            });
+            if (
+              await tx.dishComboReference.count({
+                where: { ...scope, childSku: { in: parsed.removeSkuIds } }
+              })
+            )
+              throw invalidReference();
             const removed = await tx.dishCatalogEntry.deleteMany({
               where: { orgId: actor.orgId, enterpriseKey, skuId: { in: parsed.removeSkuIds } }
             });
             result.removed = removed.count;
           }
+
+          const markedCombos = [
+            ...parsed.rows.filter((row) => row.dishType === "combo").map((row) => row.skuId),
+            ...(parsed.compositions ?? []).map((item) => item.skuId)
+          ];
+          if (
+            markedCombos.length &&
+            (await tx.dishComboReference.findFirst({
+              where: { ...scope, childSku: { in: markedCombos }, child: { dishType: "combo" } },
+              select: { childSku: true }
+            }))
+          )
+            throw invalidReference();
 
           if (result.created + result.updated + result.removed > 0) {
             await persistCatalogResource(tx, actor.orgId, enterpriseKey, category.id);

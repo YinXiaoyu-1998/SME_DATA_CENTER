@@ -1634,3 +1634,112 @@ it("rejects workflow organization overrides at the launcher MCP boundary", async
     await server.close();
   }
 });
+
+it("imports both workbook sheets locally, then submits complete combos after all SKU batches", async () => {
+  const { Workbook } = (await import("exceljs")).default;
+  const workbook = new Workbook();
+  const dishes = workbook.addWorksheet("总部菜品");
+  dishes.addRow([
+    "品牌",
+    "菜品名称",
+    "菜品编码（SPUID）",
+    "菜品编码（SKUID）",
+    "基础分类",
+    "一级分类编码",
+    "二级分类编码",
+    "规格名称",
+    "售卖价"
+  ]);
+  dishes.addRow(["品牌", "便餐", "001", "P", "餐", "1", null, null, 21]);
+  dishes.addRow(["品牌", "谷物", "101", "A", "主食", "1", null, "大", 2]);
+  for (let i = 0; i < 999; i++)
+    dishes.addRow(["品牌", "饮料" + i, "S" + i, "B" + i, "饮料", "2", null, null, 1]);
+  const combos = workbook.addWorksheet("总部套餐");
+  combos.addRow([
+    "套餐编码",
+    "套餐名称",
+    "套餐计价方式",
+    "品牌名称",
+    "售卖价",
+    "分组名称",
+    "分组类型",
+    "分组可选份数",
+    "菜品名称",
+    "菜品数量",
+    "菜品加价"
+  ]);
+  combos.addRow(["001", "便餐", "含加价", "品牌", 21, "主食", "固定分组", "全部", "谷物-大", 2, 0]);
+  combos.addRow(["001", "便餐", "含加价", "品牌", 21, "搭配", "可选分组", "1", "饮料1", 1, 0.9]);
+  const folder = await mkdtemp(path.join(os.tmpdir(), "smedc-catalog-"));
+  const workbookPath = path.join(folder, "catalog.xlsx");
+  const calls: Array<{
+    method?: string;
+    params?: { name?: string; arguments?: Record<string, unknown> };
+  }> = [];
+  const server = new McpServer({ name: "catalog-import", version: "0.0.0" });
+  registerLauncherTools(
+    server,
+    createLauncherToolDependencies({
+      config,
+      auth: fakeAuth(),
+      fetchImplementation: fakeMcpFetch(calls)
+    })
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "import-test", version: "0.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    await workbook.xlsx.writeFile(workbookPath);
+    const result = await client.callTool({
+      name: "upsert_dish_catalog",
+      arguments: { enterpriseName: "企业", workbookPath }
+    });
+    expect(result.isError).toBe(false);
+    const writes = calls
+      .filter((call) => call.method === "tools/call")
+      .map((call) => call.params?.arguments);
+    expect(writes).toHaveLength(3);
+    expect(writes[0]?.rows).toHaveLength(1000);
+    expect(writes[1]?.rows).toHaveLength(1);
+    expect(writes[0]?.preserveManualFields).toBe(true);
+    expect(writes[2]).toMatchObject({
+      compositions: [
+        {
+          skuId: "P",
+          composition: {
+            groups: [
+              {
+                type: "fixed",
+                chooseCount: null,
+                items: [{ skuId: "A", quantity: "2", extraPrice: "0" }]
+              },
+              {
+                type: "optional",
+                chooseCount: 1,
+                items: [{ skuId: "B1", quantity: "1", extraPrice: "0.9" }]
+              }
+            ]
+          }
+        }
+      ]
+    });
+    // Ambiguous child names must be fixed before any batch is published.
+    dishes.addRow(["品牌", "谷物", "102", "C", "主食", "1", null, "大", 3]);
+    await workbook.xlsx.writeFile(workbookPath);
+    calls.length = 0;
+    const invalid = await client.callTool({
+      name: "upsert_dish_catalog",
+      arguments: { enterpriseName: "企业", workbookPath }
+    });
+    expect(invalid.isError).toBe(true);
+    expect(JSON.parse((invalid.content as Array<{ text: string }>)[0]!.text)).toMatchObject({
+      error: { details: { sheet: "总部套餐", row: 2, candidates: ["A", "C"] } }
+    });
+    expect(calls).toHaveLength(0);
+  } finally {
+    await client.close();
+    await server.close();
+    await rm(folder, { recursive: true, force: true });
+  }
+});

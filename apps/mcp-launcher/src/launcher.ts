@@ -18,6 +18,8 @@ import {
   WORKFLOW_MCP_TOOL_NAMES,
   DIRECTORY_MCP_TOOL_NAMES,
   dishCatalogValidationErrorToolResult,
+  upsertDishCatalogInputSchema,
+  localFilePath,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -27,6 +29,7 @@ import {
 } from "@smedc/mcp-contract";
 import type { LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
+import { importDishCatalogWorkbook } from "./dish-catalog-workbook.js";
 import { readLocalUploadFile } from "./local-file.js";
 import { downloadPartitionBundle } from "./partition-bundle.js";
 import { downloadCostCards } from "./cost-card-transfer.js";
@@ -198,6 +201,18 @@ export interface LauncherToolRegistrar {
   ): void;
 }
 
+const workbookInput = z.strictObject({
+  enterpriseName: upsertDishCatalogInputSchema.shape.enterpriseName,
+  workbookPath: localFilePath
+});
+const launcherCatalogInput = upsertDishCatalogInputSchema.extend({
+  workbookPath: localFilePath
+    .optional()
+    .describe(
+      "Absolute local XLSX path with 总部菜品 and 总部套餐. Supply only enterpriseName and workbookPath to import."
+    )
+});
+
 const emptyInputSchema = z.object({}).strict();
 const bootstrapTools = [
   {
@@ -288,7 +303,15 @@ export function registerLauncherTools(
                 "describe_structured_dataset_coverage"
               ].includes(tool.name)
             ? tool.inputSchema
-            : tool.inputShape
+            : tool.inputShape,
+        ...(tool.name === "upsert_dish_catalog"
+          ? {
+              inputSchema: launcherCatalogInput,
+              description:
+                tool.description +
+                " The launcher also accepts enterpriseName and workbookPath alone for a local two-sheet import. Individual batches commit independently."
+            }
+          : {})
       },
       createLauncherToolHandler(tool.name, dependencies)
     );
@@ -316,7 +339,10 @@ export function registerLauncherTools(
         const denial = await uploadAuthorizationError(dependencies);
         if (denial) return denial;
       }
-      if (params.name === "upsert_dish_catalog") {
+      if (
+        params.name === "upsert_dish_catalog" &&
+        !(params.arguments && "workbookPath" in params.arguments)
+      ) {
         const invalid = dishCatalogValidationErrorToolResult(params.arguments);
         if (invalid) return invalid;
       }
@@ -359,6 +385,21 @@ export function createLauncherToolHandler(
       proxyPartitionPreparation(toolName, input, dependencies, extra?.signal);
   if (toolName === "download_structured_partitions")
     return (input, extra) => proxyPartitionDownload(input, dependencies, extra?.signal);
+  if (toolName === "upsert_dish_catalog")
+    return async (input, extra) => {
+      if (input && typeof input === "object" && "workbookPath" in input) {
+        const denial = await uploadAuthorizationError(dependencies);
+        if (denial) return denial;
+        const checked = workbookInput.safeParse(input);
+        if (!checked.success) return validationErrorToolResult(checked.error.issues);
+        return importDishCatalogWorkbook(
+          checked.data.enterpriseName,
+          checked.data.workbookPath,
+          (batch) => proxy("upsert_dish_catalog", batch, dependencies, extra?.signal)
+        );
+      }
+      return proxy("upsert_dish_catalog", input, dependencies, extra?.signal);
+    };
   if (toolName === "download_cost_cards")
     return (input, extra) => proxyCostCardDownload(input, dependencies, extra?.signal);
   if (toolName === "download_ledger_pdf_bundle")

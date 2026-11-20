@@ -62,6 +62,7 @@ export interface DishCatalogRowInput {
   salePrice: string;
   dishAlias: string | null;
   departmentName: string | null;
+  dishType?: "single" | "combo";
 }
 
 export interface ParsedDishCatalogBatch {
@@ -69,10 +70,20 @@ export interface ParsedDishCatalogBatch {
   rows: DishCatalogRowInput[];
   removeSkuIds: string[];
   sourceFileName?: string;
+  preserveManualFields?: boolean;
+  compositions?: DishComboReplacement[];
 }
 
-const BATCH_KEYS = new Set(["enterpriseName", "rows", "removeSkuIds", "sourceFileName"]);
+const BATCH_KEYS = new Set([
+  "enterpriseName",
+  "rows",
+  "removeSkuIds",
+  "sourceFileName",
+  "compositions",
+  "preserveManualFields"
+]);
 const ROW_KEYS = new Set([
+  "dishType",
   "spuId",
   "skuId",
   "dishName",
@@ -107,6 +118,43 @@ export function dishCatalogTextSchema(max: number, options: { required?: boolean
   const base = options.required ? z.string().min(1, "Required.") : z.string();
   return base.refine((value) => dishCatalogTextFits(value, max), `At most ${max} characters.`);
 }
+
+const comboText = dishCatalogTextSchema(255, { required: true });
+const comboDecimal = z.string().regex(DISH_CATALOG_SALE_PRICE_PATTERN);
+export const dishComboReplacementSchema = z.strictObject({
+  skuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }),
+  composition: z.strictObject({
+    pricingMethod: comboText,
+    salePrice: comboDecimal,
+    groups: z
+      .array(
+        z
+          .strictObject({
+            name: comboText,
+            type: z.enum(["fixed", "optional"]),
+            chooseCount: z.number().int().positive().max(10000).nullable(),
+            items: z
+              .array(
+                z.strictObject({
+                  skuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }),
+                  quantity: comboDecimal.refine((value) => Number(value) > 0),
+                  extraPrice: comboDecimal
+                })
+              )
+              .min(1)
+              .max(1000)
+          })
+          .refine(
+            (group) =>
+              group.type === "fixed" ? group.chooseCount === null : group.chooseCount !== null,
+            "Fixed groups select all items; optional groups require a choice count."
+          )
+      )
+      .max(1000)
+  })
+});
+export type DishComboReplacement = z.infer<typeof dishComboReplacementSchema>;
+export type DishComboComposition = DishComboReplacement["composition"];
 
 /** Shared bounded public row-index list used by HTTP and MCP error details. */
 export function boundedDishCatalogRowIndexes(indexes: number[]): number[] {
@@ -155,7 +203,13 @@ export function parseDishCatalogBatch(value: unknown): ParsedDishCatalogBatch {
   if (!Array.isArray(rawRemoveSkuIds))
     throw invalid("removeSkuIds", "removeSkuIds must be an array.");
 
-  const received = rawRows.length + rawRemoveSkuIds.length;
+  const rawCompositions = object["compositions"] === undefined ? [] : object["compositions"];
+  if (!Array.isArray(rawCompositions))
+    throw invalid("compositions", "Expected complete combo replacements.");
+  const preserveManualFields = object["preserveManualFields"];
+  if (preserveManualFields !== undefined && typeof preserveManualFields !== "boolean")
+    throw invalid("preserveManualFields", "Expected a boolean.");
+  const received = rawRows.length + rawRemoveSkuIds.length + rawCompositions.length;
   if (received === 0) {
     throw invalid("rows", "A dish catalog batch requires at least one entry.");
   }
@@ -217,7 +271,27 @@ export function parseDishCatalogBatch(value: unknown): ParsedDishCatalogBatch {
     );
   }
 
+  const seenParents = new Set<string>();
+  const singles = new Set(rows.filter((row) => row.dishType === "single").map((row) => row.skuId));
+  const compositions = rawCompositions.map((raw, index) => {
+    const parsed = dishComboReplacementSchema.safeParse(raw);
+    if (
+      !parsed.success ||
+      seenParents.has(parsed.data.skuId) ||
+      removedSkuIds.has(parsed.data.skuId) ||
+      singles.has(parsed.data.skuId)
+    )
+      throw new DishCatalogValidationError(
+        DISH_CATALOG_ERROR_CODES.invalidInput,
+        "Invalid or conflicting combo replacement.",
+        { field: "compositions", rowIndexes: [index] }
+      );
+    seenParents.add(parsed.data.skuId);
+    return parsed.data;
+  });
   return {
+    ...(compositions.length ? { compositions } : {}),
+    ...(preserveManualFields === undefined ? {} : { preserveManualFields }),
     enterpriseName,
     rows,
     removeSkuIds,
@@ -261,7 +335,11 @@ function parseRemoveSkuIds(values: unknown[]): string[] {
 function parseRow(value: unknown): DishCatalogRowInput {
   const object = requireObject(value, ROW_KEYS);
 
+  const dishType = object["dishType"];
+  if (dishType !== undefined && dishType !== "single" && dishType !== "combo")
+    throw invalid("dishType", "Expected single or combo.");
   return {
+    ...(dishType === undefined ? {} : { dishType }),
     spuId: requireText(object["spuId"], "spuId", DISH_CATALOG_LIMITS.spuIdChars, false),
     skuId: requireText(object["skuId"], "skuId", DISH_CATALOG_LIMITS.skuIdChars, false),
     dishName: requireText(object["dishName"], "dishName", DISH_CATALOG_LIMITS.dishNameChars, false),
