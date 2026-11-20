@@ -303,9 +303,9 @@ suite("dish catalog current-state HTTP seam", () => {
         data: {
           orgId,
           id: "combo",
-          key: "combo_sales",
+          key: "dishes",
           kind: "fixed",
-          name: "套餐销售",
+          name: "菜品销售",
           allowStore: true,
           allowGroup: false,
           confidentialityLevel: 2

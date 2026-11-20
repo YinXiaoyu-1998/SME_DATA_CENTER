@@ -1,4 +1,5 @@
 import { createStoreCleanupRepository } from "../../../scripts/partition-store-cleanup-support.js";
+import { readFile } from "node:fs/promises";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
@@ -537,7 +538,7 @@ suite("structured partition repository", () => {
     }
   });
 
-  it("publishes combo sales independently of dishes and only exposes stores on the caller's combo grant", async () => {
+  it("uses dishes authorization for combo sales with the same store and clearance boundaries", async () => {
     const dataset = "combo_sales" as const;
     const scope = {
       orgId,
@@ -580,7 +581,6 @@ suite("structured partition repository", () => {
         data: { confidentialityLevel: 2 }
       });
     const dishes = await category("dishes");
-    const combo = await category(dataset);
     await prisma.businessAuthorizationState.update({ where: { orgId }, data: { mode: "enabled" } });
     const grantId = "partition_repo_combo_grant";
     await prisma.businessGrant.create({
@@ -595,13 +595,63 @@ suite("structured partition repository", () => {
       }
     });
     try {
+      // Recreate the published release's authorization records without changing its stored partitions.
+      const oldCategory = await prisma.businessCategory.create({
+        data: {
+          orgId,
+          id: "old-combo",
+          key: dataset,
+          name: dataset,
+          kind: "fixed",
+          confidentialityLevel: 0,
+          allowGroup: false,
+          allowStore: true
+        }
+      });
+      await prisma.businessResource.updateMany({
+        where: { orgId, resourceKey: { in: [`partition:${first.id}`, `partition:${second.id}`] } },
+        data: { categoryId: oldCategory.id }
+      });
+      await prisma.businessGrantCategory.create({
+        data: { orgId, grantId, categoryId: oldCategory.id }
+      });
+      const comboOnly = await prisma.businessGrant.create({
+        data: {
+          orgId,
+          id: "old-combo-only",
+          userAccountId,
+          enterpriseKey: "synthetic",
+          ownership: "store",
+          categories: { create: { categoryId: oldCategory.id } },
+          stores: { create: { storeName: second.storeName } }
+        }
+      });
+      const migration = await readFile(
+        new URL(
+          "../prisma/migrations/20261120160000_share_combo_sales_dishes_permissions/migration.sql",
+          import.meta.url
+        ),
+        "utf8"
+      );
+      const statements = migration
+        .replace(/^--.*$/gm, "")
+        .split(";")
+        .map((sql) => sql.trim())
+        .filter((sql) => sql && sql !== "START TRANSACTION" && sql !== "COMMIT");
+      await prisma.$transaction(async (tx) => {
+        for (const statement of statements) await tx.$executeRawUnsafe(statement);
+      });
+      expect(
+        await prisma.businessCategory.findFirst({ where: { orgId, key: dataset } })
+      ).toBeNull();
+      expect(
+        await prisma.businessGrant.findFirst({ where: { orgId, id: comboOnly.id } })
+      ).toBeNull();
       const permissions = createBusinessAuthorizationRepository({ prisma });
       const read = async () => ({
         ...scope,
         authorization: await permissions.loadAuthorizationSnapshot(userAccountId, orgId)
       });
-      expect(await repository.listReadableManifestRows(await read())).toEqual([]);
-      await prisma.businessGrantCategory.create({ data: { orgId, grantId, categoryId: combo.id } });
       expect(await repository.listReadableManifestRows(await read())).toMatchObject([
         { storeName: "Store A", objectKey: first.objectKey }
       ]);
@@ -609,6 +659,13 @@ suite("structured partition repository", () => {
       expect(coverage.enterprises).toMatchObject([
         { partitionCount: 1, totalRowCount: 3n, stores: [{ storeName: "Store A" }] }
       ]);
+      const current = await read();
+      expect(
+        await repository.listReadableManifestRows({
+          ...current,
+          authorization: { ...current.authorization, clearance: 1 }
+        })
+      ).toEqual([]);
       await createProcessingJob("combo_fix", "synthetic", dataset);
       const corrected = {
         ...first,

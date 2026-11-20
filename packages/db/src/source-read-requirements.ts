@@ -3,6 +3,7 @@ import { Prisma, type BusinessAuthorizationMode, type PrismaClient } from "@pris
 import {
   type PartitionDatasetName,
   FIXED_BUSINESS_CATEGORY_OWNERSHIP,
+  structuredAuthorizationCategory,
   type FixedBusinessCategoryKey,
   isBusinessClearance,
   validateBusinessScope,
@@ -47,7 +48,8 @@ export function deriveStructuredSourceScopes(input: {
 }): BusinessScopeItem[] {
   if (!input.rows.length) fail("SOURCE_HAS_NO_PARSED_ROWS");
   if (!input.enterpriseKey) fail("RESOURCE_ATTRIBUTES_NOT_READY");
-  const ownership = FIXED_BUSINESS_CATEGORY_OWNERSHIP[input.dataset];
+  const ownership =
+    FIXED_BUSINESS_CATEGORY_OWNERSHIP[structuredAuthorizationCategory(input.dataset)];
   if (!ownership) fail("RESOURCE_CATEGORY_NOT_CONFIGURED");
   if (ownership === "group")
     return [{ enterpriseKey: input.enterpriseKey, ownership, dimensions: {} }];
@@ -258,7 +260,12 @@ export async function persistStructuredSourceReadRequirements(
     record(document.sourceMetadata)["historicalSupplement"]
   );
   const businessDates = publicationBusinessDates(input.rows, record(document.sourceMetadata));
-  let category = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
+  let category = await fixedCategory(
+    tx,
+    input.orgId,
+    structuredAuthorizationCategory(input.dataset),
+    state.mode
+  );
   if (!input.rows.length) fail("SOURCE_HAS_NO_PARSED_ROWS");
   let ledgerStoreKey: string | undefined;
   if (input.dataset === "delivery_ledger") {
@@ -363,7 +370,12 @@ export async function persistPartitionReadRequirement(
   },
   state: Awaited<ReturnType<typeof lockAuthorizationPublication>>
 ) {
-  let category = await fixedCategory(tx, input.orgId, input.dataset, state.mode);
+  let category = await fixedCategory(
+    tx,
+    input.orgId,
+    structuredAuthorizationCategory(input.dataset),
+    state.mode
+  );
   const scopes: BusinessScopeItem[] = input.storeName.trim()
     ? [
         {

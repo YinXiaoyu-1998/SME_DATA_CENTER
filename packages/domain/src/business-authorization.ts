@@ -5,7 +5,6 @@ export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
   dishes: "store",
   in_store_orders: "store",
   takeaway_orders: "store",
-  combo_sales: "store",
   vip: "group",
   dish_catalog: "group",
   supplier_catalog: "group",
@@ -15,6 +14,11 @@ export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
   quarantine_certificate: "store",
   ledger_pdf: "store"
 } as const satisfies Record<string, BusinessOwnership>;
+/** Map structured data to the real fixed category used to authorize it. */
+export function structuredAuthorizationCategory<Key extends string>(dataset: Key) {
+  return (dataset === "combo_sales" ? "dishes" : dataset) as Exclude<Key, "combo_sales"> | "dishes";
+}
+
 export const EMPLOYEE_PROFILE_CATEGORY = {
   key: "employee_profiles",
   ownerships: ["group", "store"]

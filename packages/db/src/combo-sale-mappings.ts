@@ -88,7 +88,7 @@ export function createComboSaleMappingRepository(prisma: PrismaClient) {
     const store = await resolveFormalStore(tx, { orgId, enterpriseKey, name: input.storeName });
     if (!store || (write && store.retired)) denied();
     const sales = await tx.businessCategory.findUnique({
-      where: { orgId_key: { orgId, key: "combo_sales" } }
+      where: { orgId_key: { orgId, key: "dishes" } }
     });
     if (
       !sales ||
