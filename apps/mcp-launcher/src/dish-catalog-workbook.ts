@@ -1,7 +1,8 @@
 import path from "node:path";
-import ExcelJS from "exceljs";
+import { readXlsxRows, type XlsxSheetRows } from "@smedc/structured-ingestion/xlsx-stream";
 import {
   DISH_CATALOG_LIMITS,
+  PHASE3_RUNTIME_LIMIT_DEFAULTS,
   DishCatalogValidationError,
   parseDishCatalogBatch,
   type DishCatalogRowInput,
@@ -52,61 +53,33 @@ interface SourceRow {
   get(header: string): string;
 }
 
-function readSheet(workbook: ExcelJS.Workbook, sheet: string, headers: string[]): SourceRow[] {
-  const source = workbook.getWorksheet(sheet);
+function readSheet(workbook: XlsxSheetRows[], sheet: string, headers: string[]): SourceRow[] {
+  const source = workbook.find((part) => part.name === sheet);
   if (!source) throw new WorkbookInputError("Required worksheet is missing.", { sheet });
-  let columns: Map<string, number> | undefined;
-  const records: SourceRow[] = [];
-  source.eachRow((cells, row) => {
-    if (!columns) {
-      const headings = new Map<string, number>();
-      const repeated = new Set<string>();
-      cells.eachCell((cell, column) => {
-        if (headings.has(cell.text)) repeated.add(cell.text);
-        headings.set(cell.text, column);
+  const headerIndex = source.rows.findIndex((row) =>
+    headers.every((header) => row.includes(header))
+  );
+  if (headerIndex < 0) throw new WorkbookInputError("Missing required column headers.", { sheet });
+  const headerRow = source.rows[headerIndex]!;
+  const columns = new Map(headers.map((header) => [header, headerRow.indexOf(header)]));
+  for (const [header, column] of columns)
+    if (headerRow.lastIndexOf(header) !== column)
+      throw new WorkbookInputError("Duplicate column header.", {
+        sheet,
+        row: headerIndex + 1,
+        field: header
       });
-      if (headers.every((header) => headings.has(header))) {
-        const duplicate = headers.find((header) => repeated.has(header));
-        if (duplicate)
-          throw new WorkbookInputError("Duplicate column header.", {
+  return source.rows.slice(headerIndex + 1).flatMap((cells, index) =>
+    cells.some((cell) => cell !== "")
+      ? [
+          {
             sheet,
-            row,
-            field: duplicate
-          });
-        columns = headings;
-      }
-      return;
-    }
-    const positions = columns;
-    records.push({
-      sheet,
-      row,
-      get(field) {
-        const cell = cells.getCell(positions.get(field)!);
-        const value = cell.value;
-        if (value === null || value === undefined) return "";
-        if (typeof value === "string") return value;
-        if (typeof value === "number" && Number.isFinite(value)) {
-          if (field.includes("编码") && (!Number.isSafeInteger(value) || value < 0))
-            throw new WorkbookInputError("Use exact text for this identifier.", {
-              sheet,
-              row,
-              field
-            });
-          if (field.includes("编码") && /^0+$/.test(cell.numFmt ?? ""))
-            return String(value).padStart(cell.numFmt.length, "0");
-          return String(value);
-        }
-        throw new WorkbookInputError("Expected a literal text or number cell.", {
-          sheet,
-          row,
-          field
-        });
-      }
-    });
-  });
-  if (!columns) throw new WorkbookInputError("Missing required column headers.", { sheet });
-  return records;
+            row: headerIndex + index + 2,
+            get: (field: string) => cells[columns.get(field)!] ?? ""
+          }
+        ]
+      : []
+  );
 }
 
 function indexCandidate(
@@ -137,8 +110,17 @@ function uniqueCandidate(candidates: DishCatalogRowInput[], source: SourceRow, f
 
 /** Resolve every reference before sending the first independently atomic server batch. */
 export async function parseDishCatalogWorkbook(bytes: Uint8Array, enterpriseName: string) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(Uint8Array.from(bytes).buffer);
+  const workbook = await readXlsxRows(
+    Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    PHASE3_RUNTIME_LIMIT_DEFAULTS,
+    {
+      preserveNumericText: "canonical_integer",
+      preserveNumberPadding: true,
+      maxRows: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxStructuredImportRows,
+      maxColumns: 256,
+      maxMaterializedCells: 2_000_000
+    }
+  );
   const rows: DishCatalogRowInput[] = [];
   const seenSkus = new Set<string>();
   const bySpu = new Map<string, DishCatalogRowInput[]>();

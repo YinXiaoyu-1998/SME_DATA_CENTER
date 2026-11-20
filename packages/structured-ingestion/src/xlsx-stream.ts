@@ -524,6 +524,8 @@ interface SheetParseState {
   preserveNumericText?: boolean | "canonical_integer";
   preserveCellWhitespace?: boolean;
   maxRows?: number;
+  maxMaterializedCells?: number;
+  preserveNumberPadding?: boolean;
   maxColumns?: number;
 }
 
@@ -604,8 +606,14 @@ function resolveCell(state: SheetParseState): string {
   }
   if (raw === "") return "";
   if (state.preserveNumericText) {
-    const exact = exactNumericText(raw);
-    return state.preserveNumericText === "canonical_integer" ? exact.replace(/\.0+$/u, "") : exact;
+    const plain = exactNumericText(raw);
+    const format = state.preserveNumberPadding ? numericFormat(cell, state.styles) : undefined;
+    if (format && /^0{2,}$/.test(format) && /^\d+(?:\.0+)?$/.test(plain)) {
+      if (format.length > state.limits.maxStructuredCellChars)
+        throw validation("Structured cell length limit exceeded.");
+      return plain.split(".")[0]!.padStart(format.length, "0");
+    }
+    return state.preserveNumericText === "canonical_integer" ? plain.replace(/\.0+$/u, "") : plain;
   }
   const numFmt = numericFormat(cell, state.styles);
   if (numFmt !== undefined && isDateFmt(numFmt)) {
@@ -616,6 +624,13 @@ function resolveCell(state: SheetParseState): string {
 }
 
 function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): void {
+  let materializedCells = 0;
+  const chargeCells = (count: number) => {
+    if (state.maxMaterializedCells === undefined) return;
+    materializedCells += count;
+    if (!Number.isSafeInteger(materializedCells) || materializedCells > state.maxMaterializedCells)
+      throw validation("XLSX cell materialization limit exceeded.");
+  };
   parser.onopentag = (tag) => {
     const name = tag.name;
     if (name === "row") {
@@ -653,7 +668,11 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       const range = parseMergeRange(String((tag.attributes as Record<string, string>).ref ?? ""));
       if (range && state.maxRows !== undefined && range.endRow > state.maxRows)
         throw validation("XLSX source row limit exceeded.");
-      if (range && state.collectMergeRanges) state.mergeRanges.push(range);
+      if (range && state.collectMergeRanges) {
+        // Each sparse merged row may need padding through its rightmost column.
+        chargeCells((range.endRow - range.startRow + 1) * range.endColumn);
+        state.mergeRanges.push(range);
+      }
     } else if (state.cell) {
       if (name === "f") {
         state.cell.formula = true;
@@ -698,6 +717,7 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       }
     }
     if (name === "row") {
+      chargeCells(state.rowWidth);
       const rendered: string[] = [];
       for (let index = 0; index < state.rowWidth; index++)
         rendered.push(state.rowCells.get(index) ?? "");
@@ -761,6 +781,9 @@ function parseSheetStream(
     state.preserveNumericText = options.preserveNumericText;
     state.preserveCellWhitespace = options.preserveCellWhitespace;
     state.maxRows = options.maxRows;
+    state.maxColumns = options.maxColumns;
+    state.maxMaterializedCells = options.maxMaterializedCells;
+    state.preserveNumberPadding = options.preserveNumberPadding;
     const parser = sax.parser(true, {
       trim: false,
       normalize: false,
@@ -905,10 +928,13 @@ function worksheetEntryPath(target: string): string {
 
 export interface XlsxTextOptions {
   /** Used only by exact-decimal datasets; legacy numeric/date rendering is unchanged. */
-  preserveNumericText?: boolean;
+  preserveNumericText?: boolean | "canonical_integer";
   preserveCellWhitespace?: boolean;
   /** Source-coordinate ceiling for sparse row and merged-cell materialization, not item count. */
   maxRows?: number;
+  maxColumns?: number;
+  maxMaterializedCells?: number;
+  preserveNumberPadding?: boolean;
 }
 export async function readXlsxRows(
   content: Buffer,

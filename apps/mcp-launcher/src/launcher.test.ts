@@ -1650,7 +1650,7 @@ it("imports both workbook sheets locally, then submits complete combos after all
     "规格名称",
     "售卖价"
   ]);
-  dishes.addRow(["品牌", "便餐", "001", "P", "餐", "1", null, null, 21]);
+  dishes.addRow(["品牌", "便餐", 1, "P", "餐", "1", null, null, 21]).getCell(3).numFmt = "000";
   dishes.addRow(["品牌", "谷物", "101", "A", "主食", "1", null, "大", 2]);
   for (let i = 0; i < 999; i++)
     dishes.addRow(["品牌", "饮料" + i, "S" + i, "B" + i, "饮料", "2", null, null, 1]);
@@ -1724,6 +1724,20 @@ it("imports both workbook sheets locally, then submits complete combos after all
         }
       ]
     });
+    // A highly compressed extra part must fail archive preflight before the first write.
+    const zip = await (await import("jszip")).default.loadAsync(await readFile(workbookPath));
+    zip.file("xl/custom.xml", "a".repeat(50000));
+    await writeFile(
+      workbookPath,
+      await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })
+    );
+    calls.length = 0;
+    const oversized = await client.callTool({
+      name: "upsert_dish_catalog",
+      arguments: { enterpriseName: "企业", workbookPath }
+    });
+    expect(oversized.isError).toBe(true);
+    expect(calls).toHaveLength(0);
     // Ambiguous child names must be fixed before any batch is published.
     dishes.addRow(["品牌", "谷物", "102", "C", "主食", "1", null, "大", 3]);
     await workbook.xlsx.writeFile(workbookPath);
