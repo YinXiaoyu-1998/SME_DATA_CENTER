@@ -366,7 +366,7 @@ const preparePartitionDownloadInputSchema = z
 const partitionDownloadStatusInputSchema = z
   .object({ requestId: partitionDownloadRequestId })
   .strict();
-const downloadStructuredPartitionsInputSchema = z
+export const downloadStructuredPartitionsInputSchema = z
   .object({
     requestId: partitionDownloadRequestId.optional(),
     dataset: partitionDownloadScopeShape.dataset.optional(),
@@ -374,10 +374,30 @@ const downloadStructuredPartitionsInputSchema = z
     startDate: partitionDownloadScopeShape.startDate.optional(),
     endDate: partitionDownloadScopeShape.endDate.optional(),
     storeIds: partitionDownloadScopeShape.storeIds,
-    storeNameContains: partitionDownloadScopeShape.storeNameContains
+    storeNameContains: partitionDownloadScopeShape.storeNameContains,
+    comboAttribution: z
+      .object({
+        evidenceStartDate: partitionDownloadScopeShape.startDate,
+        evidenceEndDate: partitionDownloadScopeShape.endDate
+      })
+      .strict()
+      .optional()
+      .describe(
+        "For combo_sales range downloads, also resolve current departments using authorized dishes names in this evidence window."
+      )
   })
   .strict()
   .superRefine((input, context) => {
+    if (
+      input.comboAttribution &&
+      (String(input.dataset) !== "combo_sales" ||
+        input.comboAttribution.evidenceStartDate > input.comboAttribution.evidenceEndDate)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Combo attribution requires combo_sales and an ordered evidence range."
+      });
+    }
     if (input.requestId !== undefined) {
       if (Object.keys(input).some((key) => key !== "requestId"))
         context.addIssue({

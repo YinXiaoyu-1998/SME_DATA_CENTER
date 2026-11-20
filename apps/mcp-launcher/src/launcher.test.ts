@@ -311,7 +311,7 @@ describe("launcher live profile resolution", () => {
     const request = fixture.meRequests[0]!;
     expect(request.method).toBe("GET");
     expect(new Headers(request.headers).get("authorization")).toBe("Bearer resolved-access");
-    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.21.0");
+    expect(new Headers(request.headers).get("x-smedc-launcher-version")).toBe("0.22.0");
     expect(request.signal).toBeInstanceOf(AbortSignal);
     expect(fixture.paths).not.toContain("/mcp");
     expect(body(await createLauncherToolHandler("smedc_auth_status", dependencies)({}))).toEqual({
@@ -1632,5 +1632,88 @@ it("rejects workflow organization overrides at the launcher MCP boundary", async
   } finally {
     await client.close();
     await server.close();
+  }
+});
+
+it("delivers raw combo sales and one attributed record per source row using independently scoped reads", async () => {
+  const input = {
+    dataset: "combo_sales",
+    enterpriseName: "Synthetic",
+    startDate: "20260120",
+    endDate: "20260120",
+    comboAttribution: { evidenceStartDate: "20260118", evidenceEndDate: "20260118" }
+  };
+  const sources: Record<string, string> = {
+    combo_sales:
+      "门店,套餐,菜品编码,单品名称,规格,菜品收入(元),营业日期,来源行号\nEast,Lunch,P,Roll,L,-1.25,2026-01-20,4\n",
+    dishes: "门店,菜品名称,关联菜品名称,菜品销售方式名称\nEast,Roll,Bun,单品\n"
+  };
+  const remote: typeof fetch = async (url, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    if (String(url).endsWith("/partition-manifests")) {
+      const bytes = sources[body.dataset]!;
+      return Response.json({
+        dataset: body.dataset,
+        enterpriseName: "Synthetic",
+        startDate: body.startDate,
+        endDate: body.endDate,
+        partitionCount: 1,
+        totalRowCount: 1,
+        partitions: [
+          {
+            businessDate: body.startDate,
+            storeName: "East",
+            storeId: null,
+            rowCount: 1,
+            byteSize: Buffer.byteLength(bytes),
+            checksumSha256: createHash("sha256").update(bytes).digest("hex"),
+            presignedDownloadUrl: "https://object.test/" + body.dataset
+          }
+        ]
+      });
+    }
+    if (String(url).startsWith("https://object.test/"))
+      return new Response(sources[new URL(String(url)).pathname.slice(1)]);
+    if (String(url).endsWith("/v1/structured/query")) {
+      expect(body.filter).toEqual({ field: "enterprise_key", op: "eq", value: "synthetic" });
+      return Response.json({
+        rows: [
+          {
+            enterprise_key: "synthetic",
+            spu_id: "S",
+            sku_id: "B",
+            dish_name: "Bun",
+            specification_name: "L",
+            dish_type: "single",
+            combo_composition: null,
+            department_id: "D",
+            department_name: "Bakery"
+          }
+        ],
+        nextCursor: null
+      });
+    }
+    if (String(url).endsWith("/v1/combo-sale-mappings/query")) {
+      expect(body.storeName).toBe("East");
+      return Response.json({ rows: [], nextAfterId: null });
+    }
+    throw new Error("Unexpected request: " + String(url));
+  };
+  const handler = createLauncherToolHandler(
+    "download_structured_partitions",
+    createLauncherToolDependencies({ config, auth: fakeAuth(), fetchImplementation: remote })
+  );
+  const result = await handler(input);
+  expect(result.isError, JSON.stringify(result.content)).toBe(false);
+  const data = JSON.parse(result.content[0]!.text);
+  try {
+    expect(data.attribution.status).toBe("ready");
+    const line = JSON.parse((await readFile(data.attribution.file, "utf8")).trim());
+    expect(line).toMatchObject({
+      source: { "菜品收入(元)": "-1.25", 来源行号: "4" },
+      attribution: { status: "sku", departmentId: "D", sku: "B" }
+    });
+  } finally {
+    await rm(data.localDirectory, { recursive: true, force: true });
   }
 });

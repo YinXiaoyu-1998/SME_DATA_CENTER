@@ -18,6 +18,7 @@ import {
   WORKFLOW_MCP_TOOL_NAMES,
   DIRECTORY_MCP_TOOL_NAMES,
   dishCatalogValidationErrorToolResult,
+  downloadStructuredPartitionsInputSchema,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -28,6 +29,7 @@ import {
 import type { LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { readLocalUploadFile } from "./local-file.js";
+import { attributeComboExtract } from "./combo-attribution-download.js";
 import { downloadPartitionBundle } from "./partition-bundle.js";
 import { downloadCostCards } from "./cost-card-transfer.js";
 import { LedgerPdfTransferError, downloadLedgerPdfBundle } from "./ledger-pdf-transfer.js";
@@ -559,21 +561,38 @@ async function proxyPartitionDownload(
   dependencies: LauncherToolDependencies,
   signal?: AbortSignal
 ): Promise<LauncherToolResult> {
-  const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
-    (candidate) => candidate.name === "download_structured_partitions"
-  )!;
-  const parsed = contract.inputSchema.safeParse(input);
+  const parsed = downloadStructuredPartitionsInputSchema.safeParse(input);
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   try {
     const accessToken = await dependencies.auth.accessToken();
     const context = partitionTransferContext(dependencies, accessToken, signal);
     const value = parsed.data as
       { requestId: string } | Omit<Parameters<typeof downloadPartitionDataset>[0], "context">;
-    const result =
-      "requestId" in value
-        ? await downloadPartitionBundle({ context, requestId: value.requestId })
-        : await downloadPartitionDataset({ context, ...value });
-    return jsonToolResult(result as Record<string, unknown>);
+    if ("requestId" in value)
+      return jsonToolResult(
+        (await downloadPartitionBundle({ context, requestId: value.requestId })) as Record<
+          string,
+          unknown
+        >
+      );
+    const result = await downloadPartitionDataset({ context, ...value });
+    const range = parsed.data.comboAttribution;
+    if (!range) return jsonToolResult(result);
+    try {
+      const attribution = await attributeComboExtract(context, result, range);
+      return jsonToolResult({ ...result, attribution });
+    } catch (error) {
+      // Raw files have already passed verification and have independent read permissions.
+      if (signal?.aborted) throw error;
+      return jsonToolResult({
+        ...result,
+        attribution: {
+          status: "unavailable",
+          ...range,
+          error: partitionTransferError(error).content[0]?.text
+        }
+      });
+    }
   } catch (error) {
     return partitionTransferError(error);
   }
