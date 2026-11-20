@@ -160,6 +160,14 @@ const validInputs = {
     removeSkuIds: ["sku_2"],
     sourceFileName: "catalog.xlsx"
   },
+  update_combo_sale_mapping: {
+    enterpriseName: "企业",
+    storeName: "门店",
+    sourceName: "气泡茶",
+    specification: null,
+    operation: { kind: "confirm", target: { kind: "sku", skuId: "TEST" }, basis: "目录核对" }
+  },
+  query_combo_sale_mappings: { enterpriseName: "企业", storeName: "门店" },
   query_store_reviews: { enterpriseName: "企业" },
   smedc_get_current_user: {},
   smedc_list_skills: { q: "menu", category: "menu-analysis" },
@@ -410,6 +418,36 @@ const invalidInputCases = [
           rows: [{ ...validInputs.upsert_dish_catalog.rows[0], salePrice: "12.1234567" }]
         }
       }
+    ]
+  },
+  {
+    tool: "update_combo_sale_mapping",
+    cases: [
+      {
+        label: "unscoped confirmation",
+        input: { ...validInputs.update_combo_sale_mapping, storeName: "" }
+      },
+      {
+        label: "invalid Unicode alias",
+        input: { ...validInputs.update_combo_sale_mapping, sourceName: "\ud800" }
+      },
+      {
+        label: "ambiguous target",
+        input: {
+          ...validInputs.update_combo_sale_mapping,
+          operation: {
+            kind: "confirm",
+            basis: "菜单",
+            target: { kind: "sku", skuId: "A", departmentId: "dept" }
+          }
+        }
+      }
+    ]
+  },
+  {
+    tool: "query_combo_sale_mappings",
+    cases: [
+      { label: "unbounded read", input: { ...validInputs.query_combo_sale_mappings, limit: 101 } }
     ]
   },
   { tool: "query_store_reviews", cases: [{ label: "missing enterprise", input: {} }] },
@@ -883,6 +921,8 @@ describe("SMEDC MCP contract", () => {
       "prepare_order_scope_transition",
       "upsert_store_reviews",
       "upsert_dish_catalog",
+      "update_combo_sale_mapping",
+      "query_combo_sale_mappings",
       "query_store_reviews",
       "smedc_get_current_user",
       "smedc_list_skills",
