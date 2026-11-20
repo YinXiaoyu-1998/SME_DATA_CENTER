@@ -6,6 +6,12 @@ import {
   EMPLOYEE_PROFILE_CATEGORY
 } from "@smedc/domain";
 
+const categoryNames: Partial<Record<(typeof FIXED_BUSINESS_CATEGORY_KEYS)[number], string>> = {
+  in_store_orders: "店内订单明细",
+  takeaway_orders: "平台外卖订单明细",
+  combo_sales: "套餐子菜销售明细"
+};
+
 /** Caller holds the organization's authorization version lock. Never overwrite tenant choices. */
 export async function initializeFixedBusinessCategories(
   tx: Prisma.TransactionClient,
@@ -17,12 +23,7 @@ export async function initializeFixedBusinessCategories(
         orgId,
         id: randomUUID().replaceAll("-", ""),
         key,
-        name:
-          key === "in_store_orders"
-            ? "店内订单明细"
-            : key === "takeaway_orders"
-              ? "平台外卖订单明细"
-              : key,
+        name: categoryNames[key] ?? key,
         kind: "fixed" as const,
         confidentialityLevel: null,
         allowGroup: FIXED_BUSINESS_CATEGORY_OWNERSHIP[key] === "group",

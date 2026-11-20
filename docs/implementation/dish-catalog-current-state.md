@@ -2,6 +2,18 @@
 
 状态：2026-11-11 已在 staging 部署并核实两条迁移，发行的 Launcher 0.19.0 已独立核验。最新环境证据见[staging 状态](staging-readiness.md)。真实企业需按授权单独启用与验收。规格见 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，决策见 [ADR 0029](../adr/0029-dish-catalog-current-state.md) 与 [ADR 0030](../adr/0030-department-name-uniqueness.md)。
 
+## 套餐与门店子菜销售（0.22.0 候选版本）
+
+管理员可通过 launcher 的 `upsert_dish_catalog` 提交 `enterpriseName` 和本机绝对路径 `workbookPath`。调用方读取「总部菜品」及「总部套餐」，预检父 SKU、分组和子菜引用，再分批提交。工作簿模式保留人工部门和别名。普通目录写入仍沿用下文的整行语义。读取目录时可按 `enterprise_key` 筛选，选择 `dish_type`、`combo_composition` 以及现有 SKU、规格和部门字段。历史未分类行为 null。
+
+管理员使用 `upload_structured_dataset` 手动导入 `combo_sales` 的带规格单日明细，随后用 `get_partition_import_status` 检查发布结果。零收入行保留。缺少门店日分区表示当前无可读报表。来源筛选给出的门店数不足以证明某家店有零销售。
+
+对 `download_structured_partitions` 发起普通 `combo_sales` 日期范围下载，可附 `comboAttribution`，其中 `evidenceStartDate` 和 `evidenceEndDate` 为 YYYYMMDD。该区间用于收集同店已授权 dishes 中的关联菜名，销售金额始终取所选套餐明细。原始 CSV 与逐行归属 JSONL 分别交付；结果中的 `attribution.file` 指向 JSONL。附加读取不可用时查看 `attribution.status`，原始下载仍可独立使用。
+
+每行 `source` 保留原始名称、编码、规格、数量和收入。每行 `attribution` 给出候选、匹配依据、当前部门或待归属原因。同一销售行有多个 SKU 候选时，金额仍只出现一次。管理员可用 `update_combo_sale_mapping` 为指定企业和门店确认或撤销映射，用 `query_combo_sale_mappings` 查看当前依据。确认到 SKU 时随当前目录取部门；确认到部门时 SKU 可空。
+
+合并普通菜销售时，先核对同店同日 dishes 中套餐整项、单品行及退款的收入范围。两个来源之间无法解释的差额应保留，用户可据此决定其统计口径。候选版本的上线与授权信息以发布和部署记录为准。
+
 ## 1. 范围
 
 **本次包含**

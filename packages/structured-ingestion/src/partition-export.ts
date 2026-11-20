@@ -15,6 +15,8 @@ import {
 import { parse as createCsvParser } from "csv-parse";
 import { CalamineSourceError, streamCalamineXlsxFileRows } from "./calamine-reader.js";
 
+import { streamXlsxFileRows, type XlsxStreamConsumer } from "./xlsx-stream.js";
+
 const HEADER_SCAN_ROWS = 10;
 const PARTITION_WRITE_BUFFER_BYTES = 256 * 1024;
 
@@ -66,6 +68,7 @@ export interface StructuredPartitionExportProfile {
 interface SourceRow {
   rowNumber: number;
   cells: string[];
+  numberPadding?: ReadonlyMap<number, number>;
 }
 
 interface PartitionState {
@@ -124,12 +127,14 @@ export async function exportStructuredPartitions(input: {
   let totalRowCount = 0n;
   let totalCanonicalBytes = 0n;
   let canonicalizeMs = 0;
+  let foundComboDetail = false;
 
   const processDataRow = async (
     row: SourceRow,
     header: {
       width: number;
       mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>;
+      reportBusinessDate?: string;
     }
   ): Promise<void> => {
     if (!row.cells.some((cell) => cell.trim())) return;
@@ -146,7 +151,7 @@ export async function exportStructuredPartitions(input: {
         (isSummary([storeName]) || (absent(storeName) && isSummary(row.cells)))
       )
         return;
-    } else if (isSummary(row.cells)) return;
+    } else if (!header.reportBusinessDate && isSummary(row.cells)) return;
     if (
       row.cells.length > header.width &&
       row.cells.slice(header.width).some((cell) => cell.trim())
@@ -158,10 +163,24 @@ export async function exportStructuredPartitions(input: {
     for (const mapping of header.mappings) {
       const field = fieldByName.get(mapping.canonicalName);
       if (!field) throw invalidSource("Resolved partition field is not registered.");
+      let raw = row.cells[mapping.sourceColumnIndex] ?? "";
+      const padding = row.numberPadding?.get(mapping.sourceColumnIndex);
+      if (mapping.canonicalName === "source_dish_code" && padding !== undefined) {
+        if (padding > input.limits.maxStructuredCellChars)
+          throw invalidSource(
+            `Row ${row.rowNumber} source_dish_code exceeds the cell length limit.`
+          );
+        raw = raw.padStart(padding, "0");
+      }
+      const value = canonicalCell(field, raw, row.rowNumber, orderSource);
       canonical.set(
         mapping.canonicalName,
-        canonicalCell(field, row.cells[mapping.sourceColumnIndex] ?? "", row.rowNumber, orderSource)
+        header.reportBusinessDate && field.type === "string" ? raw : value
       );
+    }
+    if (header.reportBusinessDate) {
+      canonical.set("business_date", header.reportBusinessDate);
+      canonical.set("source_row_number", String(row.rowNumber));
     }
     if (input.dataset === "in_store_orders") {
       canonical.set(
@@ -170,7 +189,10 @@ export async function exportStructuredPartitions(input: {
       );
     }
     const storeName = canonical.get("store_name") ?? "";
-    if (!storeName.trim() || (orderSource && storeName.trim() === "--"))
+    if (
+      !storeName.trim() ||
+      ((orderSource || header.reportBusinessDate) && storeName.trim() === "--")
+    )
       throw invalidSource(
         `Row ${row.rowNumber} store_name ${quotedStoreName(storeName)} is missing. Enter the formal store name.`
       );
@@ -239,12 +261,14 @@ export async function exportStructuredPartitions(input: {
     let header:
       | {
           rowNumber: number;
+          reportBusinessDate?: string;
           width: number;
           mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>;
         }
       | undefined;
     const buffered: SourceRow[] = [];
     let sawContent = false;
+    let sawComboTotal = false;
 
     return {
       async row(row: SourceRow): Promise<void> {
@@ -257,6 +281,12 @@ export async function exportStructuredPartitions(input: {
           const resolved = resolveStructuredHeaders(input.dataset, headers);
           if (resolved.ok) {
             header = { rowNumber: row.rowNumber, width: headers.length, mappings: resolved.fields };
+            if (input.dataset === "combo_sales") {
+              if (foundComboDetail)
+                throw invalidSource("Upload one combo detail sheet per workbook.");
+              foundComboDetail = true;
+              header.reportBusinessDate = comboReportDate(sheetName, buffered.slice(0, -1));
+            }
             if (hidden) throw invalidSource(`Hidden non-empty sheet ${sheetName} is not allowed.`);
             for (const pending of buffered) {
               if (pending.rowNumber > header.rowNumber) await processDataRow(pending, header);
@@ -270,6 +300,14 @@ export async function exportStructuredPartitions(input: {
           if (sawContent)
             throw invalidSource(`Sheet ${sheetName} has no recognized ${input.dataset} header.`);
           return;
+        }
+        if (header.reportBusinessDate && row.cells.some((cell) => cell.trim())) {
+          if (sawComboTotal)
+            throw invalidSource(`Row ${row.rowNumber} follows the combo sales total.`);
+          if (isComboTotal(row.cells, header.mappings)) {
+            sawComboTotal = true;
+            return;
+          }
         }
         await processDataRow(row, header);
       },
@@ -320,26 +358,51 @@ export async function exportStructuredPartitions(input: {
       let processor: ReturnType<typeof createSheetProcessor> | undefined;
       let xlsxProfile;
       try {
-        xlsxProfile = await streamCalamineXlsxFileRows({
-          filePath: input.sourcePath,
-          limits: input.limits,
-          signal: input.signal,
-          command: input.xlsxReaderCommand,
-          preserveCellWhitespace: true,
-          consumer: {
-            startSheet(sheet) {
-              processor = createSheetProcessor(sheet.name, sheet.hidden);
-            },
-            async row(_sheet, rowNumber, cells) {
-              await processor!.row({ rowNumber, cells });
-            },
-            endSheet() {
-              processor!.finish();
-              processor = undefined;
-            }
+        let lastRowNumber = 0;
+        const consumer: XlsxStreamConsumer = {
+          startSheet(sheet) {
+            processor = createSheetProcessor(sheet.name, sheet.hidden);
+            lastRowNumber = 0;
+          },
+          async row(_sheet, rowNumber, cells, numberPadding) {
+            if (rowNumber <= lastRowNumber)
+              throw invalidSource("Worksheet row numbers must increase.");
+            lastRowNumber = rowNumber;
+            await processor!.row({ rowNumber, cells, numberPadding });
+          },
+          endSheet() {
+            processor!.finish();
+            processor = undefined;
           }
-        });
+        };
+        if (input.dataset === "combo_sales") {
+          // Calamine converts OOXML numeric cells to f64 before emitting their text.
+          // Read these source codes and financial values through the exact-decimal reader.
+          xlsxProfile = await streamXlsxFileRows(input.sourcePath, input.limits, consumer, {
+            preserveNumericText: true,
+            collectNumberPadding: true,
+            expandMergedCells: false,
+            maxColumns: 1024,
+            maxRows: 1_048_576
+          });
+        } else {
+          xlsxProfile = await streamCalamineXlsxFileRows({
+            filePath: input.sourcePath,
+            limits: input.limits,
+            signal: input.signal,
+            command: input.xlsxReaderCommand,
+            preserveCellWhitespace: true,
+            consumer
+          });
+        }
       } catch (error) {
+        if (
+          input.dataset === "combo_sales" &&
+          error instanceof Error &&
+          !("code" in error) &&
+          error.name !== "AbortError"
+        )
+          throw invalidSource(error.message);
         if (error instanceof CalamineSourceError) throw invalidSource(error.message);
         throw error;
       }
@@ -399,6 +462,67 @@ export async function exportStructuredPartitions(input: {
     await mkdir(candidateDirectory, { recursive: true });
     throw error;
   }
+}
+
+const COMBO_REPORT_TITLE = "单品关联套餐销售明细";
+
+function comboReportDate(sheetName: string, preamble: SourceRow[]): string {
+  const lines = preamble.map((row) => trimTail(row.cells)).filter((cells) => cells.length);
+  if (
+    sheetName !== COMBO_REPORT_TITLE ||
+    lines.length !== 2 ||
+    lines.some((cells) => cells.length !== 1) ||
+    lines[0]![0]?.trim() !== COMBO_REPORT_TITLE
+  )
+    throw invalidSource(
+      `Upload the original ${COMBO_REPORT_TITLE} XLSX with its title and filter summary.`
+    );
+
+  const filters = new Map<string, string>();
+  for (const token of lines[1]![0]!.split(/[；;]/u)) {
+    const match = /^([^：【】]+?)[:：]?【([^【】]+)】$/u.exec(token.trim());
+    if (!match || filters.has(match[1]!))
+      throw invalidSource("Invalid or repeated combo sales filter.");
+    filters.set(match[1]!, match[2]!);
+  }
+  const required = {
+    统计方式: "套餐明细",
+    按门店统计: "是",
+    显示菜品规格: "是",
+    同名菜品合并统计: "否",
+    菜品分类: "全部",
+    菜品名称: "全部",
+    订单分类: "全部",
+    菜品下单来源: "全部"
+  };
+  for (const [key, value] of Object.entries(required)) {
+    if (filters.get(key) !== value)
+      throw invalidSource(`Export complete per-store combo detail with ${key}【${value}】.`);
+  }
+  if (!filters.get("门店") || filters.size !== Object.keys(required).length + 2)
+    throw invalidSource("Use a per-store combo export without additional filters.");
+  const dates = /^(\d{4}[/-]\d{2}[/-]\d{2})\s*至\s*(\d{4}[/-]\d{2}[/-]\d{2})$/u.exec(
+    filters.get("营业日期") ?? ""
+  );
+  const day = dates && parseDateText(dates[1]!, false);
+  if (!dates || !day || day !== parseDateText(dates[2]!, false))
+    throw invalidSource(
+      "Export one business day per workbook. This combo detail format has no date on individual rows."
+    );
+  return day;
+}
+
+function isComboTotal(
+  cells: string[],
+  mappings: Array<{ canonicalName: string; sourceColumnIndex: number }>
+): boolean {
+  if (cells.slice(mappings.length).some((value) => value.trim())) return false;
+  return mappings.every(({ canonicalName, sourceColumnIndex }) => {
+    const text = cells[sourceColumnIndex]?.trim() ?? "";
+    if (["quantity", "sales_amount", "discount_amount", "income_amount"].includes(canonicalName))
+      return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(text);
+    return !text || (sourceColumnIndex === 0 && isSummary([text]));
+  });
 }
 
 async function* csvRows(filePath: string, maxCellChars: number): AsyncGenerator<SourceRow> {

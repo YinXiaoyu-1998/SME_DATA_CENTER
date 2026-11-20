@@ -82,6 +82,7 @@ describe("read-only MCP tool handlers", () => {
       "download_structured_partitions",
       "download_cost_cards",
       "query_store_reviews",
+      "query_combo_sale_mappings",
       "prepare_structured_partition_download",
       "get_structured_partition_download_status",
       "describe_ledger_pdf_coverage",

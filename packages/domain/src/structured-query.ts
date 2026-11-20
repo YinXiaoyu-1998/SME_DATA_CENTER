@@ -395,7 +395,7 @@ function normalizeQuery(
   if (registry.accessMode === "partition_extract") {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
-      "business, dishes, in_store_orders, and takeaway_orders are available through partition extracts, not row queries.",
+      "business, dishes, in_store_orders, takeaway_orders, and combo_sales are available through partition extracts, not row queries.",
       { dataset }
     );
   }
@@ -1379,6 +1379,12 @@ function fieldExpression(
         sql: typedPayloadExpression(field.type),
         params: [storage.jsonPath]
       };
+    case "enterprise_key":
+      return { sql: "r.enterprise_key COLLATE utf8mb4_bin", params: [] };
+    case "dish_type":
+      return { sql: "r.dish_type", params: [] };
+    case "combo_composition":
+      return { sql: "CAST(r.combo_composition AS CHAR CHARACTER SET utf8mb4)", params: [] };
     case "source_document_id":
       return { sql: "r.source_document_id", params: [] };
     case "department_id":

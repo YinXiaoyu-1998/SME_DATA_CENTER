@@ -12,6 +12,40 @@ const TAKEAWAY_HEADERS =
     ","
   );
 
+const comboTitle = "单品关联套餐销售明细";
+const comboFilter =
+  "统计方式：【套餐明细】；营业日期：【2026/11/18 至 2026/11/18】；门店：【已选3个】；按门店统计【是】；菜品分类：【全部】；菜品名称：【全部】；同名菜品合并统计【否】；订单分类：【全部】；菜品下单来源：【全部】；显示菜品规格【是】";
+const comboHeader = [
+  "地区",
+  "门店",
+  "菜品编码",
+  "套餐",
+  "单品名称",
+  "菜品类型",
+  "单位",
+  "规格",
+  "菜品大类",
+  "销售数量",
+  "销售额(元)",
+  "菜品优惠(元)",
+  "菜品收入(元)"
+];
+const comboRow = [
+  "虚构区",
+  "虚构甲店",
+  "00017",
+  "试吃套餐",
+  "自制茶",
+  "普通菜",
+  "杯",
+  "常温",
+  "饮料",
+  "2",
+  "15.30",
+  "1.30",
+  "14"
+];
+
 const roots: string[] = [];
 const calamineIntegrationTest = process.env.RUN_CALAMINE_INTEGRATION === "1" ? test : test.skip;
 const limits = {
@@ -32,6 +66,136 @@ afterEach(async () => {
 });
 
 describe("exportStructuredPartitions", () => {
+  test("imports reported combo detail into exact store/day partitions, preserving repeated and zero-income rows", async () => {
+    const root = await temporaryRoot();
+    const { default: ExcelJS } = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(comboTitle);
+    const secondStore = [...comboRow];
+    secondStore[1] = "虚构乙店";
+    secondStore.splice(9, 4, "1", "2", "2", "0");
+    sheet.addRows([
+      [comboTitle],
+      [comboFilter],
+      comboHeader,
+      comboRow,
+      secondStore,
+      comboRow,
+      [...Array(9).fill(""), "5", "32.60", "4.60", "28"]
+    ]);
+    sheet.getCell("C4").value = 17;
+    sheet.getCell("C4").numFmt = "00000";
+    sheet.getCell("J4").value = 2;
+    sheet.getCell("J4").numFmt = "00000";
+    sheet.getCell("H5").value = 6;
+    sheet.getCell("H5").numFmt = "00000";
+    const sourcePath = path.join(root, "report.xlsx");
+    await workbook.xlsx.writeFile(sourcePath);
+    const result = await exportStructuredPartitions({
+      dataset: "combo_sales",
+      sourcePath,
+      outputDirectory: root,
+      limits
+    });
+    expect(result.totalRowCount).toBe(3n);
+    expect(result.partitions).toHaveLength(2);
+    const rowsForStore = async (name: string) =>
+      parseCsv(await readFile(result.partitions.find((p) => p.storeName === name)!.filePath), {
+        columns: true
+      });
+    expect(await rowsForStore("虚构甲店")).toEqual(
+      [4, 6].map((n) =>
+        expect.objectContaining({
+          菜品编码: "00017",
+          销售数量: "2",
+          "菜品收入(元)": "14",
+          来源行号: String(n),
+          营业日期: "2026-11-18"
+        })
+      )
+    );
+    expect(await rowsForStore("虚构乙店")).toEqual([
+      expect.objectContaining({ "菜品收入(元)": "0", 来源行号: "5", 规格: "6" })
+    ]);
+  });
+
+  test.each([
+    [
+      "range",
+      comboFilter.replace("至 2026/11/18", "至 2026/11/19"),
+      [comboRow],
+      /one business day/
+    ],
+    [
+      "filtered",
+      comboFilter.replace("菜品下单来源：【全部】", "菜品下单来源：【一个渠道】"),
+      [comboRow],
+      /菜品下单来源/
+    ],
+    [
+      "no specifications",
+      comboFilter.replace("显示菜品规格【是】", "显示菜品规格【否】"),
+      [comboRow],
+      /显示菜品规格/
+    ],
+    [
+      "late bad row",
+      comboFilter,
+      [comboRow, [...comboRow.slice(0, -1), "错"]],
+      /Row 5 income_amount/
+    ],
+    ["empty summary", comboFilter, [[...Array(9).fill(""), "0", "0", "0", "0"]], /no data rows/]
+  ] as const)(
+    "rejects a %s combo report without retaining any earlier candidates",
+    async (_case, filters, rows, error) => {
+      const root = await temporaryRoot();
+      const { default: ExcelJS } = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      workbook.addWorksheet(comboTitle).addRows([[comboTitle], [filters], comboHeader, ...rows]);
+      const sourcePath = path.join(root, "invalid.xlsx");
+      await workbook.xlsx.writeFile(sourcePath);
+      await expect(
+        exportStructuredPartitions({
+          dataset: "combo_sales",
+          sourcePath,
+          outputDirectory: root,
+          limits
+        })
+      ).rejects.toThrow(error);
+      expect(await readdir(path.join(root, "candidates"))).toEqual([]);
+    }
+  );
+
+  test("preserves the numeric OOXML mantissa for source codes and money in combo sales", async () => {
+    const root = await temporaryRoot();
+    const { default: ExcelJS } = await import("exceljs");
+    const { default: JSZip } = await import("jszip");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(comboTitle);
+    sheet.addRows([[comboTitle], [comboFilter], comboHeader, comboRow]);
+    sheet.getCell("C4").value = 81;
+    sheet.getCell("M4").value = 82;
+    const zip = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+    const xml = zip.file("xl/worksheets/sheet1.xml")!;
+    zip.file(
+      xml.name,
+      (await xml.async("string"))
+        .replace("<v>81</v>", "<v>9007199254740993.0</v>")
+        .replace("<v>82</v>", "<v>99999999999999.123456</v>")
+    );
+    const sourcePath = path.join(root, "source.xlsx");
+    await writeFile(sourcePath, await zip.generateAsync({ type: "nodebuffer" }));
+    const result = await exportStructuredPartitions({
+      dataset: "combo_sales",
+      sourcePath,
+      outputDirectory: root,
+      limits
+    });
+    expect(
+      parseCsv(await readFile(result.partitions[0]!.filePath), { columns: true })
+    ).toMatchObject([{ 菜品编码: "9007199254740993", "菜品收入(元)": "99999999999999.123456" }]);
+  });
+
   test("exports all 33 takeaway source fields without deduplicating or deriving columns", async () => {
     const root = await temporaryRoot();
     const headers = TAKEAWAY_HEADERS;

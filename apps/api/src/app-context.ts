@@ -18,6 +18,7 @@ import {
   createDatabaseAdapter,
   createPrismaCostCardDirectoryRepository,
   createPrismaDishCatalogRepository,
+  createComboSaleMappingRepository,
   createPrismaStoreReviewRepository,
   createPrismaPartitionDownloadRepository,
   type PartitionDownloadRepository
@@ -129,6 +130,7 @@ export interface ApiServerContext {
   workflows: () => EnterpriseWorkflowService;
   storeReviews: () => StoreReviewService;
   dishCatalog: () => DishCatalogService;
+  comboSaleMappings: () => ReturnType<typeof createComboSaleMappingRepository>;
   costCards: () => CostCardService;
   permissions: () => BusinessAuthorizationService;
   environment: NodeJS.ProcessEnv;
@@ -232,6 +234,15 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
   let storeReviewPrisma: PrismaClient | undefined;
   let dishCatalogService = options.dishCatalogService;
   let dishCatalogPrisma: PrismaClient | undefined;
+  let mappingRepository: ReturnType<typeof createComboSaleMappingRepository> | undefined;
+  function catalogPrisma() {
+    const url = environment["DATABASE_URL"];
+    if (!url) throw new Error("DATABASE_URL is required for catalog access.");
+    return (dishCatalogPrisma ??= new PrismaClient({ adapter: createDatabaseAdapter(url) }));
+  }
+  function comboSaleMappings() {
+    return (mappingRepository ??= createComboSaleMappingRepository(catalogPrisma()));
+  }
   let uploadAuthorizationAuditRepository = options.uploadAuthorizationAuditRepository;
   let storageAdapter = options.storageAdapter;
   const runtimeLimits = options.runtimeLimits ?? loadApiRuntimeLimits(environment);
@@ -370,11 +381,8 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
 
   function dishCatalog(): DishCatalogService {
     if (!dishCatalogService) {
-      const databaseUrl = environment["DATABASE_URL"];
-      if (!databaseUrl) throw new Error("DATABASE_URL is required for dish catalog writes.");
-      dishCatalogPrisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
       dishCatalogService = createDishCatalogService({
-        repository: createPrismaDishCatalogRepository({ prisma: dishCatalogPrisma })
+        repository: createPrismaDishCatalogRepository({ prisma: catalogPrisma() })
       });
     }
     return dishCatalogService;
@@ -484,6 +492,7 @@ export function createApiServerContext(options: ApiServerOptions = {}): ApiServe
     costCards,
     storeReviews,
     dishCatalog,
+    comboSaleMappings,
     quarantineCertificates,
     sourceDocuments,
     sourceDocumentDownloads,

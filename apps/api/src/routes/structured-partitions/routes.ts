@@ -516,7 +516,7 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
   if (!isRecord(body) || typeof body.dataset !== "string" || !isPartitionDataset(body.dataset))
     return invalid(
       "INVALID_PARTITION_UPLOAD",
-      "dataset must be business, dishes, in_store_orders, or takeaway_orders."
+      "dataset must be business, dishes, in_store_orders, takeaway_orders, or combo_sales."
     );
   if (!validateOrderScopeDataset(body.dataset, body.orderScope))
     return invalid(
@@ -524,7 +524,7 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       "Declare settled_only or all_statuses only for in_store_orders."
     );
   const workflowAction = workflowUploadBindingSchema.optional().safeParse(body.workflowAction);
-  if (!workflowAction.success)
+  if (!workflowAction.success || (body.dataset === "combo_sales" && workflowAction.data))
     return invalid("INVALID_WORKFLOW_INPUT", "Provide a valid upload binding.");
   const transition = orderScopeTransitionConfirmationSchema
     .optional()
@@ -560,6 +560,8 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
     !/\.(csv|xlsx)$/i.test(originalFileName)
   )
     return invalid("INVALID_PARTITION_UPLOAD", "originalFileName must be CSV or XLSX.");
+  if (body.dataset === "combo_sales" && !/\.xlsx$/i.test(originalFileName))
+    return invalid("INVALID_PARTITION_UPLOAD", "Upload the original, single-day combo sales XLSX.");
   const mediaType = body.mediaType;
   if (typeof mediaType !== "string" || !mediaType.trim())
     return invalid("INVALID_PARTITION_UPLOAD", "mediaType is required.");
@@ -636,7 +638,7 @@ function parseManifestBody(body: unknown) {
   if (!isRecord(body) || typeof body.dataset !== "string" || !isPartitionDataset(body.dataset))
     return invalid(
       "INVALID_PARTITION_MANIFEST",
-      "dataset must be business, dishes, in_store_orders, or takeaway_orders."
+      "dataset must be business, dishes, in_store_orders, takeaway_orders, or combo_sales."
     );
   const enterpriseName = body.enterpriseName;
   if (typeof enterpriseName !== "string")

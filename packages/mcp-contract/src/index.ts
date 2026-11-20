@@ -21,6 +21,7 @@ import {
   PUBLIC_INPUT_LIMITS,
   STRUCTURED_DATASETS,
   PARTITION_DATASETS,
+  WORKFLOW_DATASETS,
   STRUCTURED_QUERY_LIMITS,
   getStructuredRegistry,
   COST_CARD_DIRECTORY_REGISTRY,
@@ -32,9 +33,12 @@ import {
   STORE_REVIEW_REPLY_STATUSES,
   parseStoreReviewBatch,
   parseStoreReviewQuery,
+  queryComboSaleMappingsInput,
+  updateComboSaleMappingInput,
   DISH_CATALOG_LIMITS,
   DISH_CATALOG_SALE_PRICE_PATTERN,
   dishCatalogTextSchema,
+  dishComboReplacementSchema,
   DishCatalogValidationError,
   isDishCatalogInputField,
   parseDishCatalogBatch
@@ -47,13 +51,14 @@ export const MCP_LOCAL_FILE_PATH_MAX_LENGTH = 4096;
 export const MCP_STRUCTURED_QUERY_LIMITS = STRUCTURED_QUERY_LIMITS;
 export const COST_CARD_LAUNCHER_VERSION = "0.10.0";
 export const IN_STORE_ORDER_LAUNCHER_VERSION = "0.15.0";
+export const COMBO_SALES_LAUNCHER_VERSION = "0.22.0";
 export const TAKEAWAY_ORDER_LAUNCHER_VERSION = "0.15.0";
 
 const evidenceFileType = z.enum(["md", "txt", "docx"]).describe("Evidence file type filter.");
 const structuredDataset = z
   .enum(STRUCTURED_DATASETS)
   .describe(
-    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+    "Structured dataset: dishes, business, vip, dish_catalog, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders, combo_sales."
   );
 const uploadableStructuredDatasets = [
   "dishes",
@@ -63,12 +68,13 @@ const uploadableStructuredDatasets = [
   "supplier_catalog",
   "cost_cards",
   "in_store_orders",
-  "takeaway_orders"
+  "takeaway_orders",
+  "combo_sales"
 ] as const;
 const uploadStructuredDataset = z
   .enum(uploadableStructuredDatasets)
   .describe(
-    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders."
+    "Structured dataset: dishes, business, vip, delivery_ledger, supplier_catalog, cost_cards, in_store_orders, takeaway_orders, combo_sales."
   );
 const scalarStructuredValue = z.union([
   z.string().max(PUBLIC_INPUT_LIMITS.structuredQueryStringScalarChars),
@@ -366,7 +372,7 @@ const preparePartitionDownloadInputSchema = z
 const partitionDownloadStatusInputSchema = z
   .object({ requestId: partitionDownloadRequestId })
   .strict();
-const downloadStructuredPartitionsInputSchema = z
+export const downloadStructuredPartitionsInputSchema = z
   .object({
     requestId: partitionDownloadRequestId.optional(),
     dataset: partitionDownloadScopeShape.dataset.optional(),
@@ -374,10 +380,30 @@ const downloadStructuredPartitionsInputSchema = z
     startDate: partitionDownloadScopeShape.startDate.optional(),
     endDate: partitionDownloadScopeShape.endDate.optional(),
     storeIds: partitionDownloadScopeShape.storeIds,
-    storeNameContains: partitionDownloadScopeShape.storeNameContains
+    storeNameContains: partitionDownloadScopeShape.storeNameContains,
+    comboAttribution: z
+      .object({
+        evidenceStartDate: partitionDownloadScopeShape.startDate,
+        evidenceEndDate: partitionDownloadScopeShape.endDate
+      })
+      .strict()
+      .optional()
+      .describe(
+        "For combo_sales range downloads, also resolve current departments using authorized dishes names in this evidence window."
+      )
   })
   .strict()
   .superRefine((input, context) => {
+    if (
+      input.comboAttribution &&
+      (input.dataset !== "combo_sales" ||
+        input.comboAttribution.evidenceStartDate > input.comboAttribution.evidenceEndDate)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Combo attribution requires combo_sales and an ordered evidence range."
+      });
+    }
     if (input.requestId !== undefined) {
       if (Object.keys(input).some((key) => key !== "requestId"))
         context.addIssue({
@@ -494,14 +520,14 @@ const uploadStructuredDatasetInputSchema = z
       .regex(/^\d{8}$/)
       .optional()
       .describe(
-        "YYYYMMDD business window start for dishes, business, in_store_orders, takeaway_orders, or vip."
+        "YYYYMMDD business window start for dishes, business, in_store_orders, takeaway_orders, combo_sales, or vip."
       ),
     endDate: z
       .string()
       .regex(/^\d{8}$/)
       .optional()
       .describe(
-        "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, or vip."
+        "YYYYMMDD business window end for dishes, business, in_store_orders, takeaway_orders, combo_sales, or vip."
       ),
     idempotencyKey: z
       .string()
@@ -513,11 +539,7 @@ const uploadStructuredDatasetInputSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (
-      input.workflowAction &&
-      input.dataset !== "delivery_ledger" &&
-      !PARTITION_DATASETS.includes(input.dataset as (typeof PARTITION_DATASETS)[number])
-    )
+    if (input.workflowAction && !WORKFLOW_DATASETS.some((dataset) => dataset === input.dataset))
       context.addIssue({
         code: "custom",
         path: ["workflowAction"],
@@ -875,6 +897,7 @@ export const queryStoreReviewsInputSchema = z
 // contract only keeps strict structure and field descriptions.
 const dishCatalogRowSchema = z
   .object({
+    dishType: z.enum(["single", "combo"]).optional(),
     spuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.spuIdChars, { required: true }).describe(
       "SPU identifier."
     ),
@@ -916,12 +939,23 @@ export const upsertDishCatalogInputSchema = z
     enterpriseName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.enterpriseNameChars, {
       required: true
     }).describe("Exact registered enterprise name of the current organization."),
+    preserveManualFields: z
+      .boolean()
+      .optional()
+      .describe(
+        "Refresh workbook fields while retaining existing department, alias and known dish type."
+      ),
+    compositions: z
+      .array(dishComboReplacementSchema)
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe("Replace only these complete combo configurations."),
     rows: z
       .array(dishCatalogRowSchema)
       .max(DISH_CATALOG_LIMITS.maxBatchEntries)
       .optional()
       .describe(
-        "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries per batch."
+        "Rows to create or replace. Rows, compositions and removals together total 1–1000 entries per batch."
       ),
     removeSkuIds: z
       .array(dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }))
@@ -1062,6 +1096,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_order_scope_transition",
   "upsert_store_reviews",
   "upsert_dish_catalog",
+  "update_combo_sale_mapping",
+  "query_combo_sale_mappings",
   "query_store_reviews",
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -1325,7 +1361,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, or `takeaway_orders`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, `takeaway_orders`, or `combo_sales`."
       },
       {
         name: "select",
@@ -1377,19 +1413,19 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         name: "dataset",
         required: true,
         description:
-          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, or `takeaway_orders`."
+          "`dishes`, `business`, `vip`, `dish_catalog`, `delivery_ledger`, `supplier_catalog`, `cost_cards`, `in_store_orders`, `takeaway_orders`, or `combo_sales`."
       },
       {
         name: "enterpriseName",
         required: false,
         description:
-          "Optional enterprise/source scope for business/dishes/in_store_orders/takeaway_orders or cost-card coverage."
+          "Optional enterprise/source scope for business/dishes/in_store_orders/takeaway_orders/combo_sales or cost-card coverage."
       },
       {
         name: "storeNameContains",
         required: false,
         description:
-          "Optional business/dishes/in_store_orders/takeaway_orders scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
+          "Optional business/dishes/in_store_orders/takeaway_orders/combo_sales scope: 1–20 NFC/trim literal case-sensitive store-name substrings, OR within the array and AND with enterprise scope and authorization."
       }
     ],
     resultShape: [
@@ -1404,7 +1440,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions; the remaining datasets use the row-import service. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions. combo_sales requires 0.22.0+ and the original single-day XLSX with per-store detail, specifications and all dishes/channels. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: Object.entries(uploadStructuredDatasetInputSchema.shape).map(([name, schema]) => ({
       name,
@@ -1412,7 +1448,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       description: schema.description ?? name
     })),
     resultShape: [
-      "business/dishes/in_store_orders/takeaway_orders: partitionImportJobId, status, partitionCount, totalRowCount, orderScope, error",
+      "business/dishes/in_store_orders/takeaway_orders/combo_sales: partitionImportJobId, status, partitionCount, totalRowCount, orderScope, error",
       "other datasets: document, processing, importBatch"
     ]
   }),
@@ -1420,7 +1456,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "get_partition_import_status",
     title: "Get partition import status",
     description:
-      "Poll a business, dishes, in-store order or takeaway order import by partitionImportJobId until it reaches a terminal status. For row imports identified by importBatchId, use get_import_status.",
+      "Poll a business, dishes, in-store order, takeaway order or combo sales import by partitionImportJobId until it reaches a terminal status. For row imports identified by importBatchId, use get_import_status.",
     inputSchema: partitionImportStatusInputSchema,
     inputFields: [
       { name: "partitionImportJobId", required: true, description: "Partition import job ID." }
@@ -1438,7 +1474,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "download_structured_partitions",
     title: "Download structured partitions",
     description:
-      "Download authorized business/dishes/in_store_orders/takeaway_orders daily store partitions into a launcher-managed local directory.",
+      "Download authorized business/dishes/in_store_orders/takeaway_orders/combo_sales daily store partitions into a launcher-managed local directory.",
     inputSchema: downloadStructuredPartitionsInputSchema,
     inputFields: [
       {
@@ -1450,7 +1486,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
       {
         name: "dataset",
         required: false,
-        description: "business, dishes, in_store_orders, or takeaway_orders."
+        description: "business, dishes, in_store_orders, takeaway_orders, or combo_sales."
       },
       { name: "enterpriseName", required: false, description: "Enterprise/source name." },
       { name: "startDate", required: false, description: "Inclusive YYYYMMDD start." },
@@ -1461,9 +1497,22 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
         required: false,
         description:
           "1–20 NFC/trim store-name substrings (at most 255 characters each), literal and case-sensitive, OR within the array and AND with merchant IDs and authorization."
+      },
+      {
+        name: "comboAttribution",
+        required: false,
+        description:
+          "Optional combo_sales range enrichment. Provide evidenceStartDate and evidenceEndDate in YYYYMMDD for authorized same-store dishes names."
       }
     ],
-    resultShape: ["localDirectory", "dataset", "partitionCount", "totalRowCount", "files[]"]
+    resultShape: [
+      "localDirectory",
+      "dataset",
+      "partitionCount",
+      "totalRowCount",
+      "files[]",
+      "attribution?: status, file (JSONL when ready), evidence range"
+    ]
   }),
   defineToolContract({
     name: "download_cost_cards",
@@ -1499,13 +1548,13 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "prepare_structured_partition_download",
     title: "Prepare structured partition download",
     description:
-      "Queue an authorized business/dishes/in_store_orders/takeaway_orders partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
+      "Queue an authorized business/dishes/in_store_orders/takeaway_orders/combo_sales partition ZIP for a date/store scope. Reuse the same idempotencyKey for retries; poll status and download by requestId once succeeded.",
     inputSchema: preparePartitionDownloadInputSchema,
     inputFields: [
       {
         name: "dataset",
         required: true,
-        description: "business, dishes, in_store_orders, or takeaway_orders."
+        description: "business, dishes, in_store_orders, takeaway_orders, or combo_sales."
       },
       { name: "enterpriseName", required: true, description: "Enterprise/source name." },
       { name: "startDate", required: true, description: "Inclusive YYYYMMDD start." },
@@ -1743,32 +1792,61 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upsert_dish_catalog",
     title: "Upsert dish catalog",
     description:
-      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Send only changed rows plus explicit removeSkuIds; rows and removals total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted nullable row fields clear the stored value, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
+      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Submit rows, complete compositions, and explicit removeSkuIds; together they total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted dishType retains the current type. Omitted nullable row fields clear the stored value unless preserveManualFields protects the department and alias, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
     inputSchema: upsertDishCatalogInputSchema,
-    inputFields: [
-      {
-        name: "enterpriseName",
-        required: true,
-        description: "Exact registered enterprise name of the current organization."
-      },
-      {
-        name: "rows",
-        required: false,
-        description: "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries."
-      },
-      {
-        name: "removeSkuIds",
-        required: false,
-        description: "SKUs to permanently delete; removing an absent SKU is a no-op."
-      },
-      {
-        name: "sourceFileName",
-        required: false,
-        description: "Optional audit-only source file name; the server reads no file."
-      }
-    ],
+    inputFields: Object.entries(upsertDishCatalogInputSchema.shape).map(([name, schema]) => ({
+      name,
+      required: !schema.isOptional(),
+      description: schema.description ?? name
+    })),
     resultShape: ["received, created, updated, unchanged, removed"],
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "update_combo_sale_mapping",
+    title: "Confirm or revoke a store's combo sale mapping",
+    description:
+      "Require a current administrator with both group dish_catalog and this store's combo_sales grants. Confirm a source child name for all specifications or one exact specification to a current single SKU or active department. Reconfirm to correct the target or basis, or revoke to resume automatic attribution.",
+    inputSchema: updateComboSaleMappingInput,
+    inputFields: [
+      { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
+      { name: "storeName", required: true, description: "Exact formal store name." },
+      { name: "sourceName", required: true, description: "Exact source child dish name." },
+      {
+        name: "specification",
+        required: true,
+        description: "Null for name-wide or the exact reported specification, including empty."
+      },
+      {
+        name: "operation",
+        required: true,
+        description: "Confirm with a target and basis, or revoke this exact mapping."
+      }
+    ],
+    resultShape: ["id, changed"],
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "query_combo_sale_mappings",
+    title: "Query a store's current combo sale mappings",
+    description:
+      "Page through current confirmations for one formal store. Requires both group dish_catalog and this store's combo_sales grants. SKU targets follow the current department. Removed or ineligible targets are marked invalid.",
+    inputSchema: queryComboSaleMappingsInput,
+    inputFields: [
+      { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
+      { name: "storeName", required: true, description: "Exact formal store name." },
+      {
+        name: "afterId",
+        required: false,
+        description: "Continue the same store's query using nextAfterId."
+      },
+      { name: "limit", required: false, description: "Page size between 1 and 100, default 50." }
+    ],
+    resultShape: [
+      "rows[]: id, sourceName, specification, target, basis, valid, departmentId, departmentName",
+      "nextAfterId"
+    ],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({
     name: "query_store_reviews",
