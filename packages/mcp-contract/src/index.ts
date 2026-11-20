@@ -1440,7 +1440,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upload_structured_dataset",
     title: "Upload SMEDC structured dataset",
     description:
-      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions. combo_sales requires 0.22.0+ and the original single-day XLSX with per-store detail, specifications and all dishes/channels. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
+      "Upload the user's original XLSX/CSV. Requires the admin role. Launcher 0.5.0+ streams business/dishes and 0.15.0+ streams in_store_orders/takeaway_orders through partition upload sessions. combo_sales requires 0.22.0+ and the original single-day XLSX with per-store detail, specifications and all dishes/channels. Linked workflow uploads of combo_sales require launcher 0.22.2+. cost_cards requires launcher 0.10.0+, one complete original file without dates, client-side card splitting or classification overrides. A 202 queued response requires polling the matching status tool.",
     inputSchema: uploadStructuredDatasetInputSchema,
     inputFields: Object.entries(uploadStructuredDatasetInputSchema.shape).map(([name, schema]) => ({
       name,

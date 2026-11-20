@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { enterpriseIntegrationSchema, workflowConfigurationSchema } from "./index.js";
+import {
+  enterpriseIntegrationSchema,
+  workflowConfigurationSchema,
+  workflowAuthorizationScopeSchema,
+  workflowActionIdentitySchema
+} from "./index.js";
 
 const source = {
   product: "meituan_reviews",
@@ -102,5 +107,49 @@ it("allows ungrouped report stores but rejects overlapping peer groups", () => {
         { name: "Small", storeNames: ["B"] }
       ]
     }).success
+  ).toBe(false);
+});
+
+it("accepts six daily datasets and authorizes combo uploads only as single-day originals", () => {
+  const datasets = [
+    "business",
+    "dishes",
+    "combo_sales",
+    "in_store_orders",
+    "takeaway_orders",
+    "delivery_ledger"
+  ];
+  const storeNames = ["合成甲店"];
+  expect(
+    workflowConfigurationSchema.safeParse({
+      schemaVersion: 1,
+      type: "meituan-daily-ingestion",
+      storeNames,
+      datasets,
+      orderScope: "settled_only",
+      cleanupPolicy: "confirmed_files_only",
+      notificationPolicy: "action_required"
+    }).success
+  ).toBe(true);
+  expect(
+    workflowAuthorizationScopeSchema.safeParse({ kind: "upload", storeNames, datasets }).success
+  ).toBe(true);
+  const action = {
+    kind: "upload",
+    dataset: "combo_sales",
+    storeNames,
+    window: { startDate: "2026-11-19", endDate: "2026-11-19" },
+    sourceHash: "1".repeat(64),
+    metadataHash: "2".repeat(64)
+  };
+  expect(workflowActionIdentitySchema.safeParse(action).success).toBe(true);
+  expect(
+    workflowActionIdentitySchema.safeParse({
+      ...action,
+      window: { ...action.window, endDate: "2026-11-20" }
+    }).success
+  ).toBe(false);
+  expect(
+    workflowActionIdentitySchema.safeParse({ ...action, orderScope: "settled_only" }).success
   ).toBe(false);
 });

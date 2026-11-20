@@ -5646,7 +5646,7 @@
                         },
                         "datasets": {
                           "minItems": 1,
-                          "maxItems": 5,
+                          "maxItems": 6,
                           "type": "array",
                           "items": {
                             "$ref": "#/$defs/r_workflows_getEnterpriseWorkflow___schema30"
@@ -5865,7 +5865,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_getEnterpriseWorkflow___schema7"
@@ -5919,6 +5919,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -6303,6 +6304,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -6571,7 +6573,7 @@
                         },
                         "datasets": {
                           "minItems": 1,
-                          "maxItems": 5,
+                          "maxItems": 6,
                           "type": "array",
                           "items": {
                             "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema34"
@@ -7384,7 +7386,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_getWorkflowStatus___schema10"
@@ -7438,6 +7440,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -7850,6 +7853,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -8003,6 +8007,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -8363,7 +8368,7 @@
                               },
                               "datasets": {
                                 "minItems": 1,
-                                "maxItems": 5,
+                                "maxItems": 6,
                                 "type": "array",
                                 "items": {
                                   "$ref": "#/$defs/r_workflows_listEnterpriseWorkflows___schema31"
@@ -8625,7 +8630,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_listEnterpriseWorkflows___schema8"
@@ -8679,6 +8684,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -9063,6 +9069,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -9830,6 +9837,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -10323,6 +10331,7 @@
                         "dishes",
                         "in_store_orders",
                         "takeaway_orders",
+                        "combo_sales",
                         "delivery_ledger"
                       ]
                     },
@@ -10749,7 +10758,7 @@
                 },
                 "datasets": {
                   "minItems": 1,
-                  "maxItems": 5,
+                  "maxItems": 6,
                   "type": "array",
                   "items": {
                     "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema72"
@@ -10790,6 +10799,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -11026,7 +11036,7 @@
                     },
                     "datasets": {
                       "minItems": 1,
-                      "maxItems": 5,
+                      "maxItems": 6,
                       "type": "array",
                       "items": {
                         "$ref": "#/$defs/b_workflows_manageWorkflowInstallation___schema82"
@@ -11171,6 +11181,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -12148,7 +12159,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema31"
@@ -12197,6 +12208,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -12449,7 +12461,7 @@
                   },
                   "datasets": {
                     "minItems": 1,
-                    "maxItems": 5,
+                    "maxItems": 6,
                     "type": "array",
                     "items": {
                       "$ref": "#/$defs/r_workflows_manageWorkflowInstallation___schema44"
@@ -12594,6 +12606,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -12940,6 +12953,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -13322,6 +13336,7 @@
                       "dishes",
                       "in_store_orders",
                       "takeaway_orders",
+                      "combo_sales",
                       "delivery_ledger"
                     ]
                   },
@@ -14177,6 +14192,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -14392,6 +14408,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -15106,7 +15123,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_manageWorkflowRun___schema41"
@@ -15155,6 +15172,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -15496,6 +15514,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -15983,7 +16002,7 @@
                 },
                 "datasets": {
                   "minItems": 1,
-                  "maxItems": 5,
+                  "maxItems": 6,
                   "type": "array",
                   "items": {
                     "$ref": "#/$defs/b_workflows_prepareEnterpriseWorkflowChange___schema18"
@@ -16032,6 +16051,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -16281,7 +16301,7 @@
                     },
                     "datasets": {
                       "minItems": 1,
-                      "maxItems": 5,
+                      "maxItems": 6,
                       "type": "array",
                       "items": {
                         "$ref": "#/$defs/b_workflows_prepareEnterpriseWorkflowChange___schema30"
@@ -16426,6 +16446,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -16838,7 +16859,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_prepareEnterpriseWorkflowChange___schema18"
@@ -16887,6 +16908,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -17136,7 +17158,7 @@
                   },
                   "datasets": {
                     "minItems": 1,
-                    "maxItems": 5,
+                    "maxItems": 6,
                     "type": "array",
                     "items": {
                       "$ref": "#/$defs/r_workflows_prepareEnterpriseWorkflowChange___schema30"
@@ -17281,6 +17303,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -17752,6 +17775,7 @@
                 "dishes",
                 "in_store_orders",
                 "takeaway_orders",
+                "combo_sales",
                 "delivery_ledger"
               ]
             },
@@ -18459,6 +18483,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -19119,7 +19144,7 @@
                         },
                         "datasets": {
                           "minItems": 1,
-                          "maxItems": 5,
+                          "maxItems": 6,
                           "type": "array",
                           "items": {
                             "$ref": "#/$defs/r_workflows_saveEnterpriseWorkflow___schema30"
@@ -19338,7 +19363,7 @@
               },
               "datasets": {
                 "minItems": 1,
-                "maxItems": 5,
+                "maxItems": 6,
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/r_workflows_saveEnterpriseWorkflow___schema7"
@@ -19392,6 +19417,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
@@ -19776,6 +19802,7 @@
               "dishes",
               "in_store_orders",
               "takeaway_orders",
+              "combo_sales",
               "delivery_ledger"
             ]
           },
