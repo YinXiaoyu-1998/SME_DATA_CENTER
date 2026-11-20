@@ -9,7 +9,8 @@ export const STRUCTURED_DATASETS = [
   "supplier_catalog",
   "cost_cards",
   "in_store_orders",
-  "takeaway_orders"
+  "takeaway_orders",
+  "combo_sales"
 ] as const;
 
 export type StructuredDatasetName = (typeof STRUCTURED_DATASETS)[number];
@@ -89,7 +90,7 @@ export interface StructuredDatasetRegistry {
   rowTable?: StructuredRowTableName;
   sheetPolicy: "strict_all_nonempty" | "import_matching_visible" | "cost_card_candidates" | "none";
   metadataPolicy: "window" | "derived_receipt" | "none" | "current";
-  datePolicy?: "row_business_date";
+  datePolicy?: "row_business_date" | "report_business_date";
   joins?: readonly StructuredJoinRegistry[];
   defaultSort?: { field: string; direction: "asc" | "desc" };
   fields: StructuredFieldRegistryEntry[];
@@ -1232,6 +1233,56 @@ export const STRUCTURED_DATASET_REGISTRIES = {
       })
     )
   },
+  combo_sales: {
+    dataset: "combo_sales",
+    accessMode: "partition_extract",
+    sheetPolicy: "strict_all_nonempty",
+    metadataPolicy: "window",
+    datePolicy: "report_business_date",
+    fields: (
+      [
+        ["region", "地区", "string"],
+        ["store_name", "门店", "string"],
+        ["source_dish_code", "菜品编码", "string"],
+        ["combo_name", "套餐", "string"],
+        ["product_name", "单品名称", "string"],
+        ["product_type", "菜品类型", "string"],
+        ["unit", "单位", "string"],
+        ["specification", "规格", "string"],
+        ["product_category", "菜品大类", "string"],
+        ["quantity", "销售数量", "decimal"],
+        ["sales_amount", "销售额(元)", "decimal"],
+        ["discount_amount", "菜品优惠(元)", "decimal"],
+        ["income_amount", "菜品收入(元)", "decimal"],
+        ["business_date", "营业日期", "date"],
+        ["source_row_number", "来源行号", "integer"]
+      ] as const
+    ).map(([canonicalName, sourceColumn, type]): StructuredFieldRegistryEntry => ({
+      canonicalName,
+      sourceColumn,
+      aliases: [],
+      type,
+      nullable: [
+        "region",
+        "source_dish_code",
+        "product_type",
+        "unit",
+        "specification",
+        "product_category"
+      ].includes(canonicalName),
+      inputSource:
+        canonicalName === "business_date" || canonicalName === "source_row_number"
+          ? "derived"
+          : "file",
+      sensitivity: type === "decimal" ? "business_metric" : "normal",
+      lifecycle: "active",
+      volatility: "stable_export",
+      defaultReturn: true,
+      operators: [],
+      capabilities: { filter: false, sort: false, group: false, aggregate: false },
+      indexStatus: "not_indexed"
+    }))
+  },
   vip: createRegistry({
     dataset: "vip",
     accessMode: "row_query",
@@ -1393,6 +1444,7 @@ export function resolveStructuredHeaders(
   if (
     (dataset === "supplier_catalog" ||
       dataset === "cost_cards" ||
+      dataset === "combo_sales" ||
       isOrderPartitionDataset(dataset)) &&
     headers.some((header) => !normalizeHeader(header))
   ) {
@@ -1615,6 +1667,7 @@ function aliasesFor(dataset: StructuredDatasetName, sourceColumn: string): strin
   const aliasesByDataset: Record<StructuredDatasetName, Record<string, string[]>> = {
     in_store_orders: {},
     takeaway_orders: {},
+    combo_sales: {},
     dishes: {
       下单时间: ["订单时间"],
       门店: ["门店名称"],

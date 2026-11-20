@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   SMEDC_MCP_TOOL_CONTRACTS,
   COST_CARD_LAUNCHER_VERSION,
+  COMBO_SALES_LAUNCHER_VERSION,
   IN_STORE_ORDER_LAUNCHER_VERSION,
   TAKEAWAY_ORDER_LAUNCHER_VERSION,
   apiErrorToolResult,
@@ -152,6 +153,16 @@ async function uploadStructuredDataset(
       "dish_catalog uploads are retired; use upsert_dish_catalog.",
       undefined,
       { retryable: false, requestId: context.audit.requestId }
+    );
+  if (
+    requestedDataset === "combo_sales" &&
+    !launcherVersionAtLeast(context.audit.launcherVersion, COMBO_SALES_LAUNCHER_VERSION)
+  )
+    return errorToolResult(
+      "LAUNCHER_UPGRADE_REQUIRED",
+      "Update the SMEDC launcher before using combo sales.",
+      undefined,
+      { requestId: context.audit.requestId }
     );
   if (
     requestedDataset === "takeaway_orders" &&

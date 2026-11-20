@@ -521,11 +521,12 @@ interface SheetParseState {
   onRow?: (rowNumber: number, cells: string[]) => void;
   mergeMasters: Map<MergeRange, string>;
   collectMergeRanges: boolean;
-  preserveNumericText?: boolean;
+  preserveNumericText?: boolean | "canonical_integer";
   preserveCellWhitespace?: boolean;
   maxRows?: number;
   maxMaterializedCells?: number;
   preserveNumberPadding?: boolean;
+  maxColumns?: number;
 }
 
 function createSheetState(
@@ -601,7 +602,7 @@ function resolveCell(state: SheetParseState): string {
   if (type === "e") throw validation("Unsupported XLSX cell value.");
   if (cell.formula) {
     if (raw === "") throw validation("Unevaluated XLSX formula is not supported.");
-    return state.preserveNumericText ? exactNumericText(raw) : String(Number(raw));
+    if (!state.preserveNumericText) return String(Number(raw));
   }
   if (raw === "") return "";
   if (state.preserveNumericText) {
@@ -612,7 +613,7 @@ function resolveCell(state: SheetParseState): string {
         throw validation("Structured cell length limit exceeded.");
       return plain.split(".")[0]!.padStart(format.length, "0");
     }
-    return plain;
+    return state.preserveNumericText === "canonical_integer" ? plain.replace(/\.0+$/u, "") : plain;
   }
   const numFmt = numericFormat(cell, state.styles);
   if (numFmt !== undefined && isDateFmt(numFmt)) {
@@ -653,6 +654,8 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       const ref = attributes.r ?? "";
       const column = columnIndexFromRef(ref);
       if (column >= 0) state.nextColumn = column;
+      if (state.maxColumns !== undefined && state.nextColumn >= state.maxColumns)
+        throw validation("Partition worksheet column limit exceeded.");
       state.cell = {
         type: attributes.t,
         style: attributes.s === undefined ? undefined : Number(attributes.s),
@@ -706,7 +709,7 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
           checkedCellText(
             resolveCell(state),
             state.limits,
-            state.preserveCellWhitespace || state.preserveNumericText
+            state.preserveCellWhitespace || !!state.preserveNumericText
           )
         );
         if (state.nextColumn + 1 > state.rowWidth) state.rowWidth = state.nextColumn + 1;
@@ -831,7 +834,8 @@ async function parseSheetStreamRows(
   styles: StyleTable,
   limits: XlsxReadLimits,
   mergeRanges: MergeRange[],
-  onRow: (rowNumber: number, cells: string[]) => Promise<void>
+  onRow: (rowNumber: number, cells: string[]) => Promise<void>,
+  options: XlsxStreamOptions
 ): Promise<void> {
   const pendingRows: Array<{ rowNumber: number; cells: string[] }> = [];
   const state = createSheetState(
@@ -844,6 +848,9 @@ async function parseSheetStreamRows(
     mergeRanges,
     false
   );
+  state.preserveNumericText = options.preserveNumericText ? "canonical_integer" : false;
+  state.maxColumns = options.maxColumns;
+  state.maxRows = options.maxRows;
   const parser = sax.parser(true, {
     trim: false,
     normalize: false,
@@ -997,6 +1004,10 @@ export interface XlsxStreamConsumer {
 export interface XlsxStreamOptions {
   /** Defaults to true. Disable only when the source schema declares merged cells non-semantic. */
   expandMergedCells?: boolean;
+  /** Preserve decimal mantissas and render integral numeric IDs without a fractional suffix. */
+  preserveNumericText?: boolean;
+  maxColumns?: number;
+  maxRows?: number;
 }
 
 export interface XlsxStreamProfile {
@@ -1083,7 +1094,8 @@ export async function streamXlsxFileRows(
           consumerStarted = performance.now();
           await consumer.row(sheet, rowNumber, cells);
           consumerMs += performance.now() - consumerStarted;
-        }
+        },
+        options
       );
       consumerStarted = performance.now();
       await consumer.endSheet(sheet);

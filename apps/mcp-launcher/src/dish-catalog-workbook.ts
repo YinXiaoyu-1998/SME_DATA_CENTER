@@ -114,9 +114,10 @@ export async function parseDishCatalogWorkbook(bytes: Uint8Array, enterpriseName
     Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
     PHASE3_RUNTIME_LIMIT_DEFAULTS,
     {
-      preserveNumericText: true,
+      preserveNumericText: "canonical_integer",
       preserveNumberPadding: true,
       maxRows: PHASE3_RUNTIME_LIMIT_DEFAULTS.maxStructuredImportRows,
+      maxColumns: 256,
       maxMaterializedCells: 2_000_000
     }
   );
