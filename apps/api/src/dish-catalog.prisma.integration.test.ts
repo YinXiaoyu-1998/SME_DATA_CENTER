@@ -251,7 +251,9 @@ suite("dish catalog current-state HTTP seam", () => {
       expect(
         (
           await write({
-            rows: [row("COMBO", { departmentName: null, dishName: "午餐组合" })],
+            rows: [
+              row("COMBO", { departmentName: null, dishName: "午餐组合", dishType: "single" })
+            ],
             preserveManualFields: true
           })
         ).statusCode

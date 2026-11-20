@@ -7,6 +7,6 @@ export default defineConfig({
     resolve: ["@smedc/mcp-contract", "@smedc/domain"]
   },
   clean: true,
-  noExternal: ["@smedc/mcp-contract", "@smedc/domain"],
+  noExternal: ["@smedc/mcp-contract", "@smedc/domain", "@smedc/structured-ingestion/xlsx-stream"],
   external: ["@modelcontextprotocol/sdk", "@napi-rs/keyring", "oauth4webapi", "open", "zod"]
 });
