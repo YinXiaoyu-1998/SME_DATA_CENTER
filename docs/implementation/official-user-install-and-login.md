@@ -474,17 +474,18 @@ therefore be reviewed together.
 The official distribution artifact is a public, versioned npm package with a CLI `bin` and no
 embedded secrets. The public main GitHub repository publishes through npm Trusted Publisher/OIDC.
 Release 0.22.2 includes signed npm provenance linking the package to its GitHub Actions build and
-source commit; verify it alongside registry integrity and the independently installed artifact. The standalone SMEDC skill repository contains installation and usage
+source commit; verify it alongside registry integrity and the independently installed artifact.
+The standalone SMEDC skill repository contains installation and usage
 guidance plus the exact approved launcher version. It may direct an authorized employee-owned agent
 to install Node.js/npm when needed, install or update the launcher, and write MCP client
 configuration, but it must not contain a second copy of launcher source.
 
-Current launcher release status: `smedc-mcp-launcher@0.22.2` is public and independently verified,
-the `smedc-mcp-skill` and `smedc-companion-skills` repositories have their final names, and npm
-Trusted Publisher is bound to `YinXiaoyu-1998/SME_DATA_CENTER` plus `launcher-release.yml` with
-stage-publish-only permission. This source policy requires at least 0.12.0 for OAuth issuance and refresh and recommends
-the published 0.22.2 release; both core Skill homes pin 0.22.2. Archive delivery remains gated by the
-service rollout.
+Launcher `smedc-mcp-launcher@0.22.2` is public and independently verified. The release workflow
+uses direct OIDC publication and requires the `npm publish` action on the package's Trusted Publisher
+for `YinXiaoyu-1998/SME_DATA_CENTER` and `launcher-release.yml`. See the
+[release procedure](staging-deploy-runbook.md#ci-构建与镜像交接) for activation and verification.
+The service source requires at least 0.12.0 for OAuth issuance and refresh and recommends 0.22.2.
+Both core Skill homes pin 0.22.2. Archive delivery requires matching service support.
 Launcher 0.22.2 allows 45 seconds for business MCP calls while connection and profile checks retain
 30 seconds; existing installations must complete the normal authorized update flow to use it.
 Npm provenance is available for 0.22.2 from the public source repository.
