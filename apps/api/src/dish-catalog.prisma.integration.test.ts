@@ -355,6 +355,19 @@ suite("dish catalog current-state HTTP seam", () => {
       const key = { ...scope, sourceName: "气泡茶", specification: null };
       const target = { kind: "department", departmentId: kitchenId };
       const confirm = { ...key, operation: { kind: "confirm", target, basis: "门店核对菜单" } };
+      // Configured category grants alone cannot expose a missing or invalid catalog resource.
+      expect((await request("update", confirm)).statusCode).toBe(403);
+      expect((await request("query", scope, "reader-token")).statusCode).toBe(403);
+      const catalog = (body: Record<string, unknown>) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/dish-catalog/upsert",
+          headers: headers("admin-token"),
+          payload: { enterpriseName, ...body }
+        });
+      expect(
+        (await catalog({ rows: [row("SKU-TEA", { departmentName: "烧烤部" })] })).statusCode
+      ).toBe(200);
       expect((await request("update", confirm)).statusCode).toBe(200);
       expect((await request("query", scope, "reader-token")).json()).toMatchObject({
         rows: [
@@ -369,11 +382,30 @@ suite("dish catalog current-state HTTP seam", () => {
         ],
         nextAfterId: null
       });
+      const catalogResource = { orgId, resourceKey: `dish-catalog:${enterpriseKey}` };
+      await prisma.businessResource.updateMany({ where: catalogResource, data: { valid: false } });
+      expect((await request("query", scope, "reader-token")).statusCode).toBe(403);
+      expect((await request("update", confirm)).statusCode).toBe(403);
+      await prisma.businessResource.updateMany({ where: catalogResource, data: { valid: true } });
+      for (const id of ["catalog", "combo"]) {
+        const where = { orgId_id: { orgId, id } };
+        await prisma.businessCategory.update({ where, data: { retired: true } });
+        expect((await request("query", scope, "reader-token")).statusCode).toBe(403);
+        expect((await request("update", confirm)).statusCode).toBe(403);
+        await prisma.businessCategory.update({ where, data: { retired: false } });
+      }
       expect((await request("update", confirm)).json()).toMatchObject({ changed: false });
       expect(
         (await request("query", { ...scope, storeName: "合成乙店" }, "reader-token")).statusCode
       ).toBe(403);
       expect((await request("update", confirm, "reader-token")).statusCode).toBe(403);
+      const store = { orgId_enterpriseKey_name: { orgId, enterpriseKey, name: storeName } };
+      await prisma.businessStore.update({ where: store, data: { retired: true } });
+      expect((await request("query", scope, "reader-token")).json().rows).toMatchObject([
+        { target, valid: true }
+      ]);
+      expect((await request("update", confirm)).statusCode).toBe(403);
+      await prisma.businessStore.update({ where: store, data: { retired: false } });
       const foreign = await prisma.businessDepartment.create({
         data: {
           orgId,
@@ -391,16 +423,6 @@ suite("dish catalog current-state HTTP seam", () => {
         }
       };
       expect((await request("update", badConfirm)).statusCode).toBe(400);
-      const catalog = (body: Record<string, unknown>) =>
-        app.inject({
-          method: "POST",
-          url: "/v1/dish-catalog/upsert",
-          headers: headers("admin-token"),
-          payload: { enterpriseName, ...body }
-        });
-      expect(
-        (await catalog({ rows: [row("SKU-TEA", { departmentName: "烧烤部" })] })).statusCode
-      ).toBe(200);
       const sku = { kind: "sku", skuId: "SKU-TEA" };
       const confirmSku = {
         ...key,
@@ -416,12 +438,30 @@ suite("dish catalog current-state HTTP seam", () => {
       expect((await request("query", scope)).json().rows).toMatchObject([
         { valid: true, target: sku, departmentName: "Café" }
       ]);
-      expect((await catalog({ removeSkuIds: ["SKU-TEA"] })).statusCode).toBe(200);
+      const renamed = { kind: "sku", skuId: "SKU-TÉA" };
       expect(
-        (await catalog({ rows: [row("SKU-TEA", { departmentName: "CAFE" })] })).statusCode
+        (await catalog({ rows: [row(renamed.skuId, { departmentName: "CAFE" })] })).statusCode
       ).toBe(200);
       expect((await request("query", scope)).json().rows).toMatchObject([
-        { valid: false, target: sku, departmentName: null }
+        { valid: false, target: sku, departmentId: null }
+      ]);
+      expect(
+        (
+          await request("update", {
+            ...confirmSku,
+            operation: { ...confirmSku.operation, target: renamed }
+          })
+        ).json()
+      ).toMatchObject({ changed: true });
+      expect((await request("query", scope)).json().rows).toMatchObject([
+        { valid: true, target: renamed }
+      ]);
+      expect((await catalog({ removeSkuIds: [renamed.skuId] })).statusCode).toBe(200);
+      expect(
+        (await catalog({ rows: [row(renamed.skuId, { departmentName: "CAFE" })] })).statusCode
+      ).toBe(200);
+      expect((await request("query", scope)).json().rows).toMatchObject([
+        { valid: false, target: renamed, departmentName: null }
       ]);
       expect(
         (await request("update", { ...key, operation: { kind: "revoke" } })).json()

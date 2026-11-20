@@ -123,7 +123,7 @@ async function replaceCompositions(
   }
 }
 
-function catalogResourceKey(enterpriseKey: string): string {
+export function dishCatalogResourceKey(enterpriseKey: string): string {
   return `dish-catalog:${enterpriseKey}`;
 }
 
@@ -190,7 +190,7 @@ async function persistCatalogResource(
   enterpriseKey: string,
   categoryId: string
 ) {
-  const resourceKey = catalogResourceKey(enterpriseKey);
+  const resourceKey = dishCatalogResourceKey(enterpriseKey);
   const where = {
     orgId_kind_resourceKey: { orgId, kind: "structured" as const, resourceKey }
   };

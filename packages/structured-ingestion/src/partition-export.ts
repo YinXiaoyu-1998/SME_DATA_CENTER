@@ -68,6 +68,7 @@ export interface StructuredPartitionExportProfile {
 interface SourceRow {
   rowNumber: number;
   cells: string[];
+  numberPadding?: ReadonlyMap<number, number>;
 }
 
 interface PartitionState {
@@ -162,7 +163,15 @@ export async function exportStructuredPartitions(input: {
     for (const mapping of header.mappings) {
       const field = fieldByName.get(mapping.canonicalName);
       if (!field) throw invalidSource("Resolved partition field is not registered.");
-      const raw = row.cells[mapping.sourceColumnIndex] ?? "";
+      let raw = row.cells[mapping.sourceColumnIndex] ?? "";
+      const padding = row.numberPadding?.get(mapping.sourceColumnIndex);
+      if (mapping.canonicalName === "source_dish_code" && padding !== undefined) {
+        if (padding > input.limits.maxStructuredCellChars)
+          throw invalidSource(
+            `Row ${row.rowNumber} source_dish_code exceeds the cell length limit.`
+          );
+        raw = raw.padStart(padding, "0");
+      }
       const value = canonicalCell(field, raw, row.rowNumber, orderSource);
       canonical.set(
         mapping.canonicalName,
@@ -355,11 +364,11 @@ export async function exportStructuredPartitions(input: {
             processor = createSheetProcessor(sheet.name, sheet.hidden);
             lastRowNumber = 0;
           },
-          async row(_sheet, rowNumber, cells) {
+          async row(_sheet, rowNumber, cells, numberPadding) {
             if (rowNumber <= lastRowNumber)
               throw invalidSource("Worksheet row numbers must increase.");
             lastRowNumber = rowNumber;
-            await processor!.row({ rowNumber, cells });
+            await processor!.row({ rowNumber, cells, numberPadding });
           },
           endSheet() {
             processor!.finish();
@@ -371,6 +380,7 @@ export async function exportStructuredPartitions(input: {
           // Read these source codes and financial values through the exact-decimal reader.
           xlsxProfile = await streamXlsxFileRows(input.sourcePath, input.limits, consumer, {
             preserveNumericText: true,
+            collectNumberPadding: true,
             expandMergedCells: false,
             maxColumns: 1024,
             maxRows: 1_048_576

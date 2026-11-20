@@ -518,7 +518,7 @@ interface SheetParseState {
   rowWidth: number;
   nextColumn: number;
   cell?: CellContext;
-  onRow?: (rowNumber: number, cells: string[]) => void;
+  onRow?: (rowNumber: number, cells: string[], numberPadding?: ReadonlyMap<number, number>) => void;
   mergeMasters: Map<MergeRange, string>;
   collectMergeRanges: boolean;
   preserveNumericText?: boolean | "canonical_integer";
@@ -526,6 +526,8 @@ interface SheetParseState {
   maxRows?: number;
   maxMaterializedCells?: number;
   preserveNumberPadding?: boolean;
+  collectNumberPadding?: boolean;
+  numberPadding?: Map<number, number>;
   maxColumns?: number;
 }
 
@@ -533,7 +535,7 @@ function createSheetState(
   shared: string[],
   styles: StyleTable,
   limits: XlsxReadLimits,
-  onRow?: (rowNumber: number, cells: string[]) => void,
+  onRow?: SheetParseState["onRow"],
   mergeRanges: MergeRange[] = [],
   collectMergeRanges = true
 ): SheetParseState {
@@ -607,11 +609,17 @@ function resolveCell(state: SheetParseState): string {
   if (raw === "") return "";
   if (state.preserveNumericText) {
     const plain = exactNumericText(raw);
-    const format = state.preserveNumberPadding ? numericFormat(cell, state.styles) : undefined;
+    const format =
+      state.preserveNumberPadding || state.collectNumberPadding
+        ? numericFormat(cell, state.styles)
+        : undefined;
     if (format && /^0{2,}$/.test(format) && /^\d+(?:\.0+)?$/.test(plain)) {
-      if (format.length > state.limits.maxStructuredCellChars)
-        throw validation("Structured cell length limit exceeded.");
-      return plain.split(".")[0]!.padStart(format.length, "0");
+      if (state.preserveNumberPadding) {
+        if (format.length > state.limits.maxStructuredCellChars)
+          throw validation("Structured cell length limit exceeded.");
+        return plain.split(".")[0]!.padStart(format.length, "0");
+      }
+      (state.numberPadding ??= new Map()).set(state.nextColumn, format.length);
     }
     return state.preserveNumericText === "canonical_integer" ? plain.replace(/\.0+$/u, "") : plain;
   }
@@ -647,6 +655,7 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
         throw validation("XLSX source row limit exceeded.");
       if (state.currentRowNumber > state.maxRow) state.maxRow = state.currentRowNumber;
       state.rowCells = new Map();
+      state.numberPadding = undefined;
       state.rowWidth = 0;
       state.nextColumn = 0;
     } else if (name === "c") {
@@ -704,6 +713,7 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       } else if (name === "v" && state.cell.collecting === "value") {
         state.cell.collecting = "none";
       } else if (name === "c") {
+        state.numberPadding?.delete(state.nextColumn);
         state.rowCells.set(
           state.nextColumn,
           checkedCellText(
@@ -722,7 +732,7 @@ function configureSheetParser(parser: sax.SAXParser, state: SheetParseState): vo
       for (let index = 0; index < state.rowWidth; index++)
         rendered.push(state.rowCells.get(index) ?? "");
       applyKnownMerges(state, rendered);
-      if (state.onRow) state.onRow(state.currentRowNumber, rendered);
+      if (state.onRow) state.onRow(state.currentRowNumber, rendered, state.numberPadding);
       else state.rowMap.set(state.currentRowNumber, rendered);
     }
   };
@@ -835,21 +845,30 @@ async function parseSheetStreamRows(
   styles: StyleTable,
   limits: XlsxReadLimits,
   mergeRanges: MergeRange[],
-  onRow: (rowNumber: number, cells: string[]) => Promise<void>,
+  onRow: (
+    rowNumber: number,
+    cells: string[],
+    numberPadding?: ReadonlyMap<number, number>
+  ) => Promise<void>,
   options: XlsxStreamOptions
 ): Promise<void> {
-  const pendingRows: Array<{ rowNumber: number; cells: string[] }> = [];
+  const pendingRows: Array<{
+    rowNumber: number;
+    cells: string[];
+    numberPadding?: ReadonlyMap<number, number>;
+  }> = [];
   const state = createSheetState(
     shared,
     styles,
     limits,
-    (rowNumber, cells) => {
-      pendingRows.push({ rowNumber, cells });
+    (rowNumber, cells, numberPadding) => {
+      pendingRows.push({ rowNumber, cells, numberPadding });
     },
     mergeRanges,
     false
   );
   state.preserveNumericText = options.preserveNumericText ? "canonical_integer" : false;
+  state.collectNumberPadding = options.collectNumberPadding;
   state.maxColumns = options.maxColumns;
   state.maxRows = options.maxRows;
   const parser = sax.parser(true, {
@@ -870,13 +889,15 @@ async function parseSheetStreamRows(
       const text = decoder.decode(Buffer.from(chunk), { stream: true });
       if (text) parser.write(text);
       if (failure) throw failure;
-      for (const row of pendingRows.splice(0)) await onRow(row.rowNumber, row.cells);
+      for (const row of pendingRows.splice(0))
+        await onRow(row.rowNumber, row.cells, row.numberPadding);
     }
     const tail = decoder.decode();
     if (tail) parser.write(tail);
     parser.close();
     if (failure) throw failure;
-    for (const row of pendingRows.splice(0)) await onRow(row.rowNumber, row.cells);
+    for (const row of pendingRows.splice(0))
+      await onRow(row.rowNumber, row.cells, row.numberPadding);
   } catch (error) {
     try {
       stream.destroy();
@@ -999,7 +1020,12 @@ export interface XlsxStreamSheet {
 
 export interface XlsxStreamConsumer {
   startSheet(sheet: XlsxStreamSheet): Promise<void> | void;
-  row(sheet: XlsxStreamSheet, rowNumber: number, cells: string[]): Promise<void> | void;
+  row(
+    sheet: XlsxStreamSheet,
+    rowNumber: number,
+    cells: string[],
+    numberPadding?: ReadonlyMap<number, number>
+  ): Promise<void> | void;
   endSheet(sheet: XlsxStreamSheet): Promise<void> | void;
 }
 
@@ -1008,6 +1034,8 @@ export interface XlsxStreamOptions {
   expandMergedCells?: boolean;
   /** Preserve decimal mantissas and render integral numeric IDs without a fractional suffix. */
   preserveNumericText?: boolean;
+  /** Pass all-zero numeric mask widths to the row consumer alongside exact numeric text. */
+  collectNumberPadding?: boolean;
   maxColumns?: number;
   maxRows?: number;
 }
@@ -1092,9 +1120,9 @@ export async function streamXlsxFileRows(
         styles,
         limits,
         mergeRanges.get(entry) ?? [],
-        async (rowNumber, cells) => {
+        async (rowNumber, cells, numberPadding) => {
           consumerStarted = performance.now();
-          await consumer.row(sheet, rowNumber, cells);
+          await consumer.row(sheet, rowNumber, cells, numberPadding);
           consumerMs += performance.now() - consumerStarted;
         },
         options
