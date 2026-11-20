@@ -68,6 +68,15 @@ it("uses uniquely identified parent composition and preserves conflicts as unres
     sku: "b2",
     parentSku: "p"
   });
+  for (const parentName of ["Other lunch", ""]) {
+    expect(reader.resolve({ ...sale, parentName, name: "Steamed roll", spec: null })).toMatchObject(
+      {
+        sku: null,
+        parentSku: null,
+        candidates: ["b1", "b2"]
+      }
+    );
+  }
   expect(reader.resolve({ ...sale, name: "Steamed roll", spec: "small" })).toMatchObject({
     status: "unresolved",
     reason: "composition_spec_conflict"

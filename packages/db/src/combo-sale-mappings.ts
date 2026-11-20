@@ -7,6 +7,8 @@ import {
   type UpdateComboSaleMapping
 } from "@smedc/domain";
 import { createBusinessAuthorizationRepository } from "./business-authorization.js";
+import { resourcesInclude, toResourceReadRequirement } from "./business-authorization-records.js";
+import { dishCatalogResourceKey } from "./dish-catalog.js";
 import { resolveFormalStore } from "./formal-store-directory.js";
 
 type Actor = { id: string; orgId: string; requestId?: string };
@@ -84,28 +86,43 @@ export function createComboSaleMappingRepository(prisma: PrismaClient) {
     if (!enterprise) denied();
     const { enterpriseKey } = enterprise;
     const store = await resolveFormalStore(tx, { orgId, enterpriseKey, name: input.storeName });
-    if (!store || store.retired) denied();
-    for (const key of ["combo_sales", "dish_catalog"]) {
-      const rule = snapshot.categories.find((c) => c.key === key && c.kind === "fixed");
-      if (
-        !rule ||
-        !canReadResource(snapshot, {
-          orgId,
-          categoryId: rule.id,
-          valid: true,
-          scopes: [
-            {
-              enterpriseKey,
-              dimensions: {},
-              ...(key === "combo_sales"
-                ? { ownership: "store", storeName: store.storeKey }
-                : { ownership: "group" })
-            }
-          ]
-        }).allowed
-      )
-        denied();
-    }
+    if (!store || (write && store.retired)) denied();
+    const sales = await tx.businessCategory.findUnique({
+      where: { orgId_key: { orgId, key: "combo_sales" } }
+    });
+    if (
+      !sales ||
+      sales.kind !== "fixed" ||
+      sales.retired ||
+      !canReadResource(snapshot, {
+        orgId,
+        categoryId: sales.id,
+        valid: true,
+        scopes: [{ enterpriseKey, ownership: "store", storeName: store.storeKey, dimensions: {} }]
+      }).allowed
+    )
+      denied();
+    const resourceKey = dishCatalogResourceKey(enterpriseKey);
+    const catalog = await tx.businessResource.findUnique({
+      where: { orgId_kind_resourceKey: { orgId, kind: "structured", resourceKey } },
+      include: { ...resourcesInclude, category: true }
+    });
+    const catalogScope = catalog?.scopes.length === 1 ? catalog.scopes[0] : undefined;
+    if (
+      !catalog ||
+      catalog.resourceKey !== resourceKey ||
+      catalog.category.key !== "dish_catalog" ||
+      catalog.category.kind !== "fixed" ||
+      catalog.category.retired ||
+      catalog.documentId !== null ||
+      catalog.sourceDocumentId !== null ||
+      catalogScope?.enterpriseKey !== enterpriseKey ||
+      catalogScope.ownership !== "group" ||
+      catalogScope.storeName !== null ||
+      catalogScope.dimensions.length !== 0 ||
+      !canReadResource(snapshot, toResourceReadRequirement(catalog)).allowed
+    )
+      denied();
     return { orgId, enterpriseKey, storeId: store.storeId };
   }
 
@@ -139,6 +156,7 @@ export function createComboSaleMappingRepository(prisma: PrismaClient) {
             !existing ||
             existing.targetDepartmentId !== fields.targetDepartmentId ||
             existing.targetEntryId !== fields.targetEntryId ||
+            existing.targetSkuId !== fields.targetSkuId ||
             existing.basis !== fields.basis;
           if (changed)
             await tx.comboSaleMapping.upsert({
@@ -184,6 +202,7 @@ export function createComboSaleMappingRepository(prisma: PrismaClient) {
             e.id AS entryId, d.department_id AS departmentId, d.name AS departmentName
           FROM combo_sale_mappings m
           LEFT JOIN dish_catalog_entries e ON e.id=m.target_entry_id AND e.org_id=m.org_id
+            AND BINARY e.sku_id=BINARY m.target_sku_id
             AND BINARY e.enterprise_key=BINARY m.enterprise_key AND (e.dish_type IS NULL OR e.dish_type='single')
           LEFT JOIN business_departments d ON d.department_id=COALESCE(m.target_department_id,e.department_id)
             AND d.org_id=m.org_id AND BINARY d.enterprise_key=BINARY m.enterprise_key AND d.retired=FALSE

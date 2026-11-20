@@ -77,12 +77,8 @@ export class ComboAttribution {
     const child = this.namedCandidates(sale.store, sale.name, false);
     const namedParents = this.namedCandidates(sale.store, sale.parentName, true).items;
     const coded = [...(this.parentsBySpu.get(sale.parentCode) ?? [])];
-    const parents =
-      coded.length && namedParents.length
-        ? coded.filter((p) => namedParents.includes(p))
-        : coded.length
-          ? coded
-          : namedParents;
+    // Source item codes can coincide with unrelated catalog SPUs. Require name evidence.
+    const parents = coded.length ? namedParents.filter((p) => coded.includes(p)) : namedParents;
     const parent = parents.length === 1 ? parents[0] : undefined;
     const parentConflict = Boolean(coded.length && namedParents.length && !parents.length);
     const fromGroup = parent?.children.length

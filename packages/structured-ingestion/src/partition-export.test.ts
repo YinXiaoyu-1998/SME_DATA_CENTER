@@ -83,6 +83,12 @@ describe("exportStructuredPartitions", () => {
       comboRow,
       [...Array(9).fill(""), "5", "32.60", "4.60", "28"]
     ]);
+    sheet.getCell("C4").value = 17;
+    sheet.getCell("C4").numFmt = "00000";
+    sheet.getCell("J4").value = 2;
+    sheet.getCell("J4").numFmt = "00000";
+    sheet.getCell("H5").value = 6;
+    sheet.getCell("H5").numFmt = "00000";
     const sourcePath = path.join(root, "report.xlsx");
     await workbook.xlsx.writeFile(sourcePath);
     const result = await exportStructuredPartitions({
@@ -101,6 +107,7 @@ describe("exportStructuredPartitions", () => {
       [4, 6].map((n) =>
         expect.objectContaining({
           菜品编码: "00017",
+          销售数量: "2",
           "菜品收入(元)": "14",
           来源行号: String(n),
           营业日期: "2026-11-18"
@@ -108,7 +115,7 @@ describe("exportStructuredPartitions", () => {
       )
     );
     expect(await rowsForStore("虚构乙店")).toEqual([
-      expect.objectContaining({ "菜品收入(元)": "0", 来源行号: "5" })
+      expect.objectContaining({ "菜品收入(元)": "0", 来源行号: "5", 规格: "6" })
     ]);
   });
 
