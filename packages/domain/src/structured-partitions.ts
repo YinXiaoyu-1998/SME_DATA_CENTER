@@ -2,7 +2,8 @@ export const PARTITION_DATASETS = [
   "business",
   "dishes",
   "in_store_orders",
-  "takeaway_orders"
+  "takeaway_orders",
+  "combo_sales"
 ] as const;
 
 export type PartitionDatasetName = (typeof PARTITION_DATASETS)[number];

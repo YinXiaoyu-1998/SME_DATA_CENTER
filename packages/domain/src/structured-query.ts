@@ -395,7 +395,7 @@ function normalizeQuery(
   if (registry.accessMode === "partition_extract") {
     throw new StructuredQueryValidationError(
       PHASE3_ERROR_CODES.datasetRequiresPartitionExtract,
-      "business, dishes, in_store_orders, and takeaway_orders are available through partition extracts, not row queries.",
+      "business, dishes, in_store_orders, takeaway_orders, and combo_sales are available through partition extracts, not row queries.",
       { dataset }
     );
   }

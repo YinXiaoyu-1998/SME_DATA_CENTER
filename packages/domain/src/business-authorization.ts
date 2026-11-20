@@ -5,6 +5,7 @@ export const FIXED_BUSINESS_CATEGORY_OWNERSHIP = {
   dishes: "store",
   in_store_orders: "store",
   takeaway_orders: "store",
+  combo_sales: "store",
   vip: "group",
   dish_catalog: "group",
   supplier_catalog: "group",
