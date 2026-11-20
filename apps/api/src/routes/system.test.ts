@@ -70,6 +70,9 @@ function context(): ApiServerContext {
     storeReviews: () => {
       throw new Error("not used");
     },
+    comboSaleMappings: () => {
+      throw new Error("not used");
+    },
     dishCatalog: () => {
       throw new Error("not used");
     },
