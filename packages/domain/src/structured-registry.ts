@@ -36,7 +36,14 @@ export type StructuredFieldStorageMapping =
     }
   | {
       table: StructuredRowTableName;
-      column: "source_document_id" | "department_id" | "created_at" | "updated_at";
+      column:
+        | "enterprise_key"
+        | "dish_type"
+        | "combo_composition"
+        | "source_document_id"
+        | "department_id"
+        | "created_at"
+        | "updated_at";
     }
   | {
       table: "business_departments";
@@ -555,7 +562,25 @@ const DISH_CATALOG_FIELDS: StructuredFieldRegistryEntry[] = [
       table: DISH_CATALOG_CURRENT_ROW_TABLE,
       column: "updated_at"
     }
-  }
+  },
+  ...(["enterprise_key", "dish_type", "combo_composition"] as const).map((column) => ({
+    ...createDishCatalogApiField({
+      canonicalName: column,
+      sourceColumn: {
+        enterprise_key: "企业标识",
+        dish_type: "菜品类型",
+        combo_composition: "套餐组成（JSON）"
+      }[column],
+      nullable: column !== "enterprise_key",
+      maxLength: column === "combo_composition" ? 16 * 1024 * 1024 : 128,
+      defaultReturn: false,
+      capabilities:
+        column === "combo_composition"
+          ? { filter: false, sort: false, group: false, aggregate: false }
+          : CATALOG_DIMENSION_CAPABILITIES
+    }),
+    storage: { table: DISH_CATALOG_CURRENT_ROW_TABLE, column }
+  }))
 ];
 
 const SUPPLIER_CATALOG_COLUMNS = [

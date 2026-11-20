@@ -33,9 +33,12 @@ import {
   STORE_REVIEW_REPLY_STATUSES,
   parseStoreReviewBatch,
   parseStoreReviewQuery,
+  queryComboSaleMappingsInput,
+  updateComboSaleMappingInput,
   DISH_CATALOG_LIMITS,
   DISH_CATALOG_SALE_PRICE_PATTERN,
   dishCatalogTextSchema,
+  dishComboReplacementSchema,
   DishCatalogValidationError,
   isDishCatalogInputField,
   parseDishCatalogBatch
@@ -369,7 +372,7 @@ const preparePartitionDownloadInputSchema = z
 const partitionDownloadStatusInputSchema = z
   .object({ requestId: partitionDownloadRequestId })
   .strict();
-const downloadStructuredPartitionsInputSchema = z
+export const downloadStructuredPartitionsInputSchema = z
   .object({
     requestId: partitionDownloadRequestId.optional(),
     dataset: partitionDownloadScopeShape.dataset.optional(),
@@ -377,10 +380,30 @@ const downloadStructuredPartitionsInputSchema = z
     startDate: partitionDownloadScopeShape.startDate.optional(),
     endDate: partitionDownloadScopeShape.endDate.optional(),
     storeIds: partitionDownloadScopeShape.storeIds,
-    storeNameContains: partitionDownloadScopeShape.storeNameContains
+    storeNameContains: partitionDownloadScopeShape.storeNameContains,
+    comboAttribution: z
+      .object({
+        evidenceStartDate: partitionDownloadScopeShape.startDate,
+        evidenceEndDate: partitionDownloadScopeShape.endDate
+      })
+      .strict()
+      .optional()
+      .describe(
+        "For combo_sales range downloads, also resolve current departments using authorized dishes names in this evidence window."
+      )
   })
   .strict()
   .superRefine((input, context) => {
+    if (
+      input.comboAttribution &&
+      (String(input.dataset) !== "combo_sales" ||
+        input.comboAttribution.evidenceStartDate > input.comboAttribution.evidenceEndDate)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Combo attribution requires combo_sales and an ordered evidence range."
+      });
+    }
     if (input.requestId !== undefined) {
       if (Object.keys(input).some((key) => key !== "requestId"))
         context.addIssue({
@@ -874,6 +897,7 @@ export const queryStoreReviewsInputSchema = z
 // contract only keeps strict structure and field descriptions.
 const dishCatalogRowSchema = z
   .object({
+    dishType: z.enum(["single", "combo"]).optional(),
     spuId: dishCatalogTextSchema(DISH_CATALOG_LIMITS.spuIdChars, { required: true }).describe(
       "SPU identifier."
     ),
@@ -915,12 +939,23 @@ export const upsertDishCatalogInputSchema = z
     enterpriseName: dishCatalogTextSchema(DISH_CATALOG_LIMITS.enterpriseNameChars, {
       required: true
     }).describe("Exact registered enterprise name of the current organization."),
+    preserveManualFields: z
+      .boolean()
+      .optional()
+      .describe(
+        "Refresh workbook fields while retaining existing department, alias and known dish type."
+      ),
+    compositions: z
+      .array(dishComboReplacementSchema)
+      .max(DISH_CATALOG_LIMITS.maxBatchEntries)
+      .optional()
+      .describe("Replace only these complete combo configurations."),
     rows: z
       .array(dishCatalogRowSchema)
       .max(DISH_CATALOG_LIMITS.maxBatchEntries)
       .optional()
       .describe(
-        "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries per batch."
+        "Rows to create or replace. Rows, compositions and removals together total 1–1000 entries per batch."
       ),
     removeSkuIds: z
       .array(dishCatalogTextSchema(DISH_CATALOG_LIMITS.skuIdChars, { required: true }))
@@ -1061,6 +1096,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_order_scope_transition",
   "upsert_store_reviews",
   "upsert_dish_catalog",
+  "update_combo_sale_mapping",
+  "query_combo_sale_mappings",
   "query_store_reviews",
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -1742,32 +1779,61 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "upsert_dish_catalog",
     title: "Upsert dish catalog",
     description:
-      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Send only changed rows plus explicit removeSkuIds; rows and removals total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted nullable row fields clear the stored value, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
+      "Atomically upsert the current dish catalog for one registered enterprise using POST /v1/dish-catalog/upsert. Submit rows, complete compositions, and explicit removeSkuIds; together they total at most 1,000 entries and the whole request is at most 16 MiB UTF-8 JSON. The batch fully commits or rolls back: any invalid row fails the whole request before side effects and returns bounded row indexes. Omitted dishType retains the current type. Omitted nullable row fields clear the stored value unless preserveManualFields protects the department and alias, and the server keeps submitted values verbatim except canonicalizing salePrice decimal text. A departmentName must exactly match one active department of that enterprise and is resolved to a stable department ID; the write never creates departments, and department renames stay transparent to reads. Requires the current active admin role. removeSkuIds permanently hard-deletes those SKUs and cannot be restored; the batch audit records counts only. Replaying identical content changes nothing and does not refresh updated_at. Writing and removing the same SKU in one batch is rejected.",
     inputSchema: upsertDishCatalogInputSchema,
-    inputFields: [
-      {
-        name: "enterpriseName",
-        required: true,
-        description: "Exact registered enterprise name of the current organization."
-      },
-      {
-        name: "rows",
-        required: false,
-        description: "Rows to create or replace; rows plus removeSkuIds total 1–1000 entries."
-      },
-      {
-        name: "removeSkuIds",
-        required: false,
-        description: "SKUs to permanently delete; removing an absent SKU is a no-op."
-      },
-      {
-        name: "sourceFileName",
-        required: false,
-        description: "Optional audit-only source file name; the server reads no file."
-      }
-    ],
+    inputFields: Object.entries(upsertDishCatalogInputSchema.shape).map(([name, schema]) => ({
+      name,
+      required: !schema.isOptional(),
+      description: schema.description ?? name
+    })),
     resultShape: ["received, created, updated, unchanged, removed"],
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "update_combo_sale_mapping",
+    title: "Confirm or revoke a store's combo sale mapping",
+    description:
+      "Require a current administrator with both group dish_catalog and this store's combo_sales grants. Confirm a source child name for all specifications or one exact specification to a current single SKU or active department. Reconfirm to correct the target or basis, or revoke to resume automatic attribution.",
+    inputSchema: updateComboSaleMappingInput,
+    inputFields: [
+      { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
+      { name: "storeName", required: true, description: "Exact formal store name." },
+      { name: "sourceName", required: true, description: "Exact source child dish name." },
+      {
+        name: "specification",
+        required: true,
+        description: "Null for name-wide or the exact reported specification, including empty."
+      },
+      {
+        name: "operation",
+        required: true,
+        description: "Confirm with a target and basis, or revoke this exact mapping."
+      }
+    ],
+    resultShape: ["id, changed"],
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "query_combo_sale_mappings",
+    title: "Query a store's current combo sale mappings",
+    description:
+      "Page through current confirmations for one formal store. Requires both group dish_catalog and this store's combo_sales grants. SKU targets follow the current department. Removed or ineligible targets are marked invalid.",
+    inputSchema: queryComboSaleMappingsInput,
+    inputFields: [
+      { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
+      { name: "storeName", required: true, description: "Exact formal store name." },
+      {
+        name: "afterId",
+        required: false,
+        description: "Continue the same store's query using nextAfterId."
+      },
+      { name: "limit", required: false, description: "Page size between 1 and 100, default 50." }
+    ],
+    resultShape: [
+      "rows[]: id, sourceName, specification, target, basis, valid, departmentId, departmentName",
+      "nextAfterId"
+    ],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({
     name: "query_store_reviews",

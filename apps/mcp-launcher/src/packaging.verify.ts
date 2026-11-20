@@ -125,7 +125,7 @@ describe("published launcher artifact", () => {
     const manifest = JSON.parse(exec("tar", ["-xOf", tarballPath, "package/package.json"])) as {
       version?: string;
     };
-    expect(manifest.version).toBe("0.21.0");
+    expect(manifest.version).toBe("0.22.0");
     expect(exec(binaryPath, ["--version"], installDirectory).trim()).toBe(manifest.version);
     const sbom = JSON.parse(
       exec("npm", ["sbom", "--sbom-format", "cyclonedx"], installDirectory)
@@ -151,11 +151,11 @@ describe("published launcher artifact", () => {
     const client = new Client({ name: "packaging-test", version: "0.0.0" });
     try {
       await client.connect(transport);
-      expect(client.getServerVersion()?.version).toBe("0.21.0");
+      expect(client.getServerVersion()?.version).toBe("0.22.0");
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(55);
-      expect(new Set(names).size).toBe(55);
+      expect(names).toHaveLength(57);
+      expect(new Set(names).size).toBe(57);
       expect(tools.tools.find((tool) => tool.name === "query_jobs")).toMatchObject({
         annotations: { readOnlyHint: true },
         inputSchema: { type: "object", additionalProperties: false, required: ["query"] }
@@ -286,6 +286,8 @@ describe("published launcher artifact", () => {
           "smedc_auth_status",
           "smedc_get_current_user",
           "upsert_dish_catalog",
+          "update_combo_sale_mapping",
+          "query_combo_sale_mappings",
           "describe_structured_dataset_coverage",
           "prepare_structured_partition_download",
           "get_structured_partition_download_status",

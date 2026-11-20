@@ -14,6 +14,7 @@ import {
 export const DISH_CATALOG_BATCH_BYTES = 16 * 1024 * 1024;
 
 const BAD_REQUEST_REPOSITORY_CODES = new Set([
+  "DISH_CATALOG_INVALID_REFERENCE",
   "DISH_CATALOG_DEPARTMENT_NOT_FOUND",
   "DISH_CATALOG_DEPARTMENT_AMBIGUOUS",
   "DISH_CATALOG_ENTERPRISE_NOT_AVAILABLE"
@@ -64,6 +65,8 @@ function forbiddenMessage(code: string): string {
 }
 
 function badRequestMessage(code: string): string {
+  if (code === "DISH_CATALOG_INVALID_REFERENCE")
+    return "Check the parent SKU, same-enterprise single-item targets and existing combo references.";
   if (code === "DISH_CATALOG_DEPARTMENT_NOT_FOUND")
     return "A department name does not match an active department of this enterprise.";
   if (code === "DISH_CATALOG_DEPARTMENT_AMBIGUOUS")

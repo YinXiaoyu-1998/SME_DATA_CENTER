@@ -521,7 +521,10 @@ describe("structured field registries", () => {
       "department_id",
       "department_name",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "enterprise_key",
+      "dish_type",
+      "combo_composition"
     ]);
     expect(catalog.fields.some((field) => field.canonicalName === "source_document_id")).toBe(
       false

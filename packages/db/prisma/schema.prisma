@@ -576,6 +576,10 @@ model DishCatalogEntry {
   enterpriseKey String              @map("enterprise_key") @db.VarChar(128)
   skuId         String              @map("sku_id") @db.VarChar(128)
   departmentId  String?             @map("department_id") @db.VarChar(36)
+  dishType      String?             @map("dish_type") @db.VarChar(8)
+  comboComposition Json?            @map("combo_composition")
+  comboChildren DishComboReference[] @relation("ComboParent")
+  parentCombos  DishComboReference[] @relation("ComboChild")
   payload       Json
   createdAt     DateTime            @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime            @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
@@ -585,6 +589,20 @@ model DishCatalogEntry {
   @@unique([orgId, enterpriseKey, skuId], map: "dish_catalog_entries_org_enterprise_sku_uq")
   @@index([orgId, enterpriseKey, departmentId], map: "dish_catalog_entries_org_enterprise_department_idx")
   @@map("dish_catalog_entries")
+}
+
+// Distinct referenced SKUs enforce the ordered JSON composition's enterprise and deletion boundary.
+model DishComboReference {
+  orgId         String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  parentSku     String @map("parent_sku") @db.VarChar(128)
+  childSku      String @map("child_sku") @db.VarChar(128)
+  parent DishCatalogEntry @relation("ComboParent", fields:[orgId,enterpriseKey,parentSku], references:[orgId,enterpriseKey,skuId],onDelete:Cascade,onUpdate:Restrict,map:"dish_combo_parent_fk")
+  child DishCatalogEntry @relation("ComboChild", fields:[orgId,enterpriseKey,childSku], references:[orgId,enterpriseKey,skuId],onDelete:Restrict,onUpdate:Restrict,map:"dish_combo_child_fk")
+
+  @@id([orgId,enterpriseKey,parentSku,childSku])
+  @@index([orgId,enterpriseKey,childSku],map:"dish_combo_child_idx")
+  @@map("dish_combo_references")
 }
 
 model ShelfLifeCatalogEntry {
@@ -1778,4 +1796,20 @@ model OrderScopeTransitionPreview {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   @@index([orgId, expiresAt])
   @@map("order_scope_transition_previews")
+}
+
+model ComboSaleMapping {
+  id String @id @db.Char(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  storeId String @map("store_id") @db.VarChar(36)
+  sourceName String @map("source_name") @db.VarChar(512)
+  specification String? @db.VarChar(255)
+  targetSkuId String? @map("target_sku_id") @db.VarChar(128)
+  targetEntryId String? @map("target_entry_id") @db.VarChar(32)
+  targetDepartmentId String? @map("target_department_id") @db.VarChar(36)
+  basis String @db.VarChar(512)
+
+  @@index([orgId, enterpriseKey, storeId, id], map: "combo_sale_mappings_scope_idx")
+  @@map("combo_sale_mappings")
 }

@@ -171,8 +171,270 @@ suite("dish catalog current-state HTTP seam", () => {
       "content-type": "application/json"
     });
 
-    return { app, orgId, enterpriseKey, kitchenId, otherEnterpriseName, headers };
+    return {
+      app,
+      orgId,
+      enterpriseKey,
+      adminId,
+      readerId,
+      kitchenId,
+      otherEnterpriseName,
+      headers
+    };
   }
+
+  it("maintains a complete combo, preserves manual fields on refresh and rejects broken references", async () => {
+    const { app, enterpriseKey, kitchenId, headers } = await fixture();
+    const write = (body: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/dish-catalog/upsert",
+        headers: headers("admin-token"),
+        payload: { enterpriseName, ...body }
+      });
+    const composition = {
+      pricingMethod: "含加价",
+      salePrice: "21",
+      groups: [
+        {
+          name: "主菜",
+          type: "fixed",
+          chooseCount: null,
+          items: [{ skuId: "LEAF", quantity: "2", extraPrice: "1.5" }]
+        }
+      ]
+    };
+    try {
+      expect(
+        (
+          await write({
+            rows: [
+              row("COMBO", { departmentName: "Café", dishAlias: "午餐" }),
+              row("LEAF", { dishType: "single", departmentName: null })
+            ],
+            compositions: [{ skuId: "COMBO", composition }]
+          })
+        ).statusCode
+      ).toBe(200);
+      // A legacy full-row update can still maintain the department and alias.
+      expect(
+        (
+          await write({
+            rows: [row("COMBO", { departmentName: "Café", dishAlias: "午餐", salePrice: "19" })]
+          })
+        ).json()
+      ).toMatchObject({ updated: 1 });
+      await write({
+        enterpriseName: otherEnterpriseName,
+        rows: [row("FOREIGN", { departmentName: null, dishType: "single" })]
+      });
+      for (const target of ["FOREIGN", "COMBO"]) {
+        const invalid = await write({
+          compositions: [
+            {
+              skuId: "COMBO",
+              composition: {
+                ...composition,
+                groups: [
+                  {
+                    ...composition.groups[0],
+                    items: [{ skuId: target, quantity: "1", extraPrice: "0" }]
+                  }
+                ]
+              }
+            }
+          ]
+        });
+        expect(invalid.statusCode).toBe(400);
+        expect(invalid.json().error.code).toBe("DISH_CATALOG_INVALID_REFERENCE");
+      }
+      expect(
+        (
+          await write({
+            rows: [row("COMBO", { departmentName: null, dishName: "午餐组合" })],
+            preserveManualFields: true
+          })
+        ).statusCode
+      ).toBe(200);
+      expect(
+        (await write({ compositions: [{ skuId: "COMBO", composition }] })).json()
+      ).toMatchObject({ unchanged: 1 });
+      expect((await write({ removeSkuIds: ["LEAF"] })).statusCode).toBe(400);
+      expect(
+        (await write({ rows: [row("LEAF", { departmentName: null, dishType: "combo" })] }))
+          .statusCode
+      ).toBe(400);
+      const query = await app.inject({
+        method: "POST",
+        url: "/v1/structured/query",
+        headers: headers("reader-token"),
+        payload: {
+          dataset: "dish_catalog",
+          select: ["dish_name", "dish_alias", "dish_type", "department_id", "combo_composition"],
+          filter: {
+            and: [
+              { field: "enterprise_key", op: "eq", value: enterpriseKey },
+              { field: "sku_id", op: "eq", value: "COMBO" }
+            ]
+          }
+        }
+      });
+      expect(query.statusCode).toBe(200);
+      expect(query.json().rows).toHaveLength(1);
+      expect(query.json().rows[0]).toMatchObject({
+        dish_name: "午餐组合",
+        dish_alias: "午餐",
+        dish_type: "combo",
+        department_id: kitchenId
+      });
+      expect(JSON.parse(query.json().rows[0].combo_composition)).toEqual(composition);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("confirms a store-specific department and returns its basis to a scoped reader", async () => {
+    const { app, orgId, enterpriseKey, kitchenId, headers, adminId, readerId } = await fixture();
+    try {
+      const storeName = "合成甲店";
+      await prisma.businessCategory.create({
+        data: {
+          orgId,
+          id: "combo",
+          key: "combo_sales",
+          kind: "fixed",
+          name: "套餐销售",
+          allowStore: true,
+          allowGroup: false,
+          confidentialityLevel: 2
+        }
+      });
+      await prisma.businessStore.createMany({
+        data: [storeName, "合成乙店"].map((name) => ({
+          orgId,
+          enterpriseKey,
+          name,
+          officialName: name,
+          confirmation: "confirmed" as const
+        }))
+      });
+      for (const account of [adminId, readerId]) {
+        const id = account + "_combo";
+        await prisma.businessGrant.create({
+          data: {
+            orgId,
+            id,
+            enterpriseKey,
+            userAccountId: account,
+            ownership: "store",
+            categories: { create: { categoryId: "combo" } },
+            stores: { create: { storeName } }
+          }
+        });
+      }
+      await prisma.businessGrant.create({
+        data: {
+          orgId,
+          id: "admin_catalog",
+          enterpriseKey,
+          userAccountId: adminId,
+          ownership: "group",
+          categories: { create: { categoryId: "catalog" } }
+        }
+      });
+      const request = (action: string, payload: Record<string, unknown>, token = "admin-token") =>
+        app.inject({
+          method: "POST",
+          url: "/v1/combo-sale-mappings/" + action,
+          headers: headers(token),
+          payload
+        });
+      const scope = { enterpriseName, storeName };
+      const key = { ...scope, sourceName: "气泡茶", specification: null };
+      const target = { kind: "department", departmentId: kitchenId };
+      const confirm = { ...key, operation: { kind: "confirm", target, basis: "门店核对菜单" } };
+      expect((await request("update", confirm)).statusCode).toBe(200);
+      expect((await request("query", scope, "reader-token")).json()).toMatchObject({
+        rows: [
+          {
+            sourceName: "气泡茶",
+            specification: null,
+            target,
+            valid: true,
+            departmentName: "Café",
+            basis: "门店核对菜单"
+          }
+        ],
+        nextAfterId: null
+      });
+      expect((await request("update", confirm)).json()).toMatchObject({ changed: false });
+      expect(
+        (await request("query", { ...scope, storeName: "合成乙店" }, "reader-token")).statusCode
+      ).toBe(403);
+      expect((await request("update", confirm, "reader-token")).statusCode).toBe(403);
+      const foreign = await prisma.businessDepartment.create({
+        data: {
+          orgId,
+          enterpriseKey: normalizeEnterpriseIdentity(otherEnterpriseName).enterpriseKey,
+          departmentId: randomUUID(),
+          name: "Foreign"
+        }
+      });
+      const badConfirm = {
+        ...key,
+        operation: {
+          kind: "confirm",
+          target: { kind: "department", departmentId: foreign.departmentId },
+          basis: "Test"
+        }
+      };
+      expect((await request("update", badConfirm)).statusCode).toBe(400);
+      const catalog = (body: Record<string, unknown>) =>
+        app.inject({
+          method: "POST",
+          url: "/v1/dish-catalog/upsert",
+          headers: headers("admin-token"),
+          payload: { enterpriseName, ...body }
+        });
+      expect(
+        (await catalog({ rows: [row("SKU-TEA", { departmentName: "烧烤部" })] })).statusCode
+      ).toBe(200);
+      const sku = { kind: "sku", skuId: "SKU-TEA" };
+      const confirmSku = {
+        ...key,
+        operation: { kind: "confirm", target: sku, basis: "核对菜单 SKU" }
+      };
+      expect((await request("update", confirmSku)).json()).toMatchObject({ changed: true });
+      expect((await request("query", scope)).json().rows).toMatchObject([
+        { valid: true, target: sku, departmentName: "烧烤部" }
+      ]);
+      expect(
+        (await catalog({ rows: [row("SKU-TEA", { departmentName: "CAFE" })] })).statusCode
+      ).toBe(200);
+      expect((await request("query", scope)).json().rows).toMatchObject([
+        { valid: true, target: sku, departmentName: "Café" }
+      ]);
+      expect((await catalog({ removeSkuIds: ["SKU-TEA"] })).statusCode).toBe(200);
+      expect(
+        (await catalog({ rows: [row("SKU-TEA", { departmentName: "CAFE" })] })).statusCode
+      ).toBe(200);
+      expect((await request("query", scope)).json().rows).toMatchObject([
+        { valid: false, target: sku, departmentName: null }
+      ]);
+      expect(
+        (await request("update", { ...key, operation: { kind: "revoke" } })).json()
+      ).toMatchObject({ changed: true });
+      expect((await request("query", scope)).json().rows).toEqual([]);
+      await prisma.businessGrantCategory.delete({
+        where: {
+          orgId_grantId_categoryId: { orgId, grantId: readerId + "_combo", categoryId: "combo" }
+        }
+      });
+      expect((await request("query", scope, "reader-token")).statusCode).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
 
   it("writes, queries and reports coverage through the public routes", async () => {
     const { app, orgId, enterpriseKey, kitchenId, headers } = await fixture();

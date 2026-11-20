@@ -40,6 +40,7 @@ describe("action MCP tool handlers", () => {
       "archive_cost_card",
       "upsert_store_reviews",
       "upsert_dish_catalog",
+      "update_combo_sale_mapping",
       "prepare_ledger_pdf_download",
       "update_account_permissions",
       "configure_business_category",
