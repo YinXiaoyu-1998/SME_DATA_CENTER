@@ -103,7 +103,7 @@ async function loadMappings(
         body: {
           enterpriseName,
           storeName,
-          limit: 200,
+          limit: 100,
           ...(afterId ? { afterId } : {})
         }
       })
