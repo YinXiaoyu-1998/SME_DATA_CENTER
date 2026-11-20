@@ -1795,3 +1795,19 @@ model OrderScopeTransitionPreview {
   @@index([orgId, expiresAt])
   @@map("order_scope_transition_previews")
 }
+
+model ComboSaleMapping {
+  id String @id @db.Char(64)
+  orgId String @map("org_id") @db.VarChar(64)
+  enterpriseKey String @map("enterprise_key") @db.VarChar(128)
+  storeId String @map("store_id") @db.VarChar(36)
+  sourceName String @map("source_name") @db.VarChar(512)
+  specification String? @db.VarChar(255)
+  targetSkuId String? @map("target_sku_id") @db.VarChar(128)
+  targetEntryId String? @map("target_entry_id") @db.VarChar(32)
+  targetDepartmentId String? @map("target_department_id") @db.VarChar(36)
+  basis String @db.VarChar(512)
+
+  @@index([orgId, enterpriseKey, storeId, id], map: "combo_sale_mappings_scope_idx")
+  @@map("combo_sale_mappings")
+}

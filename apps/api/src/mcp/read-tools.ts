@@ -40,6 +40,7 @@ export const READ_ONLY_MCP_TOOL_NAMES = [
   "download_structured_partitions",
   "download_cost_cards",
   "query_store_reviews",
+  "query_combo_sale_mappings",
   "prepare_structured_partition_download",
   "get_structured_partition_download_status",
   "describe_ledger_pdf_coverage",
@@ -138,6 +139,8 @@ function routeForReadOnlyTool(
   switch (toolName) {
     case "query_jobs":
       return { method: "POST", path: "/v1/jobs/query", body: input };
+    case "query_combo_sale_mappings":
+      return { method: "POST", path: "/v1/combo-sale-mappings/query", body: input };
     case "query_store_reviews":
       return { method: "POST", path: "/v1/store-reviews/query", body: input };
     case "download_cost_cards":

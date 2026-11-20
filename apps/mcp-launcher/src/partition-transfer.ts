@@ -75,7 +75,7 @@ export function uploadPartitionDataset(
 
 export function downloadPartitionDataset(
   input: Parameters<typeof downloadPartitionDatasetInternal>[0]
-): Promise<unknown> {
+) {
   return boundedInvocation(input.context, (context) =>
     downloadPartitionDatasetInternal({ ...input, context })
   );
@@ -178,7 +178,7 @@ async function downloadPartitionDatasetInternal(input: {
   endDate: string;
   storeIds?: string[];
   storeNameContains?: string[];
-}): Promise<unknown> {
+}) {
   const root = path.join(os.tmpdir(), "smedc-partition-extracts");
   await cleanupStaleExtractDirectories(root);
   await mkdir(root, { recursive: true });

@@ -20,6 +20,7 @@ import {
   dishCatalogValidationErrorToolResult,
   upsertDishCatalogInputSchema,
   localFilePath,
+  downloadStructuredPartitionsInputSchema,
   errorToolResult,
   apiErrorToolResult,
   jsonToolResult,
@@ -31,6 +32,7 @@ import type { LauncherRuntimeConfig } from "./config.js";
 import { SmedcOAuthClient, LAUNCHER_VERSION } from "./oauth-client.js";
 import { importDishCatalogWorkbook } from "./dish-catalog-workbook.js";
 import { readLocalUploadFile } from "./local-file.js";
+import { attributeComboExtract } from "./combo-attribution-download.js";
 import { downloadPartitionBundle } from "./partition-bundle.js";
 import { downloadCostCards } from "./cost-card-transfer.js";
 import { LedgerPdfTransferError, downloadLedgerPdfBundle } from "./ledger-pdf-transfer.js";
@@ -77,6 +79,8 @@ export type LauncherBusinessToolName =
   | "archive_cost_card"
   | "upsert_store_reviews"
   | "upsert_dish_catalog"
+  | "update_combo_sale_mapping"
+  | "query_combo_sale_mappings"
   | "query_store_reviews"
   | "prepare_structured_partition_download"
   | "get_structured_partition_download_status"
@@ -298,6 +302,8 @@ export function registerLauncherTools(
                 "archive_cost_card",
                 "upsert_store_reviews",
                 "upsert_dish_catalog",
+                "update_combo_sale_mapping",
+                "query_combo_sale_mappings",
                 "query_store_reviews",
                 "query_structured_dataset",
                 "describe_structured_dataset_coverage"
@@ -600,21 +606,38 @@ async function proxyPartitionDownload(
   dependencies: LauncherToolDependencies,
   signal?: AbortSignal
 ): Promise<LauncherToolResult> {
-  const contract = SMEDC_MCP_TOOL_CONTRACTS.find(
-    (candidate) => candidate.name === "download_structured_partitions"
-  )!;
-  const parsed = contract.inputSchema.safeParse(input);
+  const parsed = downloadStructuredPartitionsInputSchema.safeParse(input);
   if (!parsed.success) return validationErrorToolResult(parsed.error.issues);
   try {
     const accessToken = await dependencies.auth.accessToken();
     const context = partitionTransferContext(dependencies, accessToken, signal);
     const value = parsed.data as
       { requestId: string } | Omit<Parameters<typeof downloadPartitionDataset>[0], "context">;
-    const result =
-      "requestId" in value
-        ? await downloadPartitionBundle({ context, requestId: value.requestId })
-        : await downloadPartitionDataset({ context, ...value });
-    return jsonToolResult(result as Record<string, unknown>);
+    if ("requestId" in value)
+      return jsonToolResult(
+        (await downloadPartitionBundle({ context, requestId: value.requestId })) as Record<
+          string,
+          unknown
+        >
+      );
+    const result = await downloadPartitionDataset({ context, ...value });
+    const range = parsed.data.comboAttribution;
+    if (!range) return jsonToolResult(result);
+    try {
+      const attribution = await attributeComboExtract(context, result, range);
+      return jsonToolResult({ ...result, attribution });
+    } catch (error) {
+      // Raw files have already passed verification and have independent read permissions.
+      if (signal?.aborted) throw error;
+      return jsonToolResult({
+        ...result,
+        attribution: {
+          status: "unavailable",
+          ...range,
+          error: partitionTransferError(error).content[0]?.text
+        }
+      });
+    }
   } catch (error) {
     return partitionTransferError(error);
   }
