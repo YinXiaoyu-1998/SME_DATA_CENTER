@@ -4,6 +4,8 @@ import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 export const WORKFLOW_SCHEMA_VERSION = 1;
 export const WORKFLOW_CAPABILITY_VERSION = "1.0.0";
 export const WORKFLOW_MINIMUM_LAUNCHER_VERSION = "0.17.0";
+export const WORKFLOW_COMBO_SALES_MINIMUM_LAUNCHER_VERSION = "0.22.2";
+export const WORKFLOW_COMBO_SALES_MINIMUM_PACKAGE_VERSION = "1.0.12";
 // Installation readiness records and transfer proofs retain the version at which they were recorded.
 export const WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION = "0.16.0";
 export const ENTERPRISE_WORKFLOW_CAPABILITY = Object.freeze({
@@ -175,6 +177,7 @@ export const WORKFLOW_DATASETS = [
   "dishes",
   "in_store_orders",
   "takeaway_orders",
+  "combo_sales",
   "delivery_ledger"
 ] as const;
 export const workflowMailSchema = z
@@ -202,7 +205,7 @@ export const workflowConfigurationSchema = z
         datasets: z
           .array(z.enum(WORKFLOW_DATASETS))
           .min(1)
-          .max(5)
+          .max(WORKFLOW_DATASETS.length)
           .refine((v) => new Set(v).size === v.length),
         orderScope: z.literal("settled_only"),
         cleanupPolicy: z.literal("confirmed_files_only")
@@ -312,7 +315,7 @@ export const workflowAuthorizationScopeSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("upload"),
-      datasets: z.array(z.enum(WORKFLOW_DATASETS)).min(1).max(5),
+      datasets: z.array(z.enum(WORKFLOW_DATASETS)).min(1).max(WORKFLOW_DATASETS.length),
       storeNames: workflowStoresSchema
     })
     .strict(),
@@ -524,6 +527,10 @@ export const workflowActionIdentitySchema = z.discriminatedUnion("kind", [
     .refine(
       (v) => (v.dataset === "in_store_orders") === (v.orderScope !== undefined),
       "Workflow in-store uploads require settled_only; other datasets reject orderScope."
+    )
+    .refine(
+      (v) => v.dataset !== "combo_sales" || v.window.startDate === v.window.endDate,
+      "Workflow combo sales uploads require a single business day."
     ),
   z
     .object({

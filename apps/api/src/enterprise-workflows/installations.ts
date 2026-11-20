@@ -8,7 +8,10 @@ import type { WorkflowOperationInputs } from "@smedc/mcp-contract";
 import { launcherVersionAtLeast } from "../request-audit-context.js";
 import { audit, fail, hash, id, json, type Actor, type Tx, type Workflow } from "./repository.js";
 import { configuration, integration, validateConfiguration } from "./configuration.js";
-import { supportsWorkflowPackageVersion } from "./package-compatibility.js";
+import {
+  supportsWorkflowConfiguration,
+  supportsWorkflowPackageVersion
+} from "./package-compatibility.js";
 // Call only after readiness and assignment are checked in the locked workflow transaction.
 async function activateOrderScope(tx: Tx, workflow: Workflow) {
   const config = await configuration(tx, workflow);
@@ -77,7 +80,8 @@ export async function requireReady(
   );
   if (
     !launcherVersionAtLeast(row.launcherVersion, WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION) ||
-    !supportsWorkflowPackageVersion(row.workflowPackageVersion)
+    !supportsWorkflowPackageVersion(row.workflowPackageVersion) ||
+    !supportsWorkflowConfiguration(config, row)
   )
     fail("WORKFLOW_VERSION_INCOMPATIBLE");
   if (!row.hostSnapshot) fail("WORKFLOW_SOURCE_UNAVAILABLE");

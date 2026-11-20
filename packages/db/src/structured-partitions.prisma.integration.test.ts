@@ -666,6 +666,58 @@ suite("structured partition repository", () => {
           authorization: { ...current.authorization, clearance: 1 }
         })
       ).toEqual([]);
+      await createProcessingJob("combo_bound", "synthetic", dataset);
+      await prisma.enterpriseIntegration.create({
+        data: { orgId, enterpriseKey: "synthetic", configuration: {}, updatedBy: userAccountId }
+      });
+      const workflow = await prisma.enterpriseWorkflow.create({
+        data: { orgId, enterpriseKey: "synthetic", type: "meituan_daily_ingestion" }
+      });
+      try {
+        await prisma.workflowUploadLink.create({
+          data: {
+            orgId,
+            workflowId: workflow.id,
+            runId: "bound-run",
+            actionId: "combo",
+            kind: "partition_import",
+            jobId: "pjob_combo_bound",
+            result: "accepted",
+            dataset,
+            actorId: userAccountId,
+            storeNames: ["Store A"],
+            storeKeys: ["Store A"]
+          }
+        });
+        await expect(
+          repository.publishSourceAtomically({
+            orgId,
+            jobId: "pjob_combo_bound",
+            lease: leases.get("pjob_combo_bound")!,
+            totalRowCount: 6n,
+            candidates: [
+              { ...first, id: "outside-check-a" },
+              { ...second, id: "outside-check-b" }
+            ]
+          })
+        ).rejects.toMatchObject({ code: "PARTITION_INVALID_SOURCE" });
+        expect(await repository.listReadableManifestRows(await read())).toMatchObject([
+          { storeName: "Store A", objectKey: first.objectKey, rowCount: 3n }
+        ]);
+        await repository.publishSourceAtomically({
+          orgId,
+          jobId: "pjob_combo_bound",
+          lease: leases.get("pjob_combo_bound")!,
+          totalRowCount: 3n,
+          candidates: [first]
+        });
+      } finally {
+        await prisma.workflowUploadLink.deleteMany({ where: { orgId, workflowId: workflow.id } });
+        await prisma.enterpriseWorkflow.delete({ where: { id: workflow.id } });
+        await prisma.enterpriseIntegration.delete({
+          where: { orgId_enterpriseKey: { orgId, enterpriseKey: "synthetic" } }
+        });
+      }
       await createProcessingJob("combo_fix", "synthetic", dataset);
       const corrected = {
         ...first,

@@ -524,7 +524,7 @@ function parseCreateBody(body: unknown, limits: ApiRuntimeLimits) {
       "Declare settled_only or all_statuses only for in_store_orders."
     );
   const workflowAction = workflowUploadBindingSchema.optional().safeParse(body.workflowAction);
-  if (!workflowAction.success || (body.dataset === "combo_sales" && workflowAction.data))
+  if (!workflowAction.success)
     return invalid("INVALID_WORKFLOW_INPUT", "Provide a valid upload binding.");
   const transition = orderScopeTransitionConfirmationSchema
     .optional()

@@ -718,6 +718,31 @@ export function createPrismaStructuredPartitionRepository(
               input.candidates,
               !!historicalSupplement
             );
+            if (job.dataset === "combo_sales") {
+              const links = await tx.workflowUploadLink.findMany({
+                where: {
+                  orgId: job.orgId,
+                  jobId: job.id,
+                  dataset: job.dataset,
+                  kind: "partition_import",
+                  result: "accepted"
+                },
+                select: { storeKeys: true }
+              });
+              if (
+                links.some(
+                  ({ storeKeys }) =>
+                    !Array.isArray(storeKeys) ||
+                    resolved.some(
+                      ({ authorizationStoreKey }) => !storeKeys.includes(authorizationStoreKey)
+                    )
+                )
+              )
+                throw new StructuredPartitionRepositoryError(
+                  "PARTITION_INVALID_SOURCE",
+                  "Workbook contains a store outside the workflow upload's selected stores."
+                );
+            }
             if (transition)
               await verifyOrderScopeSnapshot(
                 tx,
