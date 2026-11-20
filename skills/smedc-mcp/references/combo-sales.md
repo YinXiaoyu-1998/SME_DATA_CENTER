@@ -38,6 +38,6 @@
 
 ## 权限与人工确认
 
-套餐组成沿用本企业集团级 `dish_catalog` 授权。销售原始分区需要该店独立的 `combo_sales` 授权及相应密级。按部门解析使用可读的目录和门店映射，关联名称另取同店获准读取的 `dishes`。管理员可在权限设置为「套餐子菜销售明细」配置密级和账号门店范围。
+套餐组成沿用本企业集团级 `dish_catalog` 授权。套餐子菜销售使用「菜品销售」(`dishes`) 的密级和同门店授权。管理员只需配置一份菜品销售权限。按部门解析还使用获准读取的菜品目录、门店映射和同店 `dishes` 关联菜名。
 
 门店映射读取需要该企业目录及该店子菜销售两项授权，修改还需有效管理员身份。输入精确的 `enterpriseName`、`storeName`、`sourceName`、`specification` 和 `operation`。`specification` 为 null 表示该菜名的全部规格，空字符串表示明确无规格。确认时传 `operation.kind = confirm`、`basis` 和目标（`kind = sku` 配 `skuId`，或 `kind = department` 配 `departmentId`）；只在用户已确认目标时写入。更正同一身份用新的确认，撤销传 `operation.kind = revoke`。再次下载即可按当前确认读取。

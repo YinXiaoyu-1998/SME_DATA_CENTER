@@ -15,7 +15,11 @@ import {
   normalizeEnterpriseIdentity,
   parsePartitionStoreNameContains
 } from "@smedc/domain";
-import { isBusinessClearance, validateBusinessGrant } from "@smedc/domain";
+import {
+  isBusinessClearance,
+  structuredAuthorizationCategory,
+  validateBusinessGrant
+} from "@smedc/domain";
 import { CostCardPublicationError } from "@smedc/db";
 import type { CostCardService } from "../cost-cards.js";
 import { respondCostCardError } from "./cost-cards.js";
@@ -113,7 +117,7 @@ export function registerStructuredQueryRoutes(
           (snapshot.mode === "enabled" &&
             snapshot.categories.some(
               (category) =>
-                category.key === dataset.dataset &&
+                category.key === structuredAuthorizationCategory(dataset.dataset) &&
                 snapshot.grants.some((grant) => grant.categoryIds.includes(category.id))
             )))
     );

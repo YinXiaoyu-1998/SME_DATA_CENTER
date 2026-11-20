@@ -1806,7 +1806,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "update_combo_sale_mapping",
     title: "Confirm or revoke a store's combo sale mapping",
     description:
-      "Require a current administrator with both group dish_catalog and this store's combo_sales grants. Confirm a source child name for all specifications or one exact specification to a current single SKU or active department. Reconfirm to correct the target or basis, or revoke to resume automatic attribution.",
+      "Require a current administrator with both group dish_catalog and this store's dishes grants. Confirm a source child name for all specifications or one exact specification to a current single SKU or active department. Reconfirm to correct the target or basis, or revoke to resume automatic attribution.",
     inputSchema: updateComboSaleMappingInput,
     inputFields: [
       { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
@@ -1830,7 +1830,7 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     name: "query_combo_sale_mappings",
     title: "Query a store's current combo sale mappings",
     description:
-      "Page through current confirmations for one formal store. Requires both group dish_catalog and this store's combo_sales grants. SKU targets follow the current department. Removed or ineligible targets are marked invalid.",
+      "Page through current confirmations for one formal store. Requires both group dish_catalog and this store's dishes grants. SKU targets follow the current department. Removed or ineligible targets are marked invalid.",
     inputSchema: queryComboSaleMappingsInput,
     inputFields: [
       { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },

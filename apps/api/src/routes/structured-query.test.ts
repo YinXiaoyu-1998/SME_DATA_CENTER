@@ -379,6 +379,56 @@ it("rejects partition-only scope on row-query coverage", async () => {
   }
 });
 
+it("discovers both sales datasets from a single dishes grant", async () => {
+  const dependencies = context({ execute: async () => ({ rows: [], hasMore: false }) });
+  const service = legacyPermissionService(employee);
+  service.current = async () => ({
+    orgId: employee.orgId,
+    userAccountId: employee.id,
+    role: "employee",
+    disabled: false,
+    clearance: 2,
+    mode: "enabled",
+    authorizationVersion: "1",
+    categories: [
+      {
+        id: "dish-sales",
+        key: "dishes",
+        kind: "fixed",
+        confidentialityLevel: 2,
+        ownerships: ["store"],
+        requiredDimensionIds: []
+      }
+    ],
+    grants: [
+      {
+        id: "grant",
+        orgId: employee.orgId,
+        enterpriseKey: "synthetic",
+        categoryIds: ["dish-sales"],
+        ownership: "store",
+        stores: { kind: "fixed", values: ["Store A"] },
+        dimensions: {}
+      }
+    ]
+  });
+  dependencies.permissions = () => service;
+  const scopedApp = createApp(dependencies);
+  try {
+    const response = await scopedApp.inject({
+      method: "GET",
+      url: "/v1/structured/datasets",
+      headers: { authorization: "Bearer valid" }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().datasets.map((dataset: { dataset: string }) => dataset.dataset)).toEqual(
+      expect.arrayContaining(["dishes", "combo_sales"])
+    );
+  } finally {
+    await scopedApp.close();
+  }
+});
+
 it("uses current granted category rules and rejects cursors after authorization changes", async () => {
   let version = "1";
   const compiledQueries: Parameters<StructuredQueryRepository["execute"]>[0][] = [];

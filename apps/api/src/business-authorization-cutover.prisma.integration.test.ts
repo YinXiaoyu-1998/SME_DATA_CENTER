@@ -90,7 +90,6 @@ suite("fixed category bootstrap through supported administration", () => {
               "store_reviews",
               "in_store_orders",
               "takeaway_orders",
-              "combo_sales",
               "employee_profiles"
             ].includes(key)
         )
@@ -108,7 +107,7 @@ suite("fixed category bootstrap through supported administration", () => {
     expect(
       (await repository.initializeFixedCategories({ orgId, actorId, expectedVersion: "6" })).value
         .createdCount
-    ).toBe(6);
+    ).toBe(5);
     const initialized = await repository.listCategories(orgId);
     expect(
       initialized.find((category) => category.key === "cost_cards")?.confidentialityLevel
@@ -137,7 +136,7 @@ suite("fixed category bootstrap through supported administration", () => {
       const listed = (await app.inject({ url: "/v1/admin/permissions/categories" })).json();
       const report = (await app.inject({ url: "/v1/admin/permissions/cutover" })).json();
       expect(report.ready).toBe(false);
-      expect(report.missing).toHaveLength(11);
+      expect(report.missing).toHaveLength(10);
       expect(report.missing).toContainEqual({
         code: "FIXED_CATEGORY_CLEARANCE_REQUIRED",
         targetId: "cost_cards"
