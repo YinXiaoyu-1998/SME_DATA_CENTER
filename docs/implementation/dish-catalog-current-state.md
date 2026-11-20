@@ -2,7 +2,7 @@
 
 状态：2026-11-11 已在 staging 部署并核实两条迁移，发行的 Launcher 0.19.0 已独立核验。最新环境证据见[staging 状态](staging-readiness.md)。真实企业需按授权单独启用与验收。规格见 [Issue #337](https://github.com/YinXiaoyu-1998/SME_DATA_CENTER/issues/337)，决策见 [ADR 0029](../adr/0029-dish-catalog-current-state.md) 与 [ADR 0030](../adr/0030-department-name-uniqueness.md)。
 
-## 套餐与门店子菜销售（0.22.0 候选版本）
+## 套餐与门店子菜销售（launcher 0.22.0）
 
 管理员可通过 launcher 的 `upsert_dish_catalog` 提交 `enterpriseName` 和本机绝对路径 `workbookPath`。调用方读取「总部菜品」及「总部套餐」，预检父 SKU、分组和子菜引用，再分批提交。工作簿模式保留人工部门和别名。普通目录写入仍沿用下文的整行语义。读取目录时可按 `enterprise_key` 筛选，选择 `dish_type`、`combo_composition` 以及现有 SKU、规格和部门字段。历史未分类行为 null。
 
