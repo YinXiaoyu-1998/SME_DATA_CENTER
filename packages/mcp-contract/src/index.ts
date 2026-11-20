@@ -32,6 +32,8 @@ import {
   STORE_REVIEW_REPLY_STATUSES,
   parseStoreReviewBatch,
   parseStoreReviewQuery,
+  queryComboSaleMappingsInput,
+  updateComboSaleMappingInput,
   DISH_CATALOG_LIMITS,
   DISH_CATALOG_SALE_PRICE_PATTERN,
   dishCatalogTextSchema,
@@ -1062,6 +1064,8 @@ export const SMEDC_MCP_TOOL_NAMES = [
   "prepare_order_scope_transition",
   "upsert_store_reviews",
   "upsert_dish_catalog",
+  "update_combo_sale_mapping",
+  "query_combo_sale_mappings",
   "query_store_reviews",
   "smedc_get_current_user",
   "smedc_list_skills",
@@ -1769,6 +1773,52 @@ export const SMEDC_MCP_TOOL_CONTRACTS = [
     ],
     resultShape: ["received, created, updated, unchanged, removed"],
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "update_combo_sale_mapping",
+    title: "Confirm or revoke a store's combo sale mapping",
+    description:
+      "Require a current administrator with both group dish_catalog and this store's combo_sales grants. Confirm a source child name for all specifications or one exact specification to a current single SKU or active department. Reconfirm to correct the target or basis, or revoke to resume automatic attribution.",
+    inputSchema: updateComboSaleMappingInput,
+    inputFields: [
+      { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
+      { name: "storeName", required: true, description: "Exact formal store name." },
+      { name: "sourceName", required: true, description: "Exact source child dish name." },
+      {
+        name: "specification",
+        required: true,
+        description: "Null for name-wide or the exact reported specification, including empty."
+      },
+      {
+        name: "operation",
+        required: true,
+        description: "Confirm with a target and basis, or revoke this exact mapping."
+      }
+    ],
+    resultShape: ["id, changed"],
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }
+  }),
+  defineToolContract({
+    name: "query_combo_sale_mappings",
+    title: "Query a store's current combo sale mappings",
+    description:
+      "Page through current confirmations for one formal store. Requires both group dish_catalog and this store's combo_sales grants. SKU targets follow the current department. Removed or ineligible targets are marked invalid.",
+    inputSchema: queryComboSaleMappingsInput,
+    inputFields: [
+      { name: "enterpriseName", required: true, description: "Exact registered enterprise name." },
+      { name: "storeName", required: true, description: "Exact formal store name." },
+      {
+        name: "afterId",
+        required: false,
+        description: "Continue the same store's query using nextAfterId."
+      },
+      { name: "limit", required: false, description: "Page size between 1 and 100, default 50." }
+    ],
+    resultShape: [
+      "rows[]: id, sourceName, specification, target, basis, valid, departmentId, departmentName",
+      "nextAfterId"
+    ],
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
   }),
   defineToolContract({
     name: "query_store_reviews",

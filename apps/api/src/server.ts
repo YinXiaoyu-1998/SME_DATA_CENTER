@@ -1,3 +1,4 @@
+import { registerComboSaleMappingRoutes } from "./routes/combo-sale-mappings.js";
 import {
   registerEmployeeDirectoryRoutes,
   registerEmployeeDirectoryWebRoutes
@@ -160,6 +161,7 @@ export function buildApiServer(options: ApiServerOptions = {}) {
   registerEmployeeDirectoryRoutes(app, { auth: requestAuth, directory: context.directory });
   registerBusinessAuthorizationRoutes(app, { auth: requestAuth, permissions: context.permissions });
   registerStoreReviewRoutes(app, { auth: requestAuth, storeReviews: context.storeReviews });
+  registerComboSaleMappingRoutes(app, requestAuth, context.comboSaleMappings);
   registerDishCatalogRoutes(app, { auth: requestAuth, dishCatalog: context.dishCatalog });
   registerCostCardRoutes(app, { auth: requestAuth, costCards: context.costCards });
 

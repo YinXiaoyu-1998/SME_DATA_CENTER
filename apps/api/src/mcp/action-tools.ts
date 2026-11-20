@@ -21,6 +21,7 @@ export const ACTION_MCP_TOOL_NAMES = [
   "archive_cost_card",
   "upsert_store_reviews",
   "upsert_dish_catalog",
+  "update_combo_sale_mapping",
   "prepare_ledger_pdf_download",
   "update_account_permissions",
   "configure_business_category",
@@ -88,6 +89,8 @@ function routeForActionTool(
   switch (toolName) {
     case "upsert_store_reviews":
       return { method: "POST", path: "/v1/store-reviews/upsert", body: input };
+    case "update_combo_sale_mapping":
+      return { method: "POST", path: "/v1/combo-sale-mappings/update", body: input };
     case "upsert_dish_catalog":
       return { method: "POST", path: "/v1/dish-catalog/upsert", body: input };
     case "archive_cost_card":

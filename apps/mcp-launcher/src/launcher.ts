@@ -74,6 +74,8 @@ export type LauncherBusinessToolName =
   | "archive_cost_card"
   | "upsert_store_reviews"
   | "upsert_dish_catalog"
+  | "update_combo_sale_mapping"
+  | "query_combo_sale_mappings"
   | "query_store_reviews"
   | "prepare_structured_partition_download"
   | "get_structured_partition_download_status"
@@ -283,6 +285,8 @@ export function registerLauncherTools(
                 "archive_cost_card",
                 "upsert_store_reviews",
                 "upsert_dish_catalog",
+                "update_combo_sale_mapping",
+                "query_combo_sale_mappings",
                 "query_store_reviews",
                 "query_structured_dataset",
                 "describe_structured_dataset_coverage"
