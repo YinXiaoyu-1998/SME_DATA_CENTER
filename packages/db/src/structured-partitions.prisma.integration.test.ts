@@ -667,6 +667,9 @@ suite("structured partition repository", () => {
         })
       ).toEqual([]);
       await createProcessingJob("combo_bound", "synthetic", dataset);
+      await prisma.businessEnterpriseIdentity.create({
+        data: { orgId, enterpriseKey: "synthetic", enterpriseName: "Synthetic" }
+      });
       await prisma.enterpriseIntegration.create({
         data: { orgId, enterpriseKey: "synthetic", configuration: {}, updatedBy: userAccountId }
       });
