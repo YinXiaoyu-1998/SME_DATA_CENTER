@@ -17,7 +17,7 @@
 - 若交接的镜像已被确认包含旧系统包，仅重跑部署仍会使用旧产物。应先在获准范围内刷新受影响的构建缓存并重跑对应 main 质量任务，重新生成、验证同一 run 的镜像归档，再由其成功事件触发自动发布；不复用其他提交或 PR 的镜像。
 - 自动部署只下载触发它的成功 main 质量 run 的产物，验证完整提交、归档 SHA-256、三个镜像 ID、linux/amd64 和 revision 标签后，重新打不可变 ACR tag 并推送，不再构建。发布前风险扫描、迁移、smoke 和回滚保持原流程。
 - 产物缺失、过期或不匹配时停止，不改用其他 run/PR 产物。需要恢复时使用获准的 main 手动部署重新构建。短期镜像归档增加 Actions artifact 存储与传输；一天保留期控制累积，不修改账单预算。
-- Launcher 三平台验收与发布仅由 `smedc-mcp-launcher-v*` 版本 tag 或显式手动任务触发；普通 main push 不自动启动。版本必须匹配 package，仍先完成三平台验证和受控 staged publish，已发布版本不可覆盖。
+- Launcher 三平台验收与发布仅由 `smedc-mcp-launcher-v*` 版本 tag 或显式手动任务触发；普通 main push 不自动启动。tag 版本须与 package 一致，发布提交须在 main 历史上。三平台验收通过后，工作流用 npm Trusted Publishing（OIDC）执行 `npm publish --access public --tag latest`。已发布版本只做内容比对。启用前，维护者在 npm 包 Settings 的 Trusted publishers 中为 `YinXiaoyu-1998/SME_DATA_CENTER` 的 `launcher-release.yml` 勾选 `npm publish`。已暂存的版本沿用原审批流程。
 
 ## 运行拓扑
 

@@ -71,6 +71,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - name: Install the reviewed npm release
         run: |
           npm install --global npm@11.15.0
@@ -92,7 +93,7 @@ jobs:
           else
             test "$GITHUB_REF_NAME" = "main"
           fi
-      - name: Check release integrity, stage publish, or require first-publish bootstrap
+      - name: Verify an existing release or publish with npm OIDC
         run: |
           set -euo pipefail
           package_name=smedc-mcp-launcher
@@ -113,4 +114,4 @@ jobs:
             exit 1
           fi
           cd apps/mcp-launcher
-          npm stage publish
+          npm publish --access public --tag latest

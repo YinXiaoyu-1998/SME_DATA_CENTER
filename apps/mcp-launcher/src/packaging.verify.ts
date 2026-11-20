@@ -79,7 +79,7 @@ describe("published launcher artifact", () => {
     expect(declarations).not.toMatch(/@smedc\/(?:mcp-contract|domain)/);
   });
 
-  it("derives the platform-acceptance tarball name from npm pack output", async () => {
+  it("publishes directly through OIDC after release validation and platform acceptance", async () => {
     const workflow = await readFile(
       path.join(workspaceRoot, ".github", "workflows", "launcher-release.yml"),
       "utf8"
@@ -96,8 +96,17 @@ describe("published launcher artifact", () => {
     expect(workflow).toContain('diff -qr "$compare_dir/extracted-registry/package"');
     expect(workflow).toContain('npm view "$package_name" name');
     expect(workflow).toContain("Initial npm package bootstrap required");
-    expect(workflow).toContain("npm stage publish");
-    expect(workflow).not.toContain("npm publish --workspace");
+    const publishJob = workflow.split("\n  publish:\n")[1];
+    expect(publishJob).toContain("needs: platform-acceptance");
+    expect(publishJob).toContain("id-token: write");
+    expect(publishJob).toContain("registry-url: https://registry.npmjs.org");
+    expect(publishJob).toContain("package-manager-cache: false");
+    expect(publishJob).toContain('test "$tag_version" = "$package_version"');
+    expect(publishJob).toMatch(
+      /cd apps\/mcp-launcher\n\s+npm publish --access public --tag latest/
+    );
+    expect(workflow).not.toContain("npm stage publish");
+    expect(workflow).not.toMatch(/secrets\.[^\s}]*NPM|NODE_AUTH_TOKEN:/);
   });
 
   it("passes a built-artifact secret and legacy-contract scan", () => {
