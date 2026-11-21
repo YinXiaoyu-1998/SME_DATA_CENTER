@@ -14,7 +14,11 @@ import {
   workflowJobSummary
 } from "@smedc/db";
 import { ledgerStoreKeyFromMetadata } from "@smedc/ledger-archive";
-import { normalizeEnterpriseIdentity, workflowAuthorizationScopeSchema } from "@smedc/domain";
+import {
+  normalizeEnterpriseIdentity,
+  workflowAuthorizationScopeSchema,
+  workflowUploadGrantCovers
+} from "@smedc/domain";
 import type { JobKind, JobQuery } from "@smedc/mcp-contract";
 import { configuration, workflowStoreKeys } from "../enterprise-workflows/configuration.js";
 import { fail, hash, type Actor, type Tx } from "../enterprise-workflows/repository.js";
@@ -416,7 +420,9 @@ async function uploadScopes(tx: Tx, workflow: Workflow) {
         ? []
         : [
             {
-              datasets: grant.datasets.filter((dataset) => config.datasets.includes(dataset)),
+              datasets: config.datasets.filter((dataset) =>
+                workflowUploadGrantCovers(grant, dataset)
+              ),
               keys: grant.storeNames
                 .map((name) => aliases.get(name))
                 .filter((key): key is string => !!key && storesAllowed.has(key))

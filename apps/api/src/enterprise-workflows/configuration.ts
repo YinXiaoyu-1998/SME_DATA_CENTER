@@ -9,6 +9,9 @@ import {
   workflowConfigurationSchema,
   workflowChangeSchema,
   workflowAuthorizationScopeSchema,
+  legacyUploadGrant,
+  normalizeWorkflowGrant,
+  type WorkflowAuthorizationScope,
   type WorkflowConfiguration,
   type EnterpriseIntegrationConfiguration
 } from "@smedc/domain";
@@ -251,6 +254,11 @@ async function restrictRuns(
     });
   }
 }
+function canonicalUploadGrant(scope: WorkflowAuthorizationScope): WorkflowAuthorizationScope {
+  if (legacyUploadGrant(scope)) fail("WORKFLOW_PERMISSION_DENIED");
+  return normalizeWorkflowGrant(scope);
+}
+
 export async function prepareChange(
   tx: Tx,
   actor: Actor,
@@ -273,7 +281,11 @@ export async function prepareChange(
     input.change.kind === "integration"
       ? await integrationImpact(tx, workflow, shared.configuration, input.change.configuration)
       : null;
-  const preparedChange = context ? { change: input.change, ...context } : input.change;
+  const change =
+    input.change.kind === "authorization"
+      ? { ...input.change, grant: input.change.grant.map(canonicalUploadGrant) }
+      : input.change;
+  const preparedChange = context ? { change, ...context } : change;
   const confirmationDigest = hash({ previewId, actor, input, preparedChange });
   const expiresAt = new Date(now.getTime() + 15 * 60000);
   await tx.workflowChangePreview.create({
@@ -298,6 +310,7 @@ export async function prepareChange(
   });
   return {
     ...input,
+    change,
     previewId,
     confirmationDigest,
     expiresAt: expiresAt.toISOString(),
@@ -455,7 +468,7 @@ export async function saveChange(
         data: {
           orgId: actor.orgId,
           workflowId: workflow.id,
-          scope: json(scope),
+          scope: json(canonicalUploadGrant(scope)),
           configurationVersion: workflow.version,
           controlVersion: workflow.controlVersion + 1,
           grantedBy: actor.id

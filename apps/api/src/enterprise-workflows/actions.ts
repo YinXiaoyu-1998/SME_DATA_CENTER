@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import {
   WORKFLOW_V1_EVIDENCE_LAUNCHER_VERSION,
+  workflowUploadGrantCovers,
   workflowActionIdentitySchema,
   workflowLivePolicyAllows,
   type WorkflowLivePolicy,
@@ -253,11 +254,10 @@ export async function authorizeAction(
   ).map((a) => workflowAuthorizationScopeSchema.parse(a.scope));
   const allowed = scopes.some((scope) => {
     if (scope.kind !== identity.kind || !selected(stores, scope.storeNames)) return false;
-    if (
-      (scope.kind === "upload" || scope.kind === "download") &&
-      (identity.kind === "upload" || identity.kind === "download")
-    )
-      return (scope.datasets as string[]).includes(identity.dataset);
+    if (scope.kind === "upload" && identity.kind === "upload")
+      return workflowUploadGrantCovers(scope, identity.dataset);
+    if (scope.kind === "download" && identity.kind === "download")
+      return scope.datasets.includes(identity.dataset);
     if (
       (scope.kind === "review_publish" || scope.kind === "review_sync") &&
       (identity.kind === "review_publish" || identity.kind === "review_sync")
