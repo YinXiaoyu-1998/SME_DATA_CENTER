@@ -6,7 +6,7 @@
 
 管理员可通过 launcher 的 `upsert_dish_catalog` 提交 `enterpriseName` 和本机绝对路径 `workbookPath`。调用方读取「总部菜品」及「总部套餐」，预检父 SKU、分组和子菜引用，再分批提交。工作簿模式保留人工部门和别名。普通目录写入仍沿用下文的整行语义。读取目录时可按 `enterprise_key` 筛选，选择 `dish_type`、`combo_composition` 以及现有 SKU、规格和部门字段。历史未分类行为 null。
 
-套餐子菜销售与普通菜品销售共用 `dishes` 的密级和同门店授权。管理员使用 `upload_structured_dataset` 手动导入 `combo_sales` 的带规格单日明细，随后用 `get_partition_import_status` 检查发布结果。零收入行保留。缺少门店日分区表示当前无可读报表。来源筛选给出的门店数不足以证明某家店有零销售。
+套餐子菜销售与普通菜品销售共用 `dishes` 的密级和同门店授权。 每日入库任务的持续上传也使用「菜品销售」。管理员在采集范围单独选择「套餐销售统计」，以决定每日是否导出这张报表。管理员使用 `upload_structured_dataset` 手动导入 `combo_sales` 的带规格单日明细，随后用 `get_partition_import_status` 检查发布结果。零收入行保留。缺少门店日分区表示当前无可读报表。来源筛选给出的门店数不足以证明某家店有零销售。
 
 对 `download_structured_partitions` 发起普通 `combo_sales` 日期范围下载，可附 `comboAttribution`，其中 `evidenceStartDate` 和 `evidenceEndDate` 为 YYYYMMDD。该区间用于收集同店已授权 dishes 中的关联菜名，销售金额始终取所选套餐明细。原始 CSV 与逐行归属 JSONL 分别交付；结果中的 `attribution.file` 指向 JSONL。附加读取不可用时查看 `attribution.status`，原始下载仍可独立使用。
 

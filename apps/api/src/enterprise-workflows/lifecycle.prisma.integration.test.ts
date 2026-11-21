@@ -219,6 +219,29 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         configuration
       });
     });
+    it("previews canonical dish sales upload authorization without a separate combo grant", async () => {
+      const current = (await call("get_enterprise_workflow", selector)).json();
+      const prepare = (datasets: string[]) =>
+        call("prepare_enterprise_workflow_change", {
+          ...selector,
+          expectedVersion: current.version,
+          expectedIntegrationVersion: current.integration.version,
+          expectedControlVersion: current.controlVersion,
+          change: {
+            kind: "authorization",
+            grant: [{ kind: "upload", datasets, storeNames: ["Store A"] }],
+            revokeAuthorizationIds: []
+          }
+        });
+      const canonical = await prepare(["dishes", "combo_sales"]);
+      expect(canonical.statusCode, canonical.body).toBe(200);
+      expect(canonical.json().change.grant).toEqual([
+        { kind: "upload", datasets: ["dishes"], storeNames: ["Store A"] }
+      ]);
+      const onlyCombo = await prepare(["combo_sales"]);
+      expect(onlyCombo.statusCode).toBe(403);
+      expect(onlyCombo.json().error.code).toBe("WORKFLOW_PERMISSION_DENIED");
+    });
     it("requires checked installation, explicit assignment and one immutable leased run", async () => {
       const change = async (value: unknown) => {
         const current = (await call("get_enterprise_workflow", selector)).json();

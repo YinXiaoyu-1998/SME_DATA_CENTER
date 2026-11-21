@@ -23,7 +23,7 @@ then verify live service capability and current administrator authorization befo
 If capability is unavailable, report that service gap. Do not substitute `latest`, raw JSON-RPC
 or a separate credentialed HTTP client.
 
-Scheduled `combo_sales` requires a matching deployed service, launcher 0.22.2 or newer, and a companion workflow package of at least 1.0.12. In 自动任务 → 每日美团入库, add 套餐销售统计 to the collection scope and grant that task sustained `upload` authorization for `combo_sales` and its selected stores. The employee reads these partitions under the existing `dishes` scope. Submit each verified single-day original with a workflow upload binding and check for `published`.
+Scheduled `combo_sales` requires a matching deployed service, launcher 0.22.2 or newer, and a companion workflow package of at least 1.0.12. In 自动任务 → 每日美团入库, add 套餐销售统计 to the collection scope. At the selected stores, the existing dish sales (`dishes`) authority covers both dish and combo sales for standing upload, and the same business category governs employee reads. Submit each verified single-day original with a workflow upload binding and check for `published`.
 
 The service capability version and companion package revision are separate. The v1 service
 supports stable `1.0.x` workflow packages; other minor/major lines and prereleases require a
