@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { structuredAuthorizationCategory } from "./business-authorization.js";
 import { PUBLIC_INPUT_LIMITS } from "./input-boundaries.js";
 
 export const WORKFLOW_SCHEMA_VERSION = 1;
@@ -916,6 +917,42 @@ export type WorkflowMigrationManifest = z.infer<typeof workflowMigrationManifest
 export type WorkflowType = (typeof WORKFLOW_TYPES)[number];
 export type WorkflowErrorCode = (typeof WORKFLOW_ERROR_CODES)[number];
 export type WorkflowAuthorizationScope = z.infer<typeof workflowAuthorizationScopeSchema>;
+
+type UploadGrant = Extract<WorkflowAuthorizationScope, { kind: "upload" }>;
+
+export function workflowUploadGrantCovers(
+  grant: UploadGrant,
+  dataset: UploadGrant["datasets"][number]
+) {
+  return (
+    grant.datasets.includes(dataset) ||
+    grant.datasets.includes(structuredAuthorizationCategory(dataset))
+  );
+}
+
+// Preserve a legacy dataset if the grant never included its broader category.
+export function normalizeWorkflowGrant(
+  scope: WorkflowAuthorizationScope
+): WorkflowAuthorizationScope {
+  if (scope.kind !== "upload") return scope;
+  const datasets = scope.datasets.map((dataset) => {
+    const category = structuredAuthorizationCategory(dataset);
+    return scope.datasets.includes(category) ? category : dataset;
+  });
+  return { ...scope, datasets: [...new Set(datasets)] };
+}
+
+export function legacyUploadGrant(scope: WorkflowAuthorizationScope): UploadGrant | undefined {
+  if (
+    scope.kind === "upload" &&
+    scope.datasets.some(
+      (dataset) => !scope.datasets.includes(structuredAuthorizationCategory(dataset))
+    )
+  )
+    return scope;
+  return undefined;
+}
+
 export type WorkflowActionIntent = z.infer<typeof workflowActionIntentSchema>;
 export type WorkflowRunSummary = z.infer<typeof workflowRunSummarySchema>;
 export type WorkflowReadinessCheck = z.infer<typeof workflowReadinessCheckSchema>;

@@ -9,7 +9,8 @@ import {
   workflowConfigurationSchema,
   workflowChangeSchema,
   workflowAuthorizationScopeSchema,
-  structuredAuthorizationCategory,
+  legacyUploadGrant,
+  normalizeWorkflowGrant,
   type WorkflowAuthorizationScope,
   type WorkflowConfiguration,
   type EnterpriseIntegrationConfiguration
@@ -254,12 +255,8 @@ async function restrictRuns(
   }
 }
 function canonicalUploadGrant(scope: WorkflowAuthorizationScope): WorkflowAuthorizationScope {
-  if (scope.kind !== "upload") return scope;
-  for (const dataset of scope.datasets) {
-    if (!scope.datasets.includes(structuredAuthorizationCategory(dataset)))
-      fail("WORKFLOW_PERMISSION_DENIED");
-  }
-  return { ...scope, datasets: [...new Set(scope.datasets.map(structuredAuthorizationCategory))] };
+  if (legacyUploadGrant(scope)) fail("WORKFLOW_PERMISSION_DENIED");
+  return normalizeWorkflowGrant(scope);
 }
 
 export async function prepareChange(

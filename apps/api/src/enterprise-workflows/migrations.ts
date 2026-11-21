@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  legacyUploadGrant,
+  normalizeWorkflowGrant,
+  workflowAuthorizationScopeSchema,
+  type WorkflowAuthorizationScope,
   workflowHostSnapshotSchema,
   workflowMigrationManifestSchema,
   workflowMigrationChunkSchema,
@@ -98,6 +102,35 @@ export async function migrationSummaries(
     nextMigrationCursor: rows.length > limit ? rows[limit - 1]!.id : null
   };
 }
+// Keep the original authorization ID and grantor when importing a legacy exact scope.
+async function retainedLegacyGrantIds(
+  tx: Tx,
+  orgId: string,
+  workflowId: string,
+  scopes: WorkflowAuthorizationScope[]
+) {
+  const requested = scopes.map(legacyUploadGrant).filter((scope) => scope !== undefined);
+  if (!requested.length) return [];
+  const existing = await tx.workflowAuthorization.findMany({
+    where: { orgId, workflowId, revokedAt: null },
+    select: { id: true, scope: true }
+  });
+  const scopeKey = (scope: (typeof requested)[number]) =>
+    hash([[...new Set(scope.datasets)].sort(), [...scope.storeNames].sort()]);
+  const byScope = new Map<string, string[]>();
+  for (const row of existing) {
+    const scope = legacyUploadGrant(workflowAuthorizationScopeSchema.parse(row.scope));
+    if (!scope) continue;
+    const key = scopeKey(scope);
+    byScope.set(key, [...(byScope.get(key) ?? []), row.id]);
+  }
+  return requested.map((scope) => {
+    const id = byScope.get(scopeKey(scope))?.pop();
+    if (!id) fail("WORKFLOW_PERMISSION_DENIED");
+    return id;
+  });
+}
+
 export async function migrationOperation(
   tx: Tx,
   actor: Actor,
@@ -106,7 +139,13 @@ export async function migrationOperation(
   now: Date
 ) {
   if (op.kind === "migration_preview") {
-    const manifest = op.manifest;
+    const manifest = {
+      ...op.manifest,
+      workflows: op.manifest.workflows.map((item) => ({
+        ...item,
+        authorizations: item.authorizations.map(normalizeWorkflowGrant)
+      }))
+    };
     const prior = await tx.workflowMigration.findUnique({
       where: {
         orgId_enterpriseKey_sourceSnapshotHash_targetVersion: {
@@ -118,7 +157,8 @@ export async function migrationOperation(
       }
     });
     if (prior) {
-      if (hash(prior.manifest) !== hash(manifest)) fail("WORKFLOW_VERSION_CONFLICT");
+      if (hash(prior.manifest) !== hash(manifest) && hash(prior.manifest) !== hash(op.manifest))
+        fail("WORKFLOW_VERSION_CONFLICT");
       return migrationView(prior);
     }
     const shared = await integration(tx, workflow);
@@ -163,6 +203,7 @@ export async function migrationOperation(
         )
       )
         fail("WORKFLOW_PERMISSION_DENIED");
+      await retainedLegacyGrantIds(tx, actor.orgId, target.id, item.authorizations);
       targets.push({
         workflowId: target.id,
         version: target.version,
@@ -398,11 +439,20 @@ export async function migrationOperation(
             createdBy: actor.id
           }
         });
+        // Recheck sealed previews from older service versions before replacing any grants.
+        const grants = item.authorizations.map(normalizeWorkflowGrant);
+        const retainedIds = await retainedLegacyGrantIds(tx, actor.orgId, item.workflowId, grants);
         await tx.workflowAuthorization.updateMany({
-          where: { orgId: actor.orgId, workflowId: item.workflowId, revokedAt: null },
+          where: {
+            orgId: actor.orgId,
+            workflowId: item.workflowId,
+            revokedAt: null,
+            id: { notIn: retainedIds }
+          },
           data: { revokedAt: now, revokedBy: actor.id }
         });
-        for (const scope of item.authorizations)
+        for (const scope of grants) {
+          if (legacyUploadGrant(scope)) continue;
           await tx.workflowAuthorization.create({
             data: {
               orgId: actor.orgId,
@@ -413,6 +463,7 @@ export async function migrationOperation(
               grantedBy: actor.id
             }
           });
+        }
         await tx.enterpriseWorkflow.update({
           where: { id: item.workflowId },
           data: {

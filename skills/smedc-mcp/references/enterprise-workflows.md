@@ -23,7 +23,9 @@ then verify live service capability and current administrator authorization befo
 If capability is unavailable, report that service gap. Do not substitute `latest`, raw JSON-RPC
 or a separate credentialed HTTP client.
 
-Scheduled `combo_sales` requires a matching deployed service, launcher 0.22.2 or newer, and a companion workflow package of at least 1.0.12. In 自动任务 → 每日美团入库, add 套餐销售统计 to the collection scope. At the selected stores, the existing dish sales (`dishes`) authority covers both dish and combo sales for standing upload, and the same business category governs employee reads. Submit each verified single-day original with a workflow upload binding and check for `published`.
+Scheduled `combo_sales` uploads require a matching deployed service, launcher 0.22.2 or newer, and workflow package 1.0.12 or newer. For a task using a standing `dishes` grant to upload combo sales, upgrade the existing host task in place to workflow package 1.0.14 or newer and verify its package pin and central registration. Hosts pinned to 1.0.12 or 1.0.13 look for an explicit `combo_sales` grant.
+
+In 自动任务 → 每日美团入库, select 套餐销售统计 in the collection scope. For a new standing upload grant, select 菜品销售 (`dishes`) for the intended stores. An existing combo-only grant still covers just combo sales at its granted stores. Employee reads require the corresponding same-store `dishes` permission and clearance. Submit each verified single-day original with a workflow upload binding and check for `published`.
 
 The service capability version and companion package revision are separate. The v1 service
 supports stable `1.0.x` workflow packages; other minor/major lines and prereleases require a

@@ -803,8 +803,11 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       await prisma.userAccount.update({ where: { id: actor.id }, data: { role: "admin" } });
     });
 
-    it("confirms an actual uploaded delivery receipt using persisted receipt dates and scope", async () => {
-      const enterpriseKey = "receipt-enterprise";
+    async function startStoreUpload(
+      enterpriseKey: string,
+      dataset: "combo_sales" | "delivery_ledger",
+      grantDataset: "dishes" | "delivery_ledger"
+    ) {
       await prisma.businessEnterpriseIdentity.create({
         data: { orgId: actor.orgId, enterpriseKey, enterpriseName: enterpriseKey }
       });
@@ -817,19 +820,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           confirmation: "confirmed"
         }
       });
-      await prisma.businessCategory.create({
-        data: {
-          orgId: actor.orgId,
-          id: "delivery_ledger",
-          key: "delivery_ledger",
-          name: "Delivery ledger",
-          kind: "fixed",
-          confidentialityLevel: null,
-          allowGroup: false,
-          allowStore: true
-        }
-      });
-      const ledgerSelector = { ...selector, enterpriseKey };
+      const uploadSelector = { ...selector, enterpriseKey };
       let current = { version: 0, controlVersion: 0, integration: { version: 0 }, workflowId: "" };
       const change = async (value: unknown) => {
         const expected = {
@@ -838,13 +829,13 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           expectedControlVersion: current.controlVersion
         };
         const preview = await call("prepare_enterprise_workflow_change", {
-          ...ledgerSelector,
+          ...uploadSelector,
           ...expected,
           change: value
         });
         expect(preview.statusCode, preview.body).toBe(200);
         const saved = await call("save_enterprise_workflow", {
-          ...ledgerSelector,
+          ...uploadSelector,
           ...expected,
           previewId: preview.json().previewId,
           confirmationDigest: preview.json().confirmationDigest
@@ -854,7 +845,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       };
       await change({
         kind: "configuration",
-        configuration: { ...configuration, datasets: ["delivery_ledger"] }
+        configuration: { ...configuration, datasets: [dataset] }
       });
       await change({
         kind: "integration",
@@ -886,7 +877,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
       });
       await change({
         kind: "authorization",
-        grant: [{ kind: "upload", datasets: ["delivery_ledger"], storeNames: ["Store A"] }],
+        grant: [{ kind: "upload", datasets: [grantDataset], storeNames: ["Store A"] }],
         revokeAuthorizationIds: []
       });
       await change({ kind: "control", state: "active", reason: "Synthetic receipt test" });
@@ -902,8 +893,8 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
               deviceAlias: "Receipt Mac",
               host: "codex",
               platform: "macos",
-              launcherVersion: "0.16.0",
-              workflowPackageVersion: "1.0.3",
+              launcherVersion: "0.22.2",
+              workflowPackageVersion: "1.0.14",
               hostSnapshot: {
                 host: "codex",
                 platform: "macos",
@@ -974,7 +965,7 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           expectedConfigurationVersion: current.version,
           expectedIntegrationVersion: current.integration.version,
           expectedControlVersion: current.controlVersion,
-          workflowPackageVersion: "1.0.3",
+          workflowPackageVersion: "1.0.14",
           window,
           mode: "scheduled"
         }
@@ -986,6 +977,98 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         controlVersion: current.controlVersion,
         runId: started.json().runId
       };
+      return { workflowId, window, binding, change };
+    }
+
+    it("recovers an accepted combo sales upload by action with only the same-store dishes grant", async () => {
+      const enterpriseKey = "combo-enterprise";
+      const { workflowId, window, binding, change } = await startStoreUpload(
+        enterpriseKey,
+        "combo_sales",
+        "dishes"
+      );
+      const actionId = "combo-upload";
+      const sourceHash = "d".repeat(64);
+      const intent = {
+        actionId,
+        identity: {
+          kind: "upload",
+          dataset: "combo_sales",
+          storeNames: ["Store A"],
+          window,
+          sourceHash,
+          metadataHash: "a".repeat(64)
+        }
+      };
+      const claimed = await call("record_workflow_action", {
+        workflowId,
+        operation: { kind: "intent", ...binding, actions: [intent] }
+      });
+      expect(claimed.json().actions[0].permitted).toBe(true);
+      const submitted = await app.inject({
+        method: "POST",
+        url: "/v1/structured/partition-uploads",
+        headers: { authorization: "Bearer synthetic" },
+        payload: {
+          dataset: "combo_sales",
+          enterpriseName: enterpriseKey,
+          ...window,
+          sourceChecksumSha256: sourceHash,
+          sourceByteSize: 1,
+          mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          originalFileName: "combo.xlsx",
+          idempotencyKey: actionId,
+          workflowAction: { workflowId, ...binding, actionId }
+        }
+      });
+      expect(submitted.statusCode, submitted.body).toBe(201);
+      const lookup = () =>
+        callMcp(
+          "query_jobs",
+          { query: { mode: "action", workflowId, runId: binding.runId, actionId } },
+          "0.22.2"
+        );
+      const recovered = await lookup();
+      expect(recovered.isError, recovered.content[0].text).toBe(false);
+      expect(JSON.parse(recovered.content[0].text).jobs).toMatchObject([
+        {
+          actionId,
+          result: "accepted",
+          job: {
+            id: submitted.json().partitionImportJobId,
+            status: "uploading",
+            summary: { dataset: "combo_sales" }
+          }
+        }
+      ]);
+      await change({
+        kind: "configuration",
+        configuration: { ...configuration, datasets: ["dishes"] }
+      });
+      const removed = await lookup();
+      expect(removed.isError, removed.content[0].text).toBe(false);
+      expect(JSON.parse(removed.content[0].text).jobs).toEqual([]);
+    });
+
+    it("confirms an actual uploaded delivery receipt using persisted receipt dates and scope", async () => {
+      const enterpriseKey = "receipt-enterprise";
+      await prisma.businessCategory.create({
+        data: {
+          orgId: actor.orgId,
+          id: "delivery_ledger",
+          key: "delivery_ledger",
+          name: "Delivery ledger",
+          kind: "fixed",
+          confidentialityLevel: null,
+          allowGroup: false,
+          allowStore: true
+        }
+      });
+      const { workflowId, window, binding } = await startStoreUpload(
+        enterpriseKey,
+        "delivery_ledger",
+        "delivery_ledger"
+      );
       const csv = [
         "送货单",
         "单据号,SYNTHETIC-RECEIPT,订货机构,Store A",
@@ -1389,6 +1472,8 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           verifiedAt: "2026-01-02T00:00:00.000Z"
         }
       });
+      const legacyScope = { kind: "upload", datasets: ["combo_sales"], storeNames: ["Store A"] };
+      const businessScope = { ...legacyScope, datasets: ["business"] };
       const manifest = {
         sourceSnapshotHash: "f".repeat(64),
         targetVersion: 0,
@@ -1397,7 +1482,11 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           {
             workflowId,
             configuration,
-            authorizations: [{ kind: "upload", datasets: ["business"], storeNames: ["Store A"] }],
+            authorizations: [
+              businessScope,
+              legacyScope,
+              { ...legacyScope, datasets: ["dishes", "combo_sales"] }
+            ],
             hostSnapshot: {
               host: "codex",
               platform: "macos",
@@ -1481,9 +1570,27 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
           }
         ]
       };
+      const denied = await install({ kind: "migration_preview", manifest: portableManifest });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().error.code).toBe("WORKFLOW_PERMISSION_DENIED");
+      const legacy = await prisma.workflowAuthorization.create({
+        data: {
+          orgId: actor.orgId,
+          workflowId,
+          scope: legacyScope,
+          configurationVersion: saved.version,
+          controlVersion: saved.controlVersion,
+          grantedBy: actor.id
+        }
+      });
       const prepared = await install({ kind: "migration_preview", manifest: portableManifest });
       expect(prepared.statusCode, prepared.body).toBe(200);
       let migration = prepared.json();
+      expect(migration.manifest.workflows[0].authorizations).toEqual([
+        businessScope,
+        legacyScope,
+        { ...legacyScope, datasets: ["dishes"] }
+      ]);
       expect(
         (await install({ kind: "migration_preview", manifest: portableManifest })).json()
           .migrationId
@@ -1603,6 +1710,16 @@ describe.skipIf(process.env["RUN_WORKFLOW_INTEGRATION"] !== "1")(
         controlState: "paused",
         integration: { orderScopeRequired: false }
       });
+      expect(
+        state.authorizations.filter(
+          (grant: { revokedAt: string | null }) => grant.revokedAt === null
+        )
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ authorizationId: legacy.id, scope: legacyScope }),
+          expect.objectContaining({ scope: { ...legacyScope, datasets: ["dishes"] } })
+        ])
+      );
       const history = (
         await call("record_workflow_action", {
           workflowId,
